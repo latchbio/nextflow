@@ -1,659 +1,659 @@
 /*
- * copyright 2013-2023, seqera labs
+ * Copyright 2013-2023, Seqera Labs
  *
- * licensed under the apache license, version 2.0 (the "license");
- * you may not use this file except in compliance with the license.
- * you may obtain a copy of the license at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/license-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * unless required by applicable law or agreed to in writing, software
- * distributed under the license is distributed on an "as is" basis,
- * without warranties or conditions of any kind, either express or implied.
- * see the license for the specific language governing permissions and
- * limitations under the license.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package nextflow.cli
 
-import java.nio.file.nosuchfileexception
-import java.nio.file.path
-import java.util.regex.pattern
+import java.nio.file.NoSuchFileException
+import java.nio.file.Path
+import java.util.regex.Pattern
 
-import com.beust.jcommander.dynamicparameter
-import com.beust.jcommander.istringconverter
-import com.beust.jcommander.parameter
-import com.beust.jcommander.parameters
-import groovy.json.jsonslurper
-import groovy.transform.compilestatic
-import groovy.transform.memoized
-import groovy.util.logging.slf4j
-import groovyx.gpars.gparsconfig
-import nextflow.const
-import nextflow.nf
-import nextflow.nextflowmeta
-import nextflow.sysenv
-import nextflow.config.configbuilder
-import nextflow.config.configmap
-import nextflow.exception.abortoperationexception
-import nextflow.file.filehelper
-import nextflow.plugin.plugins
-import nextflow.scm.assetmanager
-import nextflow.script.scriptfile
-import nextflow.script.scriptrunner
-import nextflow.secret.secretsloader
-import nextflow.util.custompoolfactory
-import nextflow.util.duration
-import nextflow.util.historyfile
-import org.yaml.snakeyaml.yaml
+import com.beust.jcommander.DynamicParameter
+import com.beust.jcommander.IStringConverter
+import com.beust.jcommander.Parameter
+import com.beust.jcommander.Parameters
+import groovy.json.JsonSlurper
+import groovy.transform.CompileStatic
+import groovy.transform.Memoized
+import groovy.util.logging.Slf4j
+import groovyx.gpars.GParsConfig
+import nextflow.Const
+import nextflow.NF
+import nextflow.NextflowMeta
+import nextflow.SysEnv
+import nextflow.config.ConfigBuilder
+import nextflow.config.ConfigMap
+import nextflow.exception.AbortOperationException
+import nextflow.file.FileHelper
+import nextflow.plugin.Plugins
+import nextflow.scm.AssetManager
+import nextflow.script.ScriptFile
+import nextflow.script.ScriptRunner
+import nextflow.secret.SecretsLoader
+import nextflow.util.CustomPoolFactory
+import nextflow.util.Duration
+import nextflow.util.HistoryFile
+import org.yaml.snakeyaml.Yaml
 /**
- * cli sub-command run
+ * CLI sub-command RUN
  *
- * @author paolo di tommaso <paolo.ditommaso@gmail.com>
+ * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
-@slf4j
-@compilestatic
-@parameters(commanddescription = "execute a pipeline project")
-class cmdrun extends cmdbase implements huboptions {
+@Slf4j
+@CompileStatic
+@Parameters(commandDescription = "Execute a pipeline project")
+class CmdRun extends CmdBase implements HubOptions {
 
-    static final public pattern run_name_pattern = pattern.compile(/^[a-z](?:[a-z\d]|[-_](?=[a-z\d])){0,79}$/, pattern.case_insensitive)
+    static final public Pattern RUN_NAME_PATTERN = Pattern.compile(/^[a-z](?:[a-z\d]|[-_](?=[a-z\d])){0,79}$/, Pattern.CASE_INSENSITIVE)
 
-    static final public list<string> valid_params_file = ['json', 'yml', 'yaml']
+    static final public List<String> VALID_PARAMS_FILE = ['json', 'yml', 'yaml']
 
-    static final public dsl2 = '2'
-    static final public dsl1 = '1'
+    static final public DSL2 = '2'
+    static final public DSL1 = '1'
 
     static {
-        // install the custom pool factory for gpars threads
-        gparsconfig.poolfactory = new custompoolfactory()
+        // install the custom pool factory for GPars threads
+        GParsConfig.poolFactory = new CustomPoolFactory()
     }
 
-    static class durationconverter implements istringconverter<long> {
-        @override
-        long convert(string value) {
-            if( !value ) throw new illegalargumentexception()
-            if( value.islong() ) {  return value.tolong() }
-            return duration.of(value).tomillis()
+    static class DurationConverter implements IStringConverter<Long> {
+        @Override
+        Long convert(String value) {
+            if( !value ) throw new IllegalArgumentException()
+            if( value.isLong() ) {  return value.toLong() }
+            return Duration.of(value).toMillis()
         }
     }
 
-    static final public string name = 'run'
+    static final public String NAME = 'run'
 
-    private map<string,string> sysenv = system.getenv()
+    private Map<String,String> sysEnv = System.getenv()
 
-    @parameter(names=['-name'], description = 'assign a mnemonic name to the a pipeline run')
-    string runname
+    @Parameter(names=['-name'], description = 'Assign a mnemonic name to the a pipeline run')
+    String runName
 
-    @parameter(names=['-lib'], description = 'library extension path')
-    string libpath
+    @Parameter(names=['-lib'], description = 'Library extension path')
+    String libPath
 
-    @parameter(names=['-cache'], description = 'enable/disable processes caching', arity = 1)
-    boolean cacheable
+    @Parameter(names=['-cache'], description = 'Enable/disable processes caching', arity = 1)
+    Boolean cacheable
 
-    @parameter(names=['-resume'], description = 'execute the script using the cached results, useful to continue executions that was stopped by an error')
-    string resume
+    @Parameter(names=['-resume'], description = 'Execute the script using the cached results, useful to continue executions that was stopped by an error')
+    String resume
 
-    @parameter(names=['-ps','-pool-size'], description = 'number of threads in the execution pool', hidden = true)
-    integer poolsize
+    @Parameter(names=['-ps','-pool-size'], description = 'Number of threads in the execution pool', hidden = true)
+    Integer poolSize
 
-    @parameter(names=['-pi','-poll-interval'], description = 'executor poll interval (duration string ending with ms|s|m)', converter = durationconverter, hidden = true)
-    long pollinterval
+    @Parameter(names=['-pi','-poll-interval'], description = 'Executor poll interval (duration string ending with ms|s|m)', converter = DurationConverter, hidden = true)
+    long pollInterval
 
-    @parameter(names=['-qs','-queue-size'], description = 'max number of processes that can be executed in parallel by each executor')
-    integer queuesize
+    @Parameter(names=['-qs','-queue-size'], description = 'Max number of processes that can be executed in parallel by each executor')
+    Integer queueSize
 
-    @parameter(names=['-test'], description = 'test a script function with the name specified')
-    string test
+    @Parameter(names=['-test'], description = 'Test a script function with the name specified')
+    String test
 
-    @parameter(names=['-w', '-work-dir'], description = 'directory where intermediate result files are stored')
-    string workdir
+    @Parameter(names=['-w', '-work-dir'], description = 'Directory where intermediate result files are stored')
+    String workDir
 
-    @parameter(names=['-bucket-dir'], description = 'remote bucket where intermediate result files are stored')
-    string bucketdir
+    @Parameter(names=['-bucket-dir'], description = 'Remote bucket where intermediate result files are stored')
+    String bucketDir
 
-    @parameter(names=['-with-cloudcache'], description = 'enable the use of object storage bucket as storage for cache meta-data')
-    string cloudcachepath
+    @Parameter(names=['-with-cloudcache'], description = 'Enable the use of object storage bucket as storage for cache meta-data')
+    String cloudCachePath
 
     /**
-     * defines the parameters to be passed to the pipeline script
+     * Defines the parameters to be passed to the pipeline script
      */
-    @dynamicparameter(names = '--', description = 'set a parameter used by the pipeline', hidden = true)
-    map<string,string> params = new linkedhashmap<>()
+    @DynamicParameter(names = '--', description = 'Set a parameter used by the pipeline', hidden = true)
+    Map<String,String> params = new LinkedHashMap<>()
 
-    @parameter(names='-params-file', description = 'load script parameters from a json/yaml file')
-    string paramsfile
+    @Parameter(names='-params-file', description = 'Load script parameters from a JSON/YAML file')
+    String paramsFile
 
-    @dynamicparameter(names = ['-process.'], description = 'set process options' )
-    map<string,string> process = [:]
+    @DynamicParameter(names = ['-process.'], description = 'Set process options' )
+    Map<String,String> process = [:]
 
-    @dynamicparameter(names = ['-e.'], description = 'add the specified variable to execution environment')
-    map<string,string> env = [:]
+    @DynamicParameter(names = ['-e.'], description = 'Add the specified variable to execution environment')
+    Map<String,String> env = [:]
 
-    @parameter(names = ['-e'], description = 'exports all current system environment')
-    boolean exportsysenv
+    @Parameter(names = ['-E'], description = 'Exports all current system environment')
+    boolean exportSysEnv
 
-    @dynamicparameter(names = ['-executor.'], description = 'set executor options', hidden = true )
-    map<string,string> executoroptions = [:]
+    @DynamicParameter(names = ['-executor.'], description = 'Set executor options', hidden = true )
+    Map<String,String> executorOptions = [:]
 
-    @parameter(description = 'project name or repository url')
-    list<string> args
+    @Parameter(description = 'Project name or repository url')
+    List<String> args
 
-    @parameter(names=['-r','-revision'], description = 'revision of the project to run (either a git branch, tag or commit sha number)')
-    string revision
+    @Parameter(names=['-r','-revision'], description = 'Revision of the project to run (either a git branch, tag or commit SHA number)')
+    String revision
 
-    @parameter(names=['-d','-deep'], description = 'create a shallow clone of the specified depth')
-    integer deep
+    @Parameter(names=['-d','-deep'], description = 'Create a shallow clone of the specified depth')
+    Integer deep
 
-    @parameter(names=['-latest'], description = 'pull latest changes before run')
+    @Parameter(names=['-latest'], description = 'Pull latest changes before run')
     boolean latest
 
-    @parameter(names='-stdin', hidden = true)
+    @Parameter(names='-stdin', hidden = true)
     boolean stdin
 
-    @parameter(names = ['-ansi'], hidden = true, arity = 0)
-    void setansi(boolean value) {
-        launcher.options.ansilog = value
+    @Parameter(names = ['-ansi'], hidden = true, arity = 0)
+    void setAnsi(boolean value) {
+        launcher.options.ansiLog = value
     }
 
-    @parameter(names = ['-ansi-log'], description = 'enable/disable ansi console logging', arity = 1)
-    void setansilog(boolean value) {
-        launcher.options.ansilog = value
+    @Parameter(names = ['-ansi-log'], description = 'Enable/disable ANSI console logging', arity = 1)
+    void setAnsiLog(boolean value) {
+        launcher.options.ansiLog = value
     }
 
-    @parameter(names = ['-with-tower'], description = 'monitor workflow execution with seqera tower service')
-    string withtower
+    @Parameter(names = ['-with-tower'], description = 'Monitor workflow execution with Seqera Tower service')
+    String withTower
 
-    @parameter(names = ['-with-wave'], hidden = true)
-    string withwave
+    @Parameter(names = ['-with-wave'], hidden = true)
+    String withWave
 
-    @parameter(names = ['-with-fusion'], hidden = true)
-    string withfusion
+    @Parameter(names = ['-with-fusion'], hidden = true)
+    String withFusion
 
-    @parameter(names = ['-with-weblog'], description = 'send workflow status messages via http to target url')
-    string withweblog
+    @Parameter(names = ['-with-weblog'], description = 'Send workflow status messages via HTTP to target URL')
+    String withWebLog
 
-    @parameter(names = ['-with-trace'], description = 'create processes execution tracing file')
-    string withtrace
+    @Parameter(names = ['-with-trace'], description = 'Create processes execution tracing file')
+    String withTrace
 
-    @parameter(names = ['-with-report'], description = 'create processes execution html report')
-    string withreport
+    @Parameter(names = ['-with-report'], description = 'Create processes execution html report')
+    String withReport
 
-    @parameter(names = ['-with-timeline'], description = 'create processes execution timeline file')
-    string withtimeline
+    @Parameter(names = ['-with-timeline'], description = 'Create processes execution timeline file')
+    String withTimeline
 
-    @parameter(names = '-with-charliecloud', description = 'enable process execution in a charliecloud container runtime')
-    def withcharliecloud
+    @Parameter(names = '-with-charliecloud', description = 'Enable process execution in a Charliecloud container runtime')
+    def withCharliecloud
 
-    @parameter(names = '-with-singularity', description = 'enable process execution in a singularity container')
-    def withsingularity
+    @Parameter(names = '-with-singularity', description = 'Enable process execution in a Singularity container')
+    def withSingularity
 
-    @parameter(names = '-with-apptainer', description = 'enable process execution in a apptainer container')
-    def withapptainer
+    @Parameter(names = '-with-apptainer', description = 'Enable process execution in a Apptainer container')
+    def withApptainer
 
-    @parameter(names = '-with-podman', description = 'enable process execution in a podman container')
-    def withpodman
+    @Parameter(names = '-with-podman', description = 'Enable process execution in a Podman container')
+    def withPodman
 
-    @parameter(names = '-without-podman', description = 'disable process execution in a podman container')
-    def withoutpodman
+    @Parameter(names = '-without-podman', description = 'Disable process execution in a Podman container')
+    def withoutPodman
 
-    @parameter(names = '-with-docker', description = 'enable process execution in a docker container')
-    def withdocker
+    @Parameter(names = '-with-docker', description = 'Enable process execution in a Docker container')
+    def withDocker
 
-    @parameter(names = '-without-docker', description = 'disable process execution with docker', arity = 0)
-    boolean withoutdocker
+    @Parameter(names = '-without-docker', description = 'Disable process execution with Docker', arity = 0)
+    boolean withoutDocker
 
-    @parameter(names = '-with-mpi', hidden = true)
-    boolean withmpi
+    @Parameter(names = '-with-mpi', hidden = true)
+    boolean withMpi
 
-    @parameter(names = '-with-dag', description = 'create pipeline dag file')
-    string withdag
+    @Parameter(names = '-with-dag', description = 'Create pipeline DAG file')
+    String withDag
 
-    @parameter(names = ['-bg'], arity = 0, hidden = true)
-    void setbackground(boolean value) {
+    @Parameter(names = ['-bg'], arity = 0, hidden = true)
+    void setBackground(boolean value) {
         launcher.options.background = value
     }
 
-    @parameter(names=['-c','-config'], hidden = true )
-    list<string> runconfig
+    @Parameter(names=['-c','-config'], hidden = true )
+    List<String> runConfig
 
-    @dynamicparameter(names = ['-cluster.'], description = 'set cluster options', hidden = true )
-    map<string,string> clusteroptions = [:]
+    @DynamicParameter(names = ['-cluster.'], description = 'Set cluster options', hidden = true )
+    Map<String,String> clusterOptions = [:]
 
-    @parameter(names=['-profile'], description = 'choose a configuration profile')
-    string profile
+    @Parameter(names=['-profile'], description = 'Choose a configuration profile')
+    String profile
 
-    @parameter(names=['-dump-hashes'], description = 'dump task hash keys for debugging purpose')
-    string dumphashes
+    @Parameter(names=['-dump-hashes'], description = 'Dump task hash keys for debugging purpose')
+    String dumpHashes
 
-    @parameter(names=['-dump-channels'], description = 'dump channels for debugging purpose')
-    string dumpchannels
+    @Parameter(names=['-dump-channels'], description = 'Dump channels for debugging purpose')
+    String dumpChannels
 
-    @parameter(names=['-n','-with-notification'], description = 'send a notification email on workflow completion to the specified recipients')
-    string withnotification
+    @Parameter(names=['-N','-with-notification'], description = 'Send a notification email on workflow completion to the specified recipients')
+    String withNotification
 
-    @parameter(names=['-with-conda'], description = 'use the specified conda environment package or file (must end with .yml|.yaml suffix)')
-    string withconda
+    @Parameter(names=['-with-conda'], description = 'Use the specified Conda environment package or file (must end with .yml|.yaml suffix)')
+    String withConda
 
-    @parameter(names=['-without-conda'], description = 'disable the use of conda environments')
-    boolean withoutconda
+    @Parameter(names=['-without-conda'], description = 'Disable the use of Conda environments')
+    Boolean withoutConda
 
-    @parameter(names=['-with-spack'], description = 'use the specified spack environment package or file (must end with .yaml suffix)')
-    string withspack
+    @Parameter(names=['-with-spack'], description = 'Use the specified Spack environment package or file (must end with .yaml suffix)')
+    String withSpack
 
-    @parameter(names=['-without-spack'], description = 'disable the use of spack environments')
-    boolean withoutspack
+    @Parameter(names=['-without-spack'], description = 'Disable the use of Spack environments')
+    Boolean withoutSpack
 
-    @parameter(names=['-offline'], description = 'do not check for remote project updates')
-    boolean offline = system.getenv('nxf_offline')=='true'
+    @Parameter(names=['-offline'], description = 'Do not check for remote project updates')
+    boolean offline = System.getenv('NXF_OFFLINE')=='true'
 
-    @parameter(names=['-entry'], description = 'entry workflow name to be executed', arity = 1)
-    string entryname
+    @Parameter(names=['-entry'], description = 'Entry workflow name to be executed', arity = 1)
+    String entryName
 
-    @parameter(names=['-main-script'], description = 'the script file to be executed when launching a project directory or repository' )
-    string mainscript
+    @Parameter(names=['-main-script'], description = 'The script file to be executed when launching a project directory or repository' )
+    String mainScript
 
-    @parameter(names=['-stub-run','-stub'], description = 'execute the workflow replacing process scripts with command stubs')
-    boolean stubrun
+    @Parameter(names=['-stub-run','-stub'], description = 'Execute the workflow replacing process scripts with command stubs')
+    boolean stubRun
 
-    @parameter(names=['-preview'], description = "run the workflow script skipping the execution of all processes")
+    @Parameter(names=['-preview'], description = "Run the workflow script skipping the execution of all processes")
     boolean preview
 
-    @parameter(names=['-latchjit'], description = "generate workflow metadata for a latch execution.")
-    boolean latchjit
+    @Parameter(names=['-latchJIT'], description = "Generate workflow metadata for a latch execution.")
+    boolean latchJIT
 
-    @parameter(names=['-plugins'], description = 'specify the plugins to be applied for this run e.g. nf-amazon,nf-tower')
-    string plugins
+    @Parameter(names=['-plugins'], description = 'Specify the plugins to be applied for this run e.g. nf-amazon,nf-tower')
+    String plugins
 
-    @parameter(names=['-disable-jobs-cancellation'], description = 'prevent the cancellation of child jobs on execution termination')
-    boolean disablejobscancellation
+    @Parameter(names=['-disable-jobs-cancellation'], description = 'Prevent the cancellation of child jobs on execution termination')
+    Boolean disableJobsCancellation
 
-    boolean getdisablejobscancellation() {
-        return disablejobscancellation!=null
-                ?  disablejobscancellation
-                : sysenv.get('nxf_disable_jobs_cancellation') as boolean
+    Boolean getDisableJobsCancellation() {
+        return disableJobsCancellation!=null
+                ?  disableJobsCancellation
+                : sysEnv.get('NXF_DISABLE_JOBS_CANCELLATION') as boolean
     }
 
     /**
-     * optional closure modelling an action to be invoked when the preview mode is enabled
+     * Optional closure modelling an action to be invoked when the preview mode is enabled
      */
-    closure<void> previewaction
+    Closure<Void> previewAction
 
-    @override
-    string getname() { name }
+    @Override
+    String getName() { NAME }
 
-    string getparamsfile() {
-        return paramsfile ?: sysenv.get('nxf_params_file')
+    String getParamsFile() {
+        return paramsFile ?: sysEnv.get('NXF_PARAMS_FILE')
     }
 
-    boolean hasparams() {
-        return params || getparamsfile()
+    boolean hasParams() {
+        return params || getParamsFile()
     }
 
-    @override
+    @Override
     void run() {
-        final scriptargs = (args?.size()>1 ? args[1..-1] : []) as list<string>
+        final scriptArgs = (args?.size()>1 ? args[1..-1] : []) as List<String>
         final pipeline = stdin ? '-' : ( args ? args[0] : null )
         if( !pipeline )
-            throw new abortoperationexception("no project name was specified")
+            throw new AbortOperationException("No project name was specified")
 
-        if( withpodman && withoutpodman )
-            throw new abortoperationexception("command line options `-with-podman` and `-without-podman` cannot be specified at the same time")
+        if( withPodman && withoutPodman )
+            throw new AbortOperationException("Command line options `-with-podman` and `-without-podman` cannot be specified at the same time")
 
-        if( withdocker && withoutdocker )
-            throw new abortoperationexception("command line options `-with-docker` and `-without-docker` cannot be specified at the same time")
+        if( withDocker && withoutDocker )
+            throw new AbortOperationException("Command line options `-with-docker` and `-without-docker` cannot be specified at the same time")
 
-        if( withconda && withoutconda )
-            throw new abortoperationexception("command line options `-with-conda` and `-without-conda` cannot be specified at the same time")
+        if( withConda && withoutConda )
+            throw new AbortOperationException("Command line options `-with-conda` and `-without-conda` cannot be specified at the same time")
 
-        if( withspack && withoutspack )
-            throw new abortoperationexception("command line options `-with-spack` and `-without-spack` cannot be specified at the same time")
+        if( withSpack && withoutSpack )
+            throw new AbortOperationException("Command line options `-with-spack` and `-without-spack` cannot be specified at the same time")
 
         if( offline && latest )
-            throw new abortoperationexception("command line options `-latest` and `-offline` cannot be specified at the same time")
+            throw new AbortOperationException("Command line options `-latest` and `-offline` cannot be specified at the same time")
 
-        checkrunname()
+        checkRunName()
 
-        log.info "n e x t f l o w  ~  version ${const.app_ver}"
-        plugins.init()
+        log.info "N E X T F L O W  ~  version ${Const.APP_VER}"
+        Plugins.init()
 
         // -- specify the arguments
-        final scriptfile = getscriptfile(pipeline)
+        final scriptFile = getScriptFile(pipeline)
 
         // create the config object
-        final builder = new configbuilder()
-                .setoptions(launcher.options)
-                .setcmdrun(this)
-                .setbasedir(scriptfile.parent)
+        final builder = new ConfigBuilder()
+                .setOptions(launcher.options)
+                .setCmdRun(this)
+                .setBaseDir(scriptFile.parent)
         final config = builder .build()
 
-        // check dsl syntax in the config
-        launchinfo(config, scriptfile)
+        // check DSL syntax in the config
+        launchInfo(config, scriptFile)
 
-        // check if nxf_ variables are set in nextflow.config
-        checkconfigenv(config)
+        // check if NXF_ variables are set in nextflow.config
+        checkConfigEnv(config)
 
         // -- load plugins
         final cfg = plugins ? [plugins: plugins.tokenize(',')] : config
-        plugins.load(cfg)
+        Plugins.load(cfg)
 
         // -- load secret provider
-        if( secretsloader.isenabled() ) {
-            final provider = secretsloader.instance.load()
-            config.withsecretprovider(provider)
+        if( SecretsLoader.isEnabled() ) {
+            final provider = SecretsLoader.instance.load()
+            config.withSecretProvider(provider)
         }
 
         // -- create a new runner instance
-        final runner = new scriptrunner(config)
-        runner.setscript(scriptfile)
-        runner.setpreview(this.preview, previewaction)
-        runner.setlatchjit(this.latchjit)
+        final runner = new ScriptRunner(config)
+        runner.setScript(scriptFile)
+        runner.setPreview(this.preview, previewAction)
+        runner.setLatchJIT(this.latchJIT)
         runner.session.profile = profile
-        runner.session.commandline = launcher.clistring
-        runner.session.ansilog = launcher.options.ansilog
-        runner.session.debug = launcher.options.remotedebug
-        runner.session.disablejobscancellation = getdisablejobscancellation()
+        runner.session.commandLine = launcher.cliString
+        runner.session.ansiLog = launcher.options.ansiLog
+        runner.session.debug = launcher.options.remoteDebug
+        runner.session.disableJobsCancellation = getDisableJobsCancellation()
 
-        final istowerenabled = config.navigate('tower.enabled') as boolean
-        if( istowerenabled || log.istraceenabled() )
-            runner.session.resolvedconfig = configbuilder.resolveconfig(scriptfile.parent, this)
+        final isTowerEnabled = config.navigate('tower.enabled') as Boolean
+        if( isTowerEnabled || log.isTraceEnabled() )
+            runner.session.resolvedConfig = ConfigBuilder.resolveConfig(scriptFile.parent, this)
         // note config files are collected during the build process
-        // this line should be after `configbuilder#build`
-        runner.session.configfiles = builder.parsedconfigfiles
+        // this line should be after `ConfigBuilder#build`
+        runner.session.configFiles = builder.parsedConfigFiles
         // set the commit id (if any)
-        runner.session.commitid = scriptfile.commitid
+        runner.session.commitId = scriptFile.commitId
         if( this.test ) {
-            runner.test(this.test, scriptargs)
+            runner.test(this.test, scriptArgs)
             return
         }
 
-        def info = cmdinfo.status( log.istraceenabled() )
+        def info = CmdInfo.status( log.isTraceEnabled() )
         log.debug( '\n'+info )
 
         // -- add this run to the local history
-        runner.verifyandtrackhistory(launcher.clistring, runname)
+        runner.verifyAndTrackHistory(launcher.cliString, runName)
 
         // -- run it!
-        runner.execute(scriptargs, this.entryname)
+        runner.execute(scriptArgs, this.entryName)
     }
 
-    protected checkconfigenv(configmap config) {
-        // warn about setting nxf_ environment variables within env config scope
-        final env = config.env as map<string, string>
-        for( string name : env.keyset() ) {
-            if( name.startswith('nxf_') && name!='nxf_debug' ) {
-                final msg = "nextflow variables must be defined in the launching environment - the following variable set in the config file is going to be ignored: '$name'"
+    protected checkConfigEnv(ConfigMap config) {
+        // Warn about setting NXF_ environment variables within env config scope
+        final env = config.env as Map<String, String>
+        for( String name : env.keySet() ) {
+            if( name.startsWith('NXF_') && name!='NXF_DEBUG' ) {
+                final msg = "Nextflow variables must be defined in the launching environment - The following variable set in the config file is going to be ignored: '$name'"
                 log.warn(msg)
             }
         }
     }
 
-    protected void launchinfo(configmap config, scriptfile scriptfile) {
+    protected void launchInfo(ConfigMap config, ScriptFile scriptFile) {
         // -- determine strict mode
-        final defstrict = sysenv.get('nxf_enable_strict') ?: false
-        final strictmode = config.navigate('nextflow.enable.strict', defstrict)
-        if( strictmode ) {
-            log.debug "enabling nextflow strict mode"
-            nextflowmeta.instance.strictmode(true)
+        final defStrict = sysEnv.get('NXF_ENABLE_STRICT') ?: false
+        final strictMode = config.navigate('nextflow.enable.strict', defStrict)
+        if( strictMode ) {
+            log.debug "Enabling nextflow strict mode"
+            NextflowMeta.instance.strictMode(true)
         }
         // -- determine dsl mode
-        final dsl = detectdslmode(config, scriptfile.main.text, sysenv)
-        nextflowmeta.instance.enabledsl(dsl)
+        final dsl = detectDslMode(config, scriptFile.main.text, sysEnv)
+        NextflowMeta.instance.enableDsl(dsl)
         // -- show launch info
-        final ver = nf.dsl2 ? dsl2 : dsl1
-        final repo = scriptfile.repository ?: scriptfile.source
-        final head = preview ? "* preview * $scriptfile.repository" : "launching `$repo`"
-        if( scriptfile.repository )
-            log.info "${head} [$runname] dsl${ver} - revision: ${scriptfile.revisioninfo}"
+        final ver = NF.dsl2 ? DSL2 : DSL1
+        final repo = scriptFile.repository ?: scriptFile.source
+        final head = preview ? "* PREVIEW * $scriptFile.repository" : "Launching `$repo`"
+        if( scriptFile.repository )
+            log.info "${head} [$runName] DSL${ver} - revision: ${scriptFile.revisionInfo}"
         else
-            log.info "${head} [$runname] dsl${ver} - revision: ${scriptfile.getscriptid()?.substring(0,10)}"
+            log.info "${head} [$runName] DSL${ver} - revision: ${scriptFile.getScriptId()?.substring(0,10)}"
     }
 
-    static string detectdslmode(configmap config, string scripttext, map sysenv) {
-        // -- try determine dsl version from config file
+    static String detectDslMode(ConfigMap config, String scriptText, Map sysEnv) {
+        // -- try determine DSL version from config file
 
-        final dsl = config.navigate('nextflow.enable.dsl') as string
+        final dsl = config.navigate('nextflow.enable.dsl') as String
 
-        // -- script can still override the dsl version
-        final scriptdsl = nextflowmeta.checkdslmode(scripttext)
-        if( scriptdsl ) {
-            log.debug("applied dsl=$scriptdsl from script declararion")
-            return scriptdsl
+        // -- script can still override the DSL version
+        final scriptDsl = NextflowMeta.checkDslMode(scriptText)
+        if( scriptDsl ) {
+            log.debug("Applied DSL=$scriptDsl from script declararion")
+            return scriptDsl
         }
         else if( dsl ) {
-            log.debug("applied dsl=$dsl from config declaration")
+            log.debug("Applied DSL=$dsl from config declaration")
             return dsl
         }
-        // -- if still unknown try probing for dsl1
-        if( nextflowmeta.probedsl1(scripttext) ) {
-            log.debug "applied dsl=1 by probing script field"
-            return dsl1
+        // -- if still unknown try probing for DSL1
+        if( NextflowMeta.probeDsl1(scriptText) ) {
+            log.debug "Applied DSL=1 by probing script field"
+            return DSL1
         }
 
-        final envdsl = sysenv.get('nxf_default_dsl')
-        if( envdsl ) {
-            log.debug "applied dsl=$envdsl from nxf_default_dsl variable"
-            return envdsl
+        final envDsl = sysEnv.get('NXF_DEFAULT_DSL')
+        if( envDsl ) {
+            log.debug "Applied DSL=$envDsl from NXF_DEFAULT_DSL variable"
+            return envDsl
         }
         else {
-            log.debug "applied dsl=2 by global default"
-            return dsl2
+            log.debug "Applied DSL=2 by global default"
+            return DSL2
         }
     }
 
-    protected void checkrunname() {
-        if( runname == 'last' )
-            throw new abortoperationexception("not a valid run name: `last`")
-        if( runname && !matchrunname(runname) )
-            throw new abortoperationexception("not a valid run name: `$runname` -- it must match the pattern $run_name_pattern")
+    protected void checkRunName() {
+        if( runName == 'last' )
+            throw new AbortOperationException("Not a valid run name: `last`")
+        if( runName && !matchRunName(runName) )
+            throw new AbortOperationException("Not a valid run name: `$runName` -- It must match the pattern $RUN_NAME_PATTERN")
 
-        if( !runname ) {
-            if( historyfile.disabled() )
-                throw new abortoperationexception("missing workflow run name")
+        if( !runName ) {
+            if( HistoryFile.disabled() )
+                throw new AbortOperationException("Missing workflow run name")
             // -- make sure the generated name does not exist already
-            runname = historyfile.default.generatenextname()
+            runName = HistoryFile.DEFAULT.generateNextName()
         }
 
-        else if( !historyfile.disabled() && historyfile.default.checkexistsbyname(runname) )
-            throw new abortoperationexception("run name `$runname` has been already used -- specify a different one")
+        else if( !HistoryFile.disabled() && HistoryFile.DEFAULT.checkExistsByName(runName) )
+            throw new AbortOperationException("Run name `$runName` has been already used -- Specify a different one")
     }
 
-    static protected boolean matchrunname(string name) {
-        run_name_pattern.matcher(name).matches()
+    static protected boolean matchRunName(String name) {
+        RUN_NAME_PATTERN.matcher(name).matches()
     }
 
-    protected scriptfile getscriptfile(string pipelinename) {
+    protected ScriptFile getScriptFile(String pipelineName) {
         try {
-            getscriptfile0(pipelinename)
+            getScriptFile0(pipelineName)
         }
-        catch (illegalargumentexception | abortoperationexception e) {
-            if( e.message.startswith("not a valid project name:") && !guessisrepo(pipelinename)) {
-                throw new abortoperationexception("cannot find script file: $pipelinename")
+        catch (IllegalArgumentException | AbortOperationException e) {
+            if( e.message.startsWith("Not a valid project name:") && !guessIsRepo(pipelineName)) {
+                throw new AbortOperationException("Cannot find script file: $pipelineName")
             }
             else
                 throw e
         }
     }
 
-    static protected boolean guessisrepo(string name) {
-        if( filehelper.geturlprotocol(name) != null )
+    static protected boolean guessIsRepo(String name) {
+        if( FileHelper.getUrlProtocol(name) != null )
             return true
-        if( name.startswith('/') )
+        if( name.startsWith('/') )
             return false
-        if( name.startswith('./') || name.startswith('../') )
+        if( name.startsWith('./') || name.startsWith('../') )
             return false
-        if( name.endswith('.nf') )
+        if( name.endsWith('.nf') )
             return false
         if( name.count('/') != 1 )
             return false
         return true
     }
 
-    protected scriptfile getscriptfile0(string pipelinename) {
-        assert pipelinename
+    protected ScriptFile getScriptFile0(String pipelineName) {
+        assert pipelineName
 
         /*
          * read from the stdin
          */
-        if( pipelinename == '-' ) {
-            def file = tryreadfromstdin()
+        if( pipelineName == '-' ) {
+            def file = tryReadFromStdin()
             if( !file )
-                throw new abortoperationexception("cannot access `stdin` stream")
+                throw new AbortOperationException("Cannot access `stdin` stream")
 
             if( revision )
-                throw new abortoperationexception("revision option cannot be used when running a script from stdin")
+                throw new AbortOperationException("Revision option cannot be used when running a script from stdin")
 
-            return new scriptfile(file)
+            return new ScriptFile(file)
         }
 
         /*
          * look for a file with the specified pipeline name
          */
-        def script = new file(pipelinename)
-        if( script.isdirectory()  ) {
-            script = mainscript ? new file(mainscript) : new assetmanager().setlocalpath(script).getmainscriptfile()
+        def script = new File(pipelineName)
+        if( script.isDirectory()  ) {
+            script = mainScript ? new File(mainScript) : new AssetManager().setLocalPath(script).getMainScriptFile()
         }
 
         if( script.exists() ) {
             if( revision )
-                throw new abortoperationexception("revision option cannot be used when running a local script")
-            return new scriptfile(script)
+                throw new AbortOperationException("Revision option cannot be used when running a local script")
+            return new ScriptFile(script)
         }
 
         /*
          * try to look for a pipeline in the repository
          */
-        def manager = new assetmanager(pipelinename, this)
-        def repo = manager.getproject()
+        def manager = new AssetManager(pipelineName, this)
+        def repo = manager.getProject()
 
-        boolean checkforupdate = true
-        if( !manager.isrunnable() || latest ) {
+        boolean checkForUpdate = true
+        if( !manager.isRunnable() || latest ) {
             if( offline )
-                throw new abortoperationexception("unknown project `$repo` -- note: automatic download from remote repositories is disabled")
-            log.info "pulling $repo ..."
+                throw new AbortOperationException("Unknown project `$repo` -- NOTE: automatic download from remote repositories is disabled")
+            log.info "Pulling $repo ..."
             def result = manager.download(revision,deep)
             if( result )
                 log.info " $result"
-            checkforupdate = false
+            checkForUpdate = false
         }
         // checkout requested revision
         try {
             manager.checkout(revision)
-            manager.updatemodules()
-            final scriptfile = manager.getscriptfile(mainscript)
-            if( checkforupdate && !offline )
-                manager.checkremotestatus(scriptfile.revisioninfo)
+            manager.updateModules()
+            final scriptFile = manager.getScriptFile(mainScript)
+            if( checkForUpdate && !offline )
+                manager.checkRemoteStatus(scriptFile.revisionInfo)
             // return the script file
-            return scriptfile
+            return scriptFile
         }
-        catch( abortoperationexception e ) {
+        catch( AbortOperationException e ) {
             throw e
         }
-        catch( exception e ) {
-            throw new abortoperationexception("unknown error accessing project `$repo` -- repository may be corrupted: ${manager.localpath}", e)
+        catch( Exception e ) {
+            throw new AbortOperationException("Unknown error accessing project `$repo` -- Repository may be corrupted: ${manager.localPath}", e)
         }
 
     }
 
-    static protected file tryreadfromstdin() {
-        if( !system.in.available() )
+    static protected File tryReadFromStdin() {
+        if( !System.in.available() )
             return null
 
-        getscriptfromstream(system.in)
+        getScriptFromStream(System.in)
     }
 
-    static protected file getscriptfromstream( inputstream input, string name = 'nextflow' ) {
+    static protected File getScriptFromStream( InputStream input, String name = 'nextflow' ) {
         input != null
-        file result = file.createtempfile(name, null)
-        result.deleteonexit()
-        input.withreader { reader reader -> result << reader }
+        File result = File.createTempFile(name, null)
+        result.deleteOnExit()
+        input.withReader { Reader reader -> result << reader }
         return result
     }
 
-    @memoized  // <-- avoid parse multiple times the same file and params
-    map parsedparams(map configvars) {
+    @Memoized  // <-- avoid parse multiple times the same file and params
+    Map parsedParams(Map configVars) {
 
         final result = [:]
-        final file = getparamsfile()
+        final file = getParamsFile()
         if( file ) {
-            def path = validateparamsfile(file)
-            def type = path.extension.tolowercase() ?: null
+            def path = validateParamsFile(file)
+            def type = path.extension.toLowerCase() ?: null
             if( type == 'json' )
-                readjsonfile(path, configvars, result)
+                readJsonFile(path, configVars, result)
             else if( type == 'yml' || type == 'yaml' )
-                readyamlfile(path, configvars, result)
+                readYamlFile(path, configVars, result)
         }
 
-        // set the cli params
+        // set the CLI params
         if( !params )
             return result
 
-        for( map.entry<string,string> entry : params ) {
-            addparam( result, entry.key, entry.value )
+        for( Map.Entry<String,String> entry : params ) {
+            addParam( result, entry.key, entry.value )
         }
         return result
     }
 
 
-    static final private pattern dot_escaped = ~/\\\./
-    static final private pattern dot_not_escaped = ~/(?<!\\)\./
+    static final private Pattern DOT_ESCAPED = ~/\\\./
+    static final private Pattern DOT_NOT_ESCAPED = ~/(?<!\\)\./
 
-    static protected void addparam(map params, string key, string value, list path=[], string fullkey=null) {
-        if( !fullkey )
-            fullkey = key
-        final m = dot_not_escaped.matcher(key)
+    static protected void addParam(Map params, String key, String value, List path=[], String fullKey=null) {
+        if( !fullKey )
+            fullKey = key
+        final m = DOT_NOT_ESCAPED.matcher(key)
         if( m.find() ) {
             final p = m.start()
             final root = key.substring(0, p)
-            if( !root ) throw new abortoperationexception("invalid parameter name: $fullkey")
+            if( !root ) throw new AbortOperationException("Invalid parameter name: $fullKey")
             path.add(root)
             def nested = params.get(root)
             if( nested == null ) {
-                nested = new linkedhashmap<>()
+                nested = new LinkedHashMap<>()
                 params.put(root, nested)
             }
-            else if( nested !instanceof map ) {
-                log.warn "command line parameter --${path.join('.')} is overwritten by --${fullkey}"
-                nested = new linkedhashmap<>()
+            else if( nested !instanceof Map ) {
+                log.warn "Command line parameter --${path.join('.')} is overwritten by --${fullKey}"
+                nested = new LinkedHashMap<>()
                 params.put(root, nested)
             }
-            addparam((map)nested, key.substring(p+1), value, path, fullkey)
+            addParam((Map)nested, key.substring(p+1), value, path, fullKey)
         }
         else {
-            params.put(key.replaceall(dot_escaped,'.'), parseparamvalue(value))
+            params.put(key.replaceAll(DOT_ESCAPED,'.'), parseParamValue(value))
         }
     }
 
 
-    static protected parseparamvalue(string str) {
-        if ( sysenv.get('nxf_disable_params_type_detection') )
+    static protected parseParamValue(String str) {
+        if ( SysEnv.get('NXF_DISABLE_PARAMS_TYPE_DETECTION') )
             return str
 
         if ( str == null ) return null
 
-        if ( str.tolowercase() == 'true') return boolean.true
-        if ( str.tolowercase() == 'false' ) return boolean.false
+        if ( str.toLowerCase() == 'true') return Boolean.TRUE
+        if ( str.toLowerCase() == 'false' ) return Boolean.FALSE
 
-        if ( str==~/-?\d+(\.\d+)?/ && str.isinteger() ) return str.tointeger()
-        if ( str==~/-?\d+(\.\d+)?/ && str.islong() ) return str.tolong()
-        if ( str==~/-?\d+(\.\d+)?/ && str.isdouble() ) return str.todouble()
+        if ( str==~/-?\d+(\.\d+)?/ && str.isInteger() ) return str.toInteger()
+        if ( str==~/-?\d+(\.\d+)?/ && str.isLong() ) return str.toLong()
+        if ( str==~/-?\d+(\.\d+)?/ && str.isDouble() ) return str.toDouble()
 
         return str
     }
 
-    private path validateparamsfile(string file) {
+    private Path validateParamsFile(String file) {
 
-        def result = filehelper.aspath(file)
-        def ext = result.getextension()
-        if( !valid_params_file.contains(ext) )
-            throw new abortoperationexception("not a valid params file extension: $file -- it must be one of the following: ${valid_params_file.join(',')}")
+        def result = FileHelper.asPath(file)
+        def ext = result.getExtension()
+        if( !VALID_PARAMS_FILE.contains(ext) )
+            throw new AbortOperationException("Not a valid params file extension: $file -- It must be one of the following: ${VALID_PARAMS_FILE.join(',')}")
 
         return result
     }
 
-    static private pattern params_var = ~/(?m)\$\{(\p{javajavaidentifierstart}\p{javajavaidentifierpart}*)}/
+    static private Pattern PARAMS_VAR = ~/(?m)\$\{(\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)}/
 
-    protected string replacevars0(string content, map binding) {
-        content.replaceall(params_var) { list<string> matcher ->
+    protected String replaceVars0(String content, Map binding) {
+        content.replaceAll(PARAMS_VAR) { List<String> matcher ->
             // - the regex matcher is represented as list
             // - the first element is the matching string ie. `${something}`
             // - the second element is the group content ie. `something`
@@ -662,10 +662,10 @@ class cmdrun extends cmdbase implements huboptions {
             final placeholder = matcher.get(0)
             final key = matcher.get(1)
 
-            if( !binding.containskey(key) ) {
-                final msg = "missing params file variable: $placeholder"
-                if(nf.strictmode)
-                    throw new abortoperationexception(msg)
+            if( !binding.containsKey(key) ) {
+                final msg = "Missing params file variable: $placeholder"
+                if(NF.strictMode)
+                    throw new AbortOperationException(msg)
                 log.warn msg
                 return placeholder
             }
@@ -674,31 +674,31 @@ class cmdrun extends cmdbase implements huboptions {
         }
     }
 
-    private void readjsonfile(path file, map configvars, map result) {
+    private void readJsonFile(Path file, Map configVars, Map result) {
         try {
-            def text = configvars ? replacevars0(file.text, configvars) : file.text
-            def json = (map)new jsonslurper().parsetext(text)
-            result.putall(json)
+            def text = configVars ? replaceVars0(file.text, configVars) : file.text
+            def json = (Map)new JsonSlurper().parseText(text)
+            result.putAll(json)
         }
-        catch (nosuchfileexception | filenotfoundexception e) {
-            throw new abortoperationexception("specified params file does not exists: ${file.touristring()}")
+        catch (NoSuchFileException | FileNotFoundException e) {
+            throw new AbortOperationException("Specified params file does not exists: ${file.toUriString()}")
         }
-        catch( exception e ) {
-            throw new abortoperationexception("cannot parse params file: ${file.touristring()} - cause: ${e.message}", e)
+        catch( Exception e ) {
+            throw new AbortOperationException("Cannot parse params file: ${file.toUriString()} - Cause: ${e.message}", e)
         }
     }
 
-    private void readyamlfile(path file, map configvars, map result) {
+    private void readYamlFile(Path file, Map configVars, Map result) {
         try {
-            def text = configvars ? replacevars0(file.text, configvars) : file.text
-            def yaml = (map)new yaml().load(text)
-            result.putall(yaml)
+            def text = configVars ? replaceVars0(file.text, configVars) : file.text
+            def yaml = (Map)new Yaml().load(text)
+            result.putAll(yaml)
         }
-        catch (nosuchfileexception | filenotfoundexception e) {
-            throw new abortoperationexception("specified params file does not exists: ${file.touristring()}")
+        catch (NoSuchFileException | FileNotFoundException e) {
+            throw new AbortOperationException("Specified params file does not exists: ${file.toUriString()}")
         }
-        catch( exception e ) {
-            throw new abortoperationexception("cannot parse params file: ${file.touristring()}", e)
+        catch( Exception e ) {
+            throw new AbortOperationException("Cannot parse params file: ${file.toUriString()}", e)
         }
     }
 
