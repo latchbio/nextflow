@@ -68,6 +68,11 @@ class ScriptRunner {
     private boolean latchJIT
 
     /**
+     * Execute only a target operator or process
+     */
+    private boolean latchTarget
+
+    /**
      * Optional callback to perform a custom action on a preview event
      */
     private Closure previewAction
@@ -104,6 +109,10 @@ class ScriptRunner {
 
     void setLatchJIT(boolean value) {
         this.latchJIT = value
+    }
+
+    void setLatchTarget(boolean value) {
+        this.latchTarget = value
     }
 
     Session getSession() { session }
@@ -252,11 +261,11 @@ class ScriptRunner {
         // -- normalise output
         result = normalizeOutput(scriptParser.getResult())
         // -- ignite dataflow network
-        session.fireDataflowNetwork(preview, latchJIT)
+        session.fireDataflowNetwork(preview, latchJIT, latchTarget)
     }
 
     protected await() {
-        if( preview || latchJIT ) {
+        if( preview || latchJIT || latchTarget ) {
             previewAction?.call(session)
             return
         }
