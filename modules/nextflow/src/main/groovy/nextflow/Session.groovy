@@ -486,7 +486,12 @@ class Session implements ISession {
         igniters.add(action)
     }
 
-    void fireDataflowNetwork(boolean preview=false, boolean latchJIT=false) {
+    void fireDataflowNetwork(boolean preview=false, boolean latchJIT=false, boolean latchTarget=false) {
+        if (latchTarget) { 
+            terminated = true
+            return
+        }
+
         checkConfig()
         notifyFlowBegin()
 
@@ -502,14 +507,17 @@ class Session implements ISession {
             for( def e : getDag().edges ) {
 
                def connectionValue = [e.from ? e.from.id : null, e.to ?  e.to.id : null]
-               def idxVal = e.idx
+               def idVal = e.id
+               def outIdxVal = e.outIdx
+               def inIdxVal = e.inIdx
                def labelVal = e.label
                edgeBuilders.add(
                    new groovy.json.JsonBuilder(
                        { 
-                         id e.id 
+                         id idVal
                          label labelVal
-                         idx idxVal
+                         inIdx inIdxVal
+                         outIdx outIdxVal
                          connection connectionValue
                        }
                    )
@@ -574,6 +582,10 @@ class Session implements ISession {
               edges edgeBuilders
             }
 
+            def directory = new File('.latch')
+            if (!directory.exists()) {
+                directory.mkdirs()
+            }
             def latchInterface = new File('.latch/nextflowDAG.json')
             latchInterface.write(dagBuilder.toString())
 
