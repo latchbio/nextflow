@@ -28,6 +28,7 @@ import nextflow.script.params.BaseOutParam
 import nextflow.script.params.EachInParam
 import nextflow.script.params.InputsList
 import nextflow.script.params.OutputsList
+import nextflow.latch.LatchUtils
 
 /**
  * Models a nextflow process definition
@@ -176,18 +177,9 @@ class ProcessDef extends BindableDef implements IterableDef, ChainableDef {
         if (serializedValsJson == null) {
             println("Environment variable 'LATCH_PARAM_VALS' is not set.")
             params = ChannelOut.spread(args)
+            println "params: ${params}"
         } else {
-            def slurper = new groovy.json.JsonSlurper()
-            def serializedVals = slurper.parseText(serializedValsJson)
-
-            def decoder = java.util.Base64.getDecoder()
-            for (String val: serializedVals) {
-                def byteData = decoder.decode( val );
-                def ois = new ObjectInputStream( new ByteArrayInputStream(  byteData ) );
-                def deserializedVal = ois.readObject();
-                ois.close();
-                params << deserializedVal
-            }
+            params = LatchUtils.deserializeParams(serializedValsJson)
         }
 
         // sanity check

@@ -107,6 +107,7 @@ import nextflow.util.Escape
 import nextflow.util.LockManager
 import nextflow.util.LoggerHelper
 import nextflow.util.TestOnly
+import nextflow.latch.LatchUtils
 import org.codehaus.groovy.control.CompilerConfiguration
 import org.codehaus.groovy.control.customizers.ASTTransformationCustomizer
 /**
@@ -1411,11 +1412,7 @@ class TaskProcessor {
 
             String serializedVal 
             if (param.getClass() != FileOutParam) {
-                def baos = new java.io.ByteArrayOutputStream();
-                def oos = new java.io.ObjectOutputStream( baos );
-                oos.writeObject( value );
-                oos.close();
-                serializedVal = java.util.Base64.getEncoder().encodeToString(baos.toByteArray())
+                serializedVal = LatchUtils.serializeParam(value)
             }
 
             paramBuilders.add (
@@ -1430,6 +1427,10 @@ class TaskProcessor {
         }
 
         def outputBuilder = new groovy.json.JsonBuilder(paramBuilders)
+        def directory = new File('.latch')
+        if (!directory.exists()) {
+            directory.mkdirs()
+        }
         new File('.latch/outputValues.json').write(outputBuilder.toString())
 
         // bind the output
