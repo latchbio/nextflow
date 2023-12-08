@@ -178,7 +178,8 @@ class OpCall implements Callable {
 
         // 
 
-        if (operatorId == 2) {
+        def mainTargetId = System.getenv("LATCH_MAIN_TARGET_ID")
+        if (mainTargetId != null && mainTargetId != "" && mainTargetId.toInteger() == operatorId) {
             def readParamChannels = [read0(source)]
             for (def arg: args) {
                 if ((arg instanceof DataflowBroadcast) || (arg instanceof DataflowQueue)) {
