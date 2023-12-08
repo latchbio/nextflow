@@ -109,11 +109,11 @@ class DAG {
      * @param inputs The operator input(s). It can be either a single channel or a list of channels.
      * @param outputs The operator output(s). It can be either a single channel, a list of channels or {@code null} if the operator has no output.
      */
-    void addOperatorNode( String label, inputs, outputs, List<DataflowProcessor> operators=null )  {
+    Integer addOperatorNode( String label, inputs, outputs, List<DataflowProcessor> operators=null )  {
         assert label
         assert inputs
 
-        addVertex(Type.OPERATOR, label, normalizeChannels(inputs), normalizeChannels(outputs), operators )
+        return addVertex(Type.OPERATOR, label, normalizeChannels(inputs), normalizeChannels(outputs), operators )
     }
 
     /**
@@ -137,19 +137,23 @@ class DAG {
      * @param outbounds The outbounds channels leaving the vertex
      */
     @PackageScope
-    void addVertex( Type type, String label, List<ChannelHandler> inbounds, List<ChannelHandler> outbounds, Object extra=null) {
+    Integer addVertex( Type type, String label, List<ChannelHandler> inbounds, List<ChannelHandler> outbounds, Object extra=null) {
 
         final vertex = createVertex( type, label, extra )
 
-        def idx = 0
+        def inIdx = 0
         for( ChannelHandler channel : inbounds ) {
-            inbound( vertex, channel, idx )
-            idx += 1
+            inbound( vertex, channel, inIdx )
+            inIdx += 1
         }
 
+        def outIdx = 0
         for( ChannelHandler channel : outbounds ) {
-            outbound( vertex, channel )
+            outbound( vertex, channel, outIdx )
+            outIdx += 1
         }
+
+        return vertex.id
     }
 
     /**
@@ -183,13 +187,12 @@ class DAG {
 
         // if does not exist just create it
         if( !edge ) {
-            edges << new Edge(channel: entering.channel, to: vertex, label: entering.label, idx: idx)
+            edges << new Edge(channel: entering.channel, to: vertex, label: entering.label, inIdx: idx)
         }
         // link the edge to given `edge`
         else if( edge.to == null ) {
-            println "linking ${edge} to ${vertex} with idx ${idx}"
             edge.to = vertex
-            edge.idx = idx
+            edge.inIdx = idx
         }
         // handle the special case for dataflow variable
         // this kind of channel can be used more than one time as an input
@@ -200,7 +203,7 @@ class DAG {
                 if(p!=-1) vertices.add(p,edge.from)
                 else vertices.add(edge.from)
             }
-            def fork = new Edge(channel: entering.channel, from: edge.from, to: vertex, label: entering.label)
+            def fork = new Edge(channel: entering.channel, from: edge.from, to: vertex, label: entering.label, inIdx: idx)
             edges << fork
         }
         // the same channel - apart the above case - cannot be used multiple times as an input
@@ -220,15 +223,16 @@ class DAG {
         return obj instanceof DataflowQueue && CH.isBridge(obj)
     }
 
-    private void outbound( Vertex vertex, ChannelHandler leaving) {
+    private void outbound( Vertex vertex, ChannelHandler leaving, Integer outIdx) {
 
         // look for an existing edge for the given dataflow channel
         final edge = findEdge(leaving.channel)
         if( !edge ) {
-            edges << new Edge(channel: leaving.channel, from: vertex, label: leaving.label)
+            edges << new Edge(channel: leaving.channel, from: vertex, label: leaving.label, outIdx: outIdx)
         }
         else if( edge.from == null ) {
             edge.from = vertex
+            edge.outIdx = outIdx
         }
         // the same channel cannot be used multiple times as an output
         // thus throws an exception
@@ -470,9 +474,14 @@ class DAG {
         String label
 
         /**
-         * Index of receiving parameter (if receiving node is a process)
+         * Index of inbound / receiving parameter
          */
-        Integer idx
+        Integer inIdx
+
+        /**
+         * Index of outbound / broadcasting parameter
+         */
+        Integer outIdx
 
         /**
          * unique Id
