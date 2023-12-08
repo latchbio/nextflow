@@ -58,11 +58,13 @@ class NodeMarker {
      * @param inputs The operator input(s). It can be either a single channel or a list of channels.
      * @param outputs The operator output(s). It can be either a single channel, a list of channels or {@code null} if the operator has no output.
      */
-    static void addOperatorNode( String name, inputs, outputs )  {
+    static Integer addOperatorNode( String name, inputs, outputs )  {
         if( session && session.dag && !session.aborted ) {
-            session.dag.addOperatorNode(name, inputs, outputs, new ArrayList<DataflowProcessor>(operators))
+            Integer id = session.dag.addOperatorNode(name, inputs, outputs, new ArrayList<DataflowProcessor>(operators))
             operators.clear()
+            return id
         }
+        return -1
     }
 
     /**

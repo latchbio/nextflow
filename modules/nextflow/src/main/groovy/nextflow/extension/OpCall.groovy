@@ -10,10 +10,15 @@ import groovyx.gpars.dataflow.DataflowBroadcast
 import groovyx.gpars.dataflow.DataflowQueue
 import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
+import groovyx.gpars.dataflow.DataflowVariable
+import groovyx.gpars.dataflow.Dataflow
+import nextflow.Channel
 import nextflow.NF
 import nextflow.dag.NodeMarker
+import nextflow.extension.DataflowHelper
 import nextflow.exception.ScriptRuntimeException
 import nextflow.script.ChannelOut
+import nextflow.latch.LatchUtils
 import org.codehaus.groovy.runtime.InvokerHelper
 /**
  * Represents an nextflow operation invocation
@@ -159,20 +164,119 @@ class OpCall implements Callable {
             return invoke1('set', [source, args[0]] as Object[])
         }
 
-        final DataflowReadChannel source = read0(source)
-        final result = invoke0(source, read1(args))
-        if( !ignoreDagNode )
-            addGraphNode(result)
+        final DataflowReadChannel readSource = read0(source)
+        final result = invoke0(readSource, read1(args))
+
+        Integer operatorId
+        def paramChannels = []
+        operatorId = addGraphNode(result)
+        for (def arg: args) {
+            if ((arg instanceof DataflowBroadcast) || (arg instanceof DataflowQueue)) {
+                paramChannels << arg
+            }
+        }
+
+        // 
+
+        if (operatorId == 2) {
+            def readParamChannels = [read0(source)]
+            for (def arg: args) {
+                if ((arg instanceof DataflowBroadcast) || (arg instanceof DataflowQueue)) {
+                    readParamChannels << (DataflowReadChannel)read0(arg)
+                }
+            }
+
+            int i = 0
+            readParamChannels.collect({
+                def params = [inputs:[it, (new DataflowVariable() << i)]]
+                final op = Dataflow.operator(params, { x, idx ->
+                    File outFile = new File(".latch/channel${idx}.txt")
+                    println "\nValue to serialize: ${x}"
+                    def serialized = LatchUtils.serializeParam(x)
+                    outFile.append("${serialized}\n")
+                    println "Serialized to file for channel ${idx}: ${serialized}\n"
+                })
+                i += 1
+            })
+
+            if (result instanceof ChannelOut) {
+                def channelClone = [:]
+                ((ChannelOut)result).channels.each{
+                    k, v ->  {
+                        channelClone[k] = new DataflowQueue()
+                        ((DataflowWriteChannel)channelClone[k]).bind(Channel.STOP)
+                    }
+                }
+                return new ChannelOut(channelClone)
+            } else {
+                def noOp = new DataflowQueue()
+                ((DataflowWriteChannel)noOp).bind(Channel.STOP)
+                return noOp
+            }
+        }
+
+        //
+
+        def serializedValsJson = System.getenv("LATCH_CHANNEL_VALS")
+        def targetId = System.getenv("LATCH_TARGET_OPERATOR_ID")
+        if (serializedValsJson != null && targetId != null && targetId != "" && targetId.toInteger() == operatorId) {
+
+            println("\n\nConstructing channel from values of 'LATCH_CHANNEL_VALS': ${serializedValsJson}.\n\n")
+
+            def values = LatchUtils.deserializeChannels(serializedValsJson)
+            println("\n\nDeserialized values: ${values}")
+            println("Transposed values: ${values.transpose()}\n\n")
+
+            def inputChannels = []
+            if (result instanceof ChannelOut)
+                ((ChannelOut)result).channels.each{k,v -> inputChannels << read0(v)}
+            else
+                 inputChannels << read0(result)
+
+            def params
+            def directory = new File('.latch')
+            if (!directory.exists()) {
+                directory.mkdirs()
+            }
+
+            int i = 0
+            inputChannels.collect({
+                params = [inputs:[it, (new DataflowVariable() << i)]]
+                final op = Dataflow.operator(params, { x, idx ->
+                    File outFile = new File(".latch/channel${idx}.txt")
+                    println "\nValue to serialize: ${x}"
+                    def serialized = LatchUtils.serializeParam(x)
+                    outFile.append("${serialized}\n")
+                    println "Serialized to file for channel ${idx}: ${serialized}\n"
+                })
+                i += 1
+            })
+
+            int j = 0
+            for( def value : values.transpose() ) {
+                j = 0
+                for (def x : value) {
+                    if (j == 0) 
+                        ((DataflowWriteChannel)source).bind(x)
+                    else
+                        ((DataflowWriteChannel)paramChannels[j-1]).bind(x)
+                    j += 1
+                }
+            }
+            ((DataflowWriteChannel)source).bind(Channel.STOP)
+
+        } 
+
         return result
     }
 
-    protected void addGraphNode(Object result) {
+    protected Integer addGraphNode(Object result) {
         // infer inputs
         inputs.add( source )
         inputs.addAll( getInputChannels() )
         outputs.addAll( getOutputChannels(result))
 
-        NodeMarker.addOperatorNode(methodName, inputs, outputs)
+        return NodeMarker.addOperatorNode(methodName, inputs, outputs)
     }
 
     protected List getInputChannels() {
