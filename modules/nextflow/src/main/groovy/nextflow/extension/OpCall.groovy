@@ -178,8 +178,20 @@ class OpCall implements Callable {
 
         // 
 
-        def mainTargetId = System.getenv("LATCH_MAIN_TARGET_ID")
-        if (mainTargetId != null && mainTargetId != "" && mainTargetId.toInteger() == operatorId) {
+        def directory = new File('.latch')
+        if (!directory.exists()) {
+            directory.mkdirs()
+        }
+
+
+        String targetIdJson = System.getenv("LATCH_MAIN_TARGET_IDS")
+        List targetIds = []
+        if (targetIdJson != null) {
+            def slurper = new groovy.json.JsonSlurper()
+            targetIds = (List)slurper.parseText(targetIdJson)
+        }
+
+        if (targetIdJson != null && targetIds != [] && targetIds.contains(operatorId)) {
             def readParamChannels = [read0(source)]
             for (def arg: args) {
                 if ((arg instanceof DataflowBroadcast) || (arg instanceof DataflowQueue)) {
@@ -189,13 +201,17 @@ class OpCall implements Callable {
 
             int i = 0
             readParamChannels.collect({
-                def params = [inputs:[it, (new DataflowVariable() << i)]]
-                final op = Dataflow.operator(params, { x, idx ->
-                    File outFile = new File(".latch/channel${idx}.txt")
+                def params = [inputs:[it, (new DataflowVariable() << operatorId), (new DataflowVariable() << i)]]
+                final op = Dataflow.operator(params, { x, id, idx ->
+                    File channelDir = new File(".latch/${id}")
+                    if (!channelDir.exists()) {
+                        channelDir.mkdirs()
+                    }
+                    File outFile = new File(".latch/${id}/channel${idx}.txt")
                     println "\nValue to serialize: ${x}"
                     def serialized = LatchUtils.serializeParam(x)
                     outFile.append("${serialized}\n")
-                    println "Serialized to file for channel ${idx}: ${serialized}\n"
+                    println "Serialized to file for channel ${idx}: ${serialized} and operator: ${id}\n"
                 })
                 i += 1
             })
@@ -235,11 +251,6 @@ class OpCall implements Callable {
                  inputChannels << read0(result)
 
             def params
-            def directory = new File('.latch')
-            if (!directory.exists()) {
-                directory.mkdirs()
-            }
-
             int i = 0
             inputChannels.collect({
                 params = [inputs:[it, (new DataflowVariable() << i)]]
