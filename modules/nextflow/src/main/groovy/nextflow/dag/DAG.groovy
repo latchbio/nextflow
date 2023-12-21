@@ -95,11 +95,11 @@ class DAG {
      * @param inputs The list of inputs entering in the process
      * @param outputs the list of outputs leaving the process
      */
-    void addProcessNode( String label, InputsList inputs, OutputsList outputs, TaskProcessor process=null ) {
+    Integer addProcessNode( String label, InputsList inputs, OutputsList outputs, TaskProcessor process=null ) {
         assert label
         assert inputs
         assert outputs
-        addVertex( Type.PROCESS, label, normalizeInputs(inputs), normalizeOutputs(outputs), process )
+        return addVertex( Type.PROCESS, label, normalizeInputs(inputs), normalizeOutputs(outputs), process )
     }
 
     /**

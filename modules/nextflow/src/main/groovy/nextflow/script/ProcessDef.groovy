@@ -174,10 +174,10 @@ class ProcessDef extends BindableDef implements IterableDef, ChainableDef {
 
         def params = []
         def serializedValsJson = System.getenv("LATCH_PARAM_VALS")
+
         if (serializedValsJson == null) {
             println("Environment variable 'LATCH_PARAM_VALS' is not set.")
             params = ChannelOut.spread(args)
-            println "params: ${params}"
         } else {
             params = LatchUtils.deserializeParams(serializedValsJson)
         }

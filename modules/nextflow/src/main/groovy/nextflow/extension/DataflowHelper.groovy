@@ -205,6 +205,7 @@ class DataflowHelper {
         params.listeners = [listener]
 
         final op = Dataflow.operator(params, code)
+
         NodeMarker.appendOperator(op)
         if( session && session.allOperators != null ) {
             session.allOperators << op

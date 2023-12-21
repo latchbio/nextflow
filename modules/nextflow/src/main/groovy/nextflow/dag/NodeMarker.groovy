@@ -46,9 +46,10 @@ class NodeMarker {
      * @param inputs The list of inputs entering in the process
      * @param outputs the list of outputs leaving the process
      */
-    static void addProcessNode( TaskProcessor process, InputsList inputs, OutputsList outputs ) {
+    static Integer addProcessNode( TaskProcessor process, InputsList inputs, OutputsList outputs ) {
         if( session && session.dag && !session.aborted )
-            session.dag.addProcessNode( process.name, inputs, outputs, process )
+            return session.dag.addProcessNode( process.name, inputs, outputs, process )
+        return -1
     }
 
     /**

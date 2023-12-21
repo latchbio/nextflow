@@ -42,6 +42,7 @@ import groovyx.gpars.dataflow.Dataflow
 import groovyx.gpars.dataflow.DataflowQueue
 import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
+import groovyx.gpars.dataflow.DataflowVariable
 import groovyx.gpars.dataflow.expression.DataflowExpression
 import groovyx.gpars.dataflow.operator.DataflowEventAdapter
 import groovyx.gpars.dataflow.operator.DataflowOperator
@@ -51,6 +52,7 @@ import groovyx.gpars.dataflow.stream.DataflowStreamWriteAdapter
 import groovyx.gpars.group.PGroup
 import nextflow.NF
 import nextflow.Nextflow
+import nextflow.Channel
 import nextflow.Session
 import nextflow.ast.NextflowDSLImpl
 import nextflow.ast.TaskCmdXform
@@ -562,13 +564,44 @@ class TaskProcessor {
         def interceptor = new TaskProcessorInterceptor(opInputs, singleton)
         def params = [inputs: opInputs, maxForks: session.poolSize, listeners: [interceptor] ]
         def invoke = new InvokeTaskAdapter(this, opInputs.size())
-        session.allOperators << (operator = new DataflowOperator(group, params, invoke))
+
+        String targetIdJson = System.getenv("LATCH_MAIN_TARGET_IDS")
+        List targetIds = []
+        if (targetIdJson != null) {
+            def slurper = new groovy.json.JsonSlurper()
+            targetIds = (List)slurper.parseText(targetIdJson)
+        }
+        Boolean isMainLatchTask = targetIdJson != null && targetIds != []
+
+        if (!isMainLatchTask) session.allOperators << (operator = new DataflowOperator(group, params, invoke))
 
         // notify the creation of a new vertex the execution DAG
-        NodeMarker.addProcessNode(this, config.getInputs(), config.getOutputs())
+        Integer processId = NodeMarker.addProcessNode(this, config.getInputs(), config.getOutputs())
+
+        if (isMainLatchTask && targetIds.contains(processId)) {
+
+            int i = 0
+            opInputs.collect({
+                def opParams = [inputs:[it, (new DataflowVariable() << processId), (new DataflowVariable() << i)]]
+                final op = Dataflow.operator(opParams, { x, id, idx ->
+                    File channelDir = new File(".latch/${id}")
+                    if (!channelDir.exists()) {
+                        channelDir.mkdirs()
+                    }
+                    File outFile = new File(".latch/${id}/channel${idx}.txt")
+                    println "\nValue to serialize in processid: ${id} ->  ${x}"
+                    def serialized = LatchUtils.serializeParam(x)
+                    outFile.append("${serialized}\n")
+                    println "Serialized to file for channel ${idx}: ${serialized} and operator: ${id}\n"
+                })
+                i += 1
+            })
+
+            terminateProcess()
+        }
 
         // fix issue #41
-        start(operator)
+        if (!isMainLatchTask) start(operator)
     }
 
     private start(DataflowProcessor op) {
@@ -1375,13 +1408,19 @@ class TaskProcessor {
             tuples.put(param.index, [])
         }
 
+        def targetProcessName = System.getenv("LATCH_TARGET_PROCESS_NAME")
+        def isTargetProcess = targetProcessName != null && targetProcessName != ""
 
-        def paramBuilders = []
-        // -- collects the values to bind
+        File outFile
+        if (isTargetProcess) {
+            def directory = new File('.latch')
+            if (!directory.exists()) {
+                directory.mkdirs()
+            }
+            outFile = new File('.latch/process-out.txt')
+        }
         for( OutParam param: task.outputs.keySet() ){
             def value = task.outputs.get(param)
-
-            def paramBuilder = new groovy.json.JsonBuilder()
 
             switch( param ) {
             case StdOutParam:
@@ -1409,29 +1448,13 @@ class TaskProcessor {
                 throw new IllegalArgumentException("Illegal output parameter type: $param")
             }
 
-
-            String serializedVal 
-            if (param.getClass() != FileOutParam) {
-                serializedVal = LatchUtils.serializeParam(value)
+            if (isTargetProcess) {
+                println "\nValue to serialize -> ${value}"
+                def serialized = LatchUtils.serializeParam(value)
+                outFile.append("${serialized}\n")
+                println "Serialized to process output file -> ${serialized}\n"
             }
-
-            paramBuilders.add (
-                paramBuilder { 
-                    paramName param.getName() 
-                    paramIndex param.index
-                    nfParamType param.getClass().toString()
-                    groovyType value.getClass().toString()
-                    val serializedVal
-                }
-            )
         }
-
-        def outputBuilder = new groovy.json.JsonBuilder(paramBuilders)
-        def directory = new File('.latch')
-        if (!directory.exists()) {
-            directory.mkdirs()
-        }
-        new File('.latch/outputValues.json').write(outputBuilder.toString())
 
         // bind the output
         if( isFair0 ) {
