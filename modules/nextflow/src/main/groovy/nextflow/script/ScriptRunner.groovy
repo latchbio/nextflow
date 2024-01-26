@@ -151,6 +151,7 @@ class ScriptRunner {
             // parse the script
             try {
                 parseScript(scriptFile, entryName)
+
                 // run the code
                 run()
             }

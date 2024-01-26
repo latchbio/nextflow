@@ -15,6 +15,8 @@
  */
 package nextflow.processor
 
+import groovy.json.JsonSlurper
+import nextflow.file.http.XPath
 import static nextflow.processor.ErrorStrategy.*
 
 import java.lang.reflect.InvocationTargetException
@@ -568,7 +570,7 @@ class TaskProcessor {
         String targetIdJson = System.getenv("LATCH_MAIN_TARGET_IDS")
         List targetIds = []
         if (targetIdJson != null) {
-            def slurper = new groovy.json.JsonSlurper()
+            def slurper = new JsonSlurper()
             targetIds = (List)slurper.parseText(targetIdJson)
         }
         Boolean isMainLatchTask = targetIdJson != null && targetIds != []
@@ -580,21 +582,31 @@ class TaskProcessor {
 
         if (isMainLatchTask && targetIds.contains(processId)) {
 
-            int i = 0
+            Map<Integer, Integer> idxs = [:].withDefault {_ -> 0}
             opInputs.collect({
-                def opParams = [inputs:[it, (new DataflowVariable() << processId), (new DataflowVariable() << i)]]
-                final op = Dataflow.operator(opParams, { x, id, idx ->
-                    File channelDir = new File(".latch/${id}")
+                def opParams = [inputs:[it, (new DataflowVariable() << processId)]]
+                Dataflow.operator(opParams, { x, i ->
+                    def id = (Integer)i
+                    def idx = idxs[id]
+
+                    File channelDir = new File(".latch_compiled_channels/${id}")
                     if (!channelDir.exists()) {
                         channelDir.mkdirs()
                     }
-                    File outFile = new File(".latch/${id}/channel${idx}.txt")
-                    println "\nValue to serialize in processid: ${id} ->  ${x}"
+
+                    if (x instanceof XPath) {
+                        File pathFile = new File(".latch_compiled_channels/${id}/paths.txt")
+                        pathFile.append(x.toString())
+                    }
+
+                    File outFile = new File(".latch_compiled_channels/${id}/channel_${idx}.txt")
+
+                    println("taskprocessor 604 ${x}")
                     def serialized = LatchUtils.serializeParam(x)
                     outFile.append("${serialized}\n")
-                    println "Serialized to file for channel ${idx}: ${serialized} and operator: ${id}\n"
+
+                    idxs[id] = idxs[id] + 1;
                 })
-                i += 1
             })
 
             terminateProcess()
@@ -1440,7 +1452,6 @@ class TaskProcessor {
                 log.trace "Process $name > collecting out param: ${param} = $value"
                 tuples[param.index].add(value)
                 break
-
             case FileOutParam:
                 value = value.filePattern
 
@@ -1449,10 +1460,9 @@ class TaskProcessor {
             }
 
             if (isTargetProcess) {
-                println "\nValue to serialize -> ${value}"
+                println("taskprocessor 1463 ${x}")
                 def serialized = LatchUtils.serializeParam(value)
                 outFile.append("${serialized}\n")
-                println "Serialized to process output file -> ${serialized}\n"
             }
         }
 

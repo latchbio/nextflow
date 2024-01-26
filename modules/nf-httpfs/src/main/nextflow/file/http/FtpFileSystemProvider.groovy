@@ -24,7 +24,7 @@ import groovy.transform.CompileStatic
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @CompileStatic
-class FtpFileSystemProvider extends XFileSystemProvider {
+class FtpFileSystemProvider extends XFileSystemProvider implements Serializable {
 
     @Override
     String getScheme() {

@@ -9,7 +9,7 @@ import nextflow.SysEnv
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @CompileStatic
-class XFileSystemConfig {
+class XFileSystemConfig implements Serializable {
 
     static XFileSystemConfig instance = new XFileSystemConfig()
 

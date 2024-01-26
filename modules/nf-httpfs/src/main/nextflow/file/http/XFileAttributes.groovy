@@ -31,7 +31,7 @@ import groovy.transform.PackageScope
  */
 @PackageScope
 @CompileStatic
-class XFileAttributes implements BasicFileAttributes {
+class XFileAttributes implements BasicFileAttributes, Serializable {
 
     private FileTime lastModifiedTime
     private long size

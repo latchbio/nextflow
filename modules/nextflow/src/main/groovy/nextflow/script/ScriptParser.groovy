@@ -166,6 +166,48 @@ class ScriptParser {
         return new GroovyShell(classLoader, binding, getConfig())
     }
 
+    private static Map<String, Map<String, String>> getLocalImports(String scriptText) {
+        def import_expr = /include \{(?<aliases>.*)\} from '(?<path>.*)'/
+        def alias_expr = /(?<module>[^\s]+)(\s+as\s+(?<local>[^\s]+))?/
+
+        Map<String, Map<String, String>> res = [:]
+        scriptText.tokenize("\n").forEach {
+            def matcher = it =~ import_expr
+            if (!matcher.matches()) return;
+
+            def aliases = matcher.group("aliases")
+            def path = matcher.group("path")
+
+            if (!path.startsWith(".")) return; // only parse local imports
+
+            Map<String, String> subRes = [:]
+            aliases.strip().tokenize(";").forEach {
+                def subMatcher = (it.strip()) =~ alias_expr;
+                if (!subMatcher.matches()) return;
+
+                def moduleBinding = subMatcher.group("module")
+                def localBinding = subMatcher.group("local") ?: moduleBinding
+
+                subRes[moduleBinding] = localBinding
+            }
+
+            res[path] = subRes;
+        }
+
+        return res
+    }
+
+    private ScriptParser parseLocalImports(String scriptText, Path scriptPath, GroovyShell interpreter) {
+        def imports = getLocalImports(scriptText)
+
+        imports.each( {
+            def importPath = scriptPath.parent.resolve("${it.key}.nf").normalize()
+            parse0(importPath.text, importPath, interpreter)
+        })
+
+        return this
+    }
+
     private ScriptParser parse0(String scriptText, Path scriptPath, GroovyShell interpreter) {
         this.scriptPath = scriptPath
         final String className = computeClassName(scriptText)
@@ -173,11 +215,15 @@ class ScriptParser {
             final parsed = scriptPath && session.debug
                     ? interpreter.parse(scriptPath.toFile())
                     : interpreter.parse(scriptText, className)
+
+            parseLocalImports(scriptText, scriptPath, interpreter);
+
             if( parsed !instanceof BaseScript ){
                throw new CompilationFailedException(0, null)
             }
             script = (BaseScript)parsed
             final meta = ScriptMeta.get(script)
+
             meta.setScriptPath(scriptPath)
             meta.setModule(module)
             meta.validate()

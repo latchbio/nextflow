@@ -16,6 +16,8 @@
 
 package nextflow
 
+import groovy.json.JsonBuilder
+import groovy.json.JsonGenerator
 import static nextflow.Const.*
 
 import java.nio.file.Files
@@ -487,7 +489,7 @@ class Session implements ISession {
     }
 
     void fireDataflowNetwork(boolean preview=false, boolean latchJIT=false, boolean latchTarget=false) {
-        if (latchTarget) { 
+        if (latchTarget) {
             terminated = true
             return
         }
@@ -502,41 +504,44 @@ class Session implements ISession {
         // bridge any dataflow queue into a broadcast channel
         CH.broadcast()
 
+
         if (latchJIT) {
+            def dag = getDag()
+//            dag.normalize()
+
             def edgeBuilders = []
-            for( def e : getDag().edges ) {
+            for ( e in dag.edges ) {
+                def idVal = e.id
+                def labelVal = e.label
+                def inIdxVal = e.inIdx
+                def outIdxVal = e.outIdx
+                def connectionVal = [e.from != null ? e.from.id : null , e.to != null ? e.to.id : null]
 
-               def connectionValue = [e.from ? e.from.id : null, e.to ?  e.to.id : null]
-               def idVal = e.id
-               def outIdxVal = e.outIdx
-               def inIdxVal = e.inIdx
-               def labelVal = e.label
-               edgeBuilders.add(
-                   new groovy.json.JsonBuilder(
-                       { 
-                         id idVal
-                         label labelVal
-                         inIdx inIdxVal
-                         outIdx outIdxVal
-                         connection connectionValue
-                       }
-                   )
-               )
-
+                edgeBuilders.add(
+                    new JsonBuilder(
+                        {
+                            id idVal
+                            label labelVal
+                            inIdx inIdxVal
+                            outIdx outIdxVal
+                            connection connectionVal
+                        }
+                    )
+                )
             }
 
             def vertexBuilders = []
-            for( def v : getDag().vertices ) {
+            for ( def v : dag.vertices ) {
 
-                def vertexBuilder = new groovy.json.JsonBuilder()
-                def inputParamsBuilder = new groovy.json.JsonBuilder()
-                def outputParamsBuilder = new groovy.json.JsonBuilder()
+                def vertexBuilder = new JsonBuilder()
+                def inputParamsBuilder = new JsonBuilder()
+                def outputParamsBuilder = new JsonBuilder()
 
                 if (v.type == DAG.Type.PROCESS) {
 
                   ProcessConfig processConfig = v.process.config
 
-                  vertexBuilder{ 
+                  vertexBuilder {
                     id v.id
                     label v.label
                     type v.type
@@ -551,32 +556,20 @@ class Session implements ISession {
                     })
                   }
 
-                } else if (v.type == DAG.Type.OPERATOR){
-
-                  vertexBuilder { 
-                    id v.id
-                    label v.label
-                    type v.type
-                    inputParams null
-                    outputParams null
-                  }
-
                 } else {
-
-                  vertexBuilder { 
+                  vertexBuilder {
                     id v.id
                     label v.label
                     type v.type
                     inputParams null
                     outputParams null
                   }
-
                 }
 
                 vertexBuilders.add(vertexBuilder)
             }
 
-            def dagBuilder = new groovy.json.JsonBuilder()
+            def dagBuilder = new JsonBuilder()
             dagBuilder {
               vertices vertexBuilders
               edges edgeBuilders
@@ -587,14 +580,15 @@ class Session implements ISession {
                 directory.mkdirs()
             }
             def latchInterface = new File('.latch/nextflowDAG.json')
-            latchInterface.write(dagBuilder.toString())
+
+            latchInterface.write(dagBuilder.toPrettyString())
 
             terminated = true
         } else if( preview ) {
             terminated = true
-        } 
-        else 
+        } else {
             callIgniters()
+        }
     }
 
     private void callIgniters() {

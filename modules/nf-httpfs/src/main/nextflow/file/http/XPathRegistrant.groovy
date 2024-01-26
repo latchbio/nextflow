@@ -27,7 +27,7 @@ import org.pf4j.Extension
  */
 @Extension
 @CompileStatic
-class XPathRegistrant implements SerializerRegistrant {
+class XPathRegistrant implements SerializerRegistrant, Serializable {
     @Override
     void register(Map<Class, Object> serializers) {
         serializers.put(XPath, XPathSerializer)

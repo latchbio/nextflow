@@ -18,6 +18,7 @@ process sayHello {
 
         """
         #!python3
+
         a = "$stringValue" + str($intValue)
         print(a)
 
@@ -33,7 +34,7 @@ process testBash {
         stdout
 
         """
-        echo $x
+        echo -n $x
         """
 }
 
@@ -45,7 +46,7 @@ process testBash2 {
         stdout
 
         """
-        echo $x
+        echo -n $x
         """
 }
 

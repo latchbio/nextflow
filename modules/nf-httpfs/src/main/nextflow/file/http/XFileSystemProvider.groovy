@@ -58,7 +58,7 @@ import sun.net.www.protocol.ftp.FtpURLConnection
 @Slf4j
 @PackageScope
 @CompileStatic
-abstract class XFileSystemProvider extends FileSystemProvider {
+abstract class XFileSystemProvider extends FileSystemProvider implements Serializable {
 
     private Map<URI, FileSystem> fileSystemMap = new LinkedHashMap<>(20)
 

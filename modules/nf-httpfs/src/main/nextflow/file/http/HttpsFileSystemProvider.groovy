@@ -25,7 +25,7 @@ import groovy.transform.CompileStatic
  */
 
 @CompileStatic
-class HttpsFileSystemProvider extends XFileSystemProvider {
+class HttpsFileSystemProvider extends XFileSystemProvider implements Serializable {
 
     @Override
     String getScheme() {

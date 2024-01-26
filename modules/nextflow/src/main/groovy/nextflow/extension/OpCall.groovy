@@ -2,8 +2,10 @@ package nextflow.extension
 
 import java.lang.reflect.Method
 import java.lang.reflect.ParameterizedType
+import java.nio.file.Path
 import java.util.concurrent.Callable
 
+import groovy.json.JsonSlurper
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import groovyx.gpars.dataflow.DataflowBroadcast
@@ -12,11 +14,13 @@ import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
 import groovyx.gpars.dataflow.DataflowVariable
 import groovyx.gpars.dataflow.Dataflow
+import groovyx.gpars.dataflow.stream.DataflowStream
 import nextflow.Channel
 import nextflow.NF
 import nextflow.dag.NodeMarker
 import nextflow.extension.DataflowHelper
 import nextflow.exception.ScriptRuntimeException
+import nextflow.file.http.XPath
 import nextflow.script.ChannelOut
 import nextflow.latch.LatchUtils
 import org.codehaus.groovy.runtime.InvokerHelper
@@ -156,8 +160,7 @@ class OpCall implements Callable {
         return params
     }
 
-
-    protected Object invoke() {
+    private Object invoke2() {
         if( methodName==SET_OP_hack ) {
             // well this is ugly, the problem is that `set` is not a real operator
             // but it's exposed as such. let's live whit this for now
@@ -165,33 +168,31 @@ class OpCall implements Callable {
         }
 
         final DataflowReadChannel readSource = read0(source)
-        final result = invoke0(readSource, read1(args))
+        return invoke0(readSource, read1(args))
+    }
 
-        Integer operatorId
+
+    protected Object invoke() {
         def paramChannels = []
-        operatorId = addGraphNode(result)
         for (def arg: args) {
             if ((arg instanceof DataflowBroadcast) || (arg instanceof DataflowQueue)) {
                 paramChannels << arg
             }
         }
 
-        // 
+        //
 
-        def directory = new File('.latch')
-        if (!directory.exists()) {
-            directory.mkdirs()
-        }
+        String mainTargetIds = System.getenv("LATCH_MAIN_TARGET_IDS")
 
+        if (mainTargetIds != null) {
+            def slurper = new JsonSlurper()
+            def targetIds = (List)slurper.parseText(mainTargetIds)
 
-        String targetIdJson = System.getenv("LATCH_MAIN_TARGET_IDS")
-        List targetIds = []
-        if (targetIdJson != null) {
-            def slurper = new groovy.json.JsonSlurper()
-            targetIds = (List)slurper.parseText(targetIdJson)
-        }
+            def result = invoke2()
+            def operatorId = addGraphNode(result)
 
-        if (targetIdJson != null && targetIds != [] && targetIds.contains(operatorId)) {
+            if (targetIds.size() == 0 || !targetIds.contains(operatorId)) return result;
+
             def readParamChannels = [read0(source)]
             for (def arg: args) {
                 if ((arg instanceof DataflowBroadcast) || (arg instanceof DataflowQueue)) {
@@ -199,35 +200,45 @@ class OpCall implements Callable {
                 }
             }
 
-            int i = 0
             readParamChannels.collect({
-                def params = [inputs:[it, (new DataflowVariable() << operatorId), (new DataflowVariable() << i)]]
-                final op = Dataflow.operator(params, { x, id, idx ->
-                    File channelDir = new File(".latch/${id}")
-                    if (!channelDir.exists()) {
+                def ch = (DataflowReadChannel)it;
+
+                println(ch)
+                println(result)
+
+                def params = [inputs:[ch, (new DataflowVariable() << operatorId)]]
+                println("$operatorId, $targetIds, ${targetIds.contains(operatorId)}")
+                Dataflow.operator(params, { x, id ->
+                    File channelDir = new File(".latch_compiled_channels/${id}")
+                    if (!channelDir.exists())
                         channelDir.mkdirs()
+
+                    if (x instanceof Path) {
+                        File pathFile = new File(".latch_compiled_channels/${id}/paths.txt")
+                        pathFile.append(x.toString())
                     }
-                    File outFile = new File(".latch/${id}/channel${idx}.txt")
-                    println "\nValue to serialize: ${x}"
+
+                    File outFile = new File(".latch_compiled_channels/${id}/channel.txt")
+                    println("opcall 217 ${x}")
                     def serialized = LatchUtils.serializeParam(x)
                     outFile.append("${serialized}\n")
-                    println "Serialized to file for channel ${idx}: ${serialized} and operator: ${id}\n"
                 })
-                i += 1
             })
 
             if (result instanceof ChannelOut) {
-                def channelClone = [:]
+                Map<String, DataflowWriteChannel> channelClone = [:]
                 ((ChannelOut)result).channels.each{
                     k, v ->  {
                         channelClone[k] = new DataflowQueue()
-                        ((DataflowWriteChannel)channelClone[k]).bind(Channel.STOP)
+                        (channelClone[k]).bind(Channel.STOP)
                     }
                 }
+
                 return new ChannelOut(channelClone)
             } else {
                 def noOp = new DataflowQueue()
-                ((DataflowWriteChannel)noOp).bind(Channel.STOP)
+                noOp.bind(Channel.STOP)
+
                 return noOp
             }
         }
@@ -236,13 +247,13 @@ class OpCall implements Callable {
 
         def serializedValsJson = System.getenv("LATCH_CHANNEL_VALS")
         def targetId = System.getenv("LATCH_TARGET_OPERATOR_ID")
-        if (serializedValsJson != null && targetId != null && targetId != "" && targetId.toInteger() == operatorId) {
+        if (serializedValsJson != null && targetId != null && targetId != "") {
+            def result = invoke2()
+            def operatorId = addGraphNode(result)
 
-            println("\n\nConstructing channel from values of 'LATCH_CHANNEL_VALS': ${serializedValsJson}.\n\n")
+            if (targetId.toInteger() != operatorId) return result
 
             def values = LatchUtils.deserializeChannels(serializedValsJson)
-            println("\n\nDeserialized values: ${values}")
-            println("Transposed values: ${values.transpose()}\n\n")
 
             def inputChannels = []
             if (result instanceof ChannelOut)
@@ -254,12 +265,13 @@ class OpCall implements Callable {
             int i = 0
             inputChannels.collect({
                 params = [inputs:[it, (new DataflowVariable() << i)]]
-                final op = Dataflow.operator(params, { x, idx ->
+                Dataflow.operator(params, { x, idx ->
                     File outFile = new File(".latch/channel${idx}.txt")
-                    println "\nValue to serialize: ${x}"
+
+                    println("opcall 261 ${x}")
                     def serialized = LatchUtils.serializeParam(x)
                     outFile.append("${serialized}\n")
-                    println "Serialized to file for channel ${idx}: ${serialized}\n"
+
                 })
                 i += 1
             })
@@ -277,9 +289,10 @@ class OpCall implements Callable {
             }
             ((DataflowWriteChannel)source).bind(Channel.STOP)
 
-        } 
+            return result
+        }
 
-        return result
+        return invoke2()
     }
 
     protected Integer addGraphNode(Object result) {

@@ -145,9 +145,6 @@ class NextflowDSLImpl implements ASTTransformation {
         DslCodeVisitor(SourceUnit unit) {
             this.unit = unit
             this.targetProcessName = System.getenv("LATCH_TARGET_PROCESS_NAME")
-            if (this.targetProcessName == null) {
-                println("Environment variable 'LATCH_TARGET_PROCESS_NAME' is not set.")
-            }
         }
 
         @Override
