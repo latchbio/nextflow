@@ -506,11 +506,9 @@ class Session implements ISession {
 
 
         if (latchJIT) {
-            def dag = getDag()
-//            dag.normalize()
 
             def edgeBuilders = []
-            for ( e in dag.edges ) {
+            for ( e in getDag().edges ) {
                 def idVal = e.id
                 def labelVal = e.label
                 def inIdxVal = e.inIdx
@@ -531,7 +529,7 @@ class Session implements ISession {
             }
 
             def vertexBuilders = []
-            for ( def v : dag.vertices ) {
+            for ( def v : getDag().vertices ) {
 
                 def vertexBuilder = new JsonBuilder()
                 def inputParamsBuilder = new JsonBuilder()
