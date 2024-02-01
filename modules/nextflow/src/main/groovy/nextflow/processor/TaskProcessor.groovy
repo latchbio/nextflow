@@ -15,6 +15,7 @@
  */
 package nextflow.processor
 
+import groovy.json.JsonBuilder
 import groovy.json.JsonSlurper
 import nextflow.file.http.XPath
 import static nextflow.processor.ErrorStrategy.*
@@ -582,31 +583,32 @@ class TaskProcessor {
 
         if (isMainLatchTask && targetIds.contains(processId)) {
 
-            Map<Integer, Integer> idxs = [:].withDefault {_ -> 0}
-            opInputs.collect({
-                def opParams = [inputs:[it, (new DataflowVariable() << processId)]]
-                Dataflow.operator(opParams, { x, i ->
-                    def id = (Integer)i
-                    def idx = idxs[id]
+            def j = 0;
 
-                    File channelDir = new File(".latch_compiled_channels/${id}")
+            Map<Integer, Map<Integer, String>> paths = [:].withDefault {procId ->
+                return [:].withDefault {idx ->
+                    File channelDir = new File(".latch/channels/${procId}")
                     if (!channelDir.exists()) {
                         channelDir.mkdirs()
                     }
 
-                    if (x instanceof XPath) {
-                        File pathFile = new File(".latch_compiled_channels/${id}/paths.txt")
-                        pathFile.append(x.toString())
-                    }
+                    return ".latch/channels/${procId}/${idx}.txt"
+                } as Map<Integer, String>
+            }
 
-                    File outFile = new File(".latch_compiled_channels/${id}/channel_${idx}.txt")
+            opInputs.collect({
+                def opParams = [inputs:[it, (new DataflowVariable() << processId)]]
 
-                    println("taskprocessor 604 ${x}")
+                Dataflow.operator(opParams, { x, i ->
+                    def id = (Integer)i
+
+                    File outFile = new File(paths[id][j])
+
                     def serialized = LatchUtils.serializeParam(x)
                     outFile.append("${serialized}\n")
-
-                    idxs[id] = idxs[id] + 1;
                 })
+
+                j++;
             })
 
             terminateProcess()
@@ -1421,16 +1423,11 @@ class TaskProcessor {
         }
 
         def targetProcessName = System.getenv("LATCH_TARGET_PROCESS_NAME")
+        log.trace "Target Process Name: $targetProcessName"
         def isTargetProcess = targetProcessName != null && targetProcessName != ""
 
-        File outFile
-        if (isTargetProcess) {
-            def directory = new File('.latch')
-            if (!directory.exists()) {
-                directory.mkdirs()
-            }
-            outFile = new File('.latch/process-out.txt')
-        }
+        List<Object> processOutputs = [];
+
         for( OutParam param: task.outputs.keySet() ){
             def value = task.outputs.get(param)
 
@@ -1452,18 +1449,27 @@ class TaskProcessor {
                 log.trace "Process $name > collecting out param: ${param} = $value"
                 tuples[param.index].add(value)
                 break
-            case FileOutParam:
-                value = value.filePattern
 
             default:
                 throw new IllegalArgumentException("Illegal output parameter type: $param")
             }
 
-            if (isTargetProcess) {
-                println("taskprocessor 1463 ${x}")
-                def serialized = LatchUtils.serializeParam(value)
-                outFile.append("${serialized}\n")
+            processOutputs.add(LatchUtils.serialize(value))
+        }
+
+        if (isTargetProcess) {
+            log.trace "Writing output from process $name to .latch/process-out.txt"
+
+            def directory = new File('.latch')
+            if (!directory.exists()) {
+                directory.mkdirs()
             }
+            def outFile = new File('.latch/process-out.txt')
+
+            def builder = new JsonBuilder();
+            builder processOutputs
+
+            outFile.append(builder.toString())
         }
 
         // bind the output

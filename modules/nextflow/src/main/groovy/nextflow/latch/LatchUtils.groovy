@@ -135,7 +135,7 @@ class LatchUtils {
         def builder = new JsonBuilder()
         builder serialize(value)
 
-        return builder.toPrettyString()
+        return builder.toString()
     }
 }
 

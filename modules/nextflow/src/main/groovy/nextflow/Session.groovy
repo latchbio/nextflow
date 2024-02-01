@@ -554,7 +554,7 @@ class Session implements ISession {
                     })
                   }
 
-                } else {
+                } else  {
                   vertexBuilder {
                     id v.id
                     label v.label

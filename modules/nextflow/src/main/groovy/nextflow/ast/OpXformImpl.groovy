@@ -226,8 +226,12 @@ class OpXformImpl implements ASTTransformation {
 
         protected Statement resultS(Expression expr, String choice) {
             returnS(
-                    createX( TokenBranchChoice, expr, constX(choice)
-            ))
+                createX(
+                    TokenBranchChoice,
+                    expr,
+                    constX(choice)
+                )
+            )
         }
 
         protected boolean fixReturnStatement(List<Statement> statements, String choice) {

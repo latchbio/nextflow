@@ -172,7 +172,7 @@ class ProcessDef extends BindableDef implements IterableDef, ChainableDef {
         // initialise process config
         initialize()
 
-        def params = []
+        List params
         def serializedValsJson = System.getenv("LATCH_PARAM_VALS")
 
         if (serializedValsJson == null) {

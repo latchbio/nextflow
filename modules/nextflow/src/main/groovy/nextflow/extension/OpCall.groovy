@@ -199,29 +199,32 @@ class OpCall implements Callable {
                 }
             }
 
+
+
+            Map<Integer, Map<Integer, String>> paths = [:].withDefault {opId ->
+                return [:].withDefault {idx ->
+                    File channelDir = new File(".latch/channels/${opId}")
+                    if (!channelDir.exists()) {
+                        channelDir.mkdirs()
+                    }
+
+                    return ".latch/channels/${opId}/${idx}.txt"
+                } as Map<Integer, String>
+            }
+
+            def j = 0;
             readParamChannels.collect({
                 def ch = (DataflowReadChannel)it;
 
-                println(ch)
-                println(result)
-
                 def params = [inputs:[ch, (new DataflowVariable() << operatorId)]]
-                println("$operatorId, $targetIds, ${targetIds.contains(operatorId)}")
                 Dataflow.operator(params, { x, id ->
-                    File channelDir = new File(".latch_compiled_channels/${id}")
-                    if (!channelDir.exists())
-                        channelDir.mkdirs()
+                    File outFile = new File(paths[id][j])
 
-                    if (x instanceof Path) {
-                        File pathFile = new File(".latch_compiled_channels/${id}/paths.txt")
-                        pathFile.append(x.toString())
-                    }
-
-                    File outFile = new File(".latch_compiled_channels/${id}/channel.txt")
-                    println("opcall 217 ${x}")
                     def serialized = LatchUtils.serializeParam(x)
                     outFile.append("${serialized}\n")
                 })
+
+                j++;
             })
 
             if (result instanceof ChannelOut) {
@@ -256,23 +259,32 @@ class OpCall implements Callable {
             else
                  inputChannels["default"] = read0(result)
 
-            def params
-            int i = 0
-            inputChannels.collect({k, it ->
-                params = [inputs:[it, (new DataflowVariable() << i)]]
-                Dataflow.operator(params, { x, idx ->
-                    File dir = new File(".latch/operators/${operatorId}");
-                    dir.mkdirs()
+            Map<Integer, Map<Integer, String>> paths = [:].withDefault {opId ->
+                return [:].withDefault {idx ->
+                    File channelDir = new File(".latch/channels/${opId}")
+                    if (!channelDir.exists()) {
+                        channelDir.mkdirs()
+                    }
 
-                    File outFile = new File(".latch/operators/${operatorId}/${k}.txt")
-                    def serialized = LatchUtils.serializeParam(x)
-                    outFile.append("${serialized}\n")
-
-                })
-                i += 1
-            })
+                    return ".latch/channels/${opId}/${idx}.txt"
+                } as Map<Integer, String>
+            }
 
             int j = 0
+            inputChannels.collect({k, it ->
+                def params = [inputs:[it, (new DataflowVariable() << operatorId)]]
+
+                Dataflow.operator(params, { x, idx ->
+                    File outFile = new File(paths[idx][j])
+
+                    def serialized = LatchUtils.serializeParam(x)
+                    outFile.append("${serialized}\n")
+                })
+
+                j += 1
+            })
+
+            j = 0
             channels.collect { channel ->
                 def dest = paramChannels[j] as DataflowWriteChannel
 

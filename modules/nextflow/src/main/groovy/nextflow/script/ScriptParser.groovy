@@ -216,7 +216,9 @@ class ScriptParser {
                     ? interpreter.parse(scriptPath.toFile())
                     : interpreter.parse(scriptText, className)
 
-            parseLocalImports(scriptText, scriptPath, interpreter);
+            
+
+//            parseLocalImports(scriptText, scriptPath, interpreter);
 
             if( parsed !instanceof BaseScript ){
                throw new CompilationFailedException(0, null)

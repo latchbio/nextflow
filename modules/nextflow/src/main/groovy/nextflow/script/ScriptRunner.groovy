@@ -260,7 +260,8 @@ class ScriptRunner {
         // -- launch the script execution
         scriptParser.runScript()
         // -- normalise output
-        result = normalizeOutput(scriptParser.getResult())
+        def res = scriptParser.getResult()
+        result = normalizeOutput(res)
         // -- ignite dataflow network
         session.fireDataflowNetwork(preview, latchJIT, latchTarget)
     }

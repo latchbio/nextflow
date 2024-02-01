@@ -16,6 +16,8 @@
 
 package nextflow.ast
 
+import nextflow.dag.DAG
+import nextflow.dagGeneration.DAGGenerator
 import static nextflow.Const.*
 import static nextflow.ast.ASTHelpers.*
 import static org.codehaus.groovy.ast.tools.GeneralUtils.*
@@ -38,11 +40,9 @@ import nextflow.script.TokenVar
 import org.codehaus.groovy.ast.ASTNode
 import org.codehaus.groovy.ast.ClassCodeVisitorSupport
 import org.codehaus.groovy.ast.ClassNode
-import org.codehaus.groovy.ast.ConstructorNode
 import org.codehaus.groovy.ast.MethodNode
 import org.codehaus.groovy.ast.Parameter
 import org.codehaus.groovy.ast.VariableScope
-import org.codehaus.groovy.ast.expr.ArgumentListExpression
 import org.codehaus.groovy.ast.expr.BinaryExpression
 import org.codehaus.groovy.ast.expr.CastExpression
 import org.codehaus.groovy.ast.expr.ClosureExpression
@@ -53,7 +53,6 @@ import org.codehaus.groovy.ast.expr.ListExpression
 import org.codehaus.groovy.ast.expr.MapEntryExpression
 import org.codehaus.groovy.ast.expr.MapExpression
 import org.codehaus.groovy.ast.expr.MethodCallExpression
-import org.codehaus.groovy.ast.expr.VariableExpression
 import org.codehaus.groovy.ast.expr.ArgumentListExpression
 import org.codehaus.groovy.ast.expr.PropertyExpression
 import org.codehaus.groovy.ast.expr.TupleExpression
@@ -133,6 +132,10 @@ class NextflowDSLImpl implements ASTTransformation {
 
         private Set<String> functionNames = []
 
+        private DAG dag = new DAG();
+
+        private Map<String, Integer> channelProducers = [:]
+
         private int anonymousWorkflow
 
         protected SourceUnit getSourceUnit() { unit }
@@ -153,6 +156,7 @@ class NextflowDSLImpl implements ASTTransformation {
                 if( !isIllegalName(node.name, node))
                     functionNames.add(node.name)
             }
+
             super.visitMethod(node)
         }
 
@@ -173,17 +177,20 @@ class NextflowDSLImpl implements ASTTransformation {
                 currentTaskName = methodName
                 try {
                     def list = (methodCall.arguments as ArgumentListExpression).getExpressions()
-                    def name = (list[0] as MethodCallExpression).getMethodAsString()
+                    def mce = list[0] as MethodCallExpression
+                    def name = mce.getMethodAsString()
 
-                    if (targetProcessName != null && name != targetProcessName) {
-                      MethodCallExpression printlnCall = new MethodCallExpression(
-                        new VariableExpression("this"),
-                        new ConstantExpression("println"),
-                        new ArgumentListExpression(new ConstantExpression(name))
-                      )
-                      currentParentExpression.setExpression(printlnCall)
-                    } else
-                      convertProcessDef(methodCall,sourceUnit)
+
+//                    if (targetProcessName != null && name != targetProcessName) {
+//                      MethodCallExpression printlnCall = new MethodCallExpression(
+//                        new VariableExpression("this"),
+//                        new ConstantExpression("println"),
+//                        new ArgumentListExpression(new ConstantExpression(name))
+//                      )
+//                      currentParentExpression.setExpression(printlnCall)
+//                    } else
+
+                    convertProcessDef(methodCall, sourceUnit)
 
                     super.visitMethodCallExpression(methodCall)
                 }
@@ -457,10 +464,15 @@ class NextflowDSLImpl implements ASTTransformation {
             final emitNames = new LinkedHashSet<String>(codeStms.size())
             final wrap = new ArrayList<Statement>(codeStms.size())
             def body = new ArrayList<Statement>(codeStms.size())
+            def input = new ArrayList<Statement>(codeStms.size())
+            def output = new ArrayList<Statement>(codeStms.size())
             final source = new StringBuilder()
             String context = null
             String previous = null
+
+
             for( Statement stm : codeStms ) {
+
                 previous = context
                 context = stm.statementLabel ?: context
                 // check for changing context
@@ -474,13 +486,22 @@ class NextflowDSLImpl implements ASTTransformation {
 
                 switch (context) {
                     case WORKFLOW_TAKE:
+                        if( !(stm instanceof ExpressionStatement) ) {
+                            syntaxError(stm, "Workflow malformed parameter definition")
+                            break
+                        }
+                        wrap.add(normWorkflowParam(stm as ExpressionStatement, context, emitNames, body))
+                        input.add(stm)
+                        break
+
                     case WORKFLOW_EMIT:
                         if( !(stm instanceof ExpressionStatement) ) {
                             syntaxError(stm, "Workflow malformed parameter definition")
                             break
                         }
                         wrap.add(normWorkflowParam(stm as ExpressionStatement, context, emitNames, body))
-                    break
+                        output.add(stm)
+                        break
 
                     case WORKFLOW_MAIN:
                         body.add(stm)
@@ -496,6 +517,25 @@ class NextflowDSLImpl implements ASTTransformation {
                         body.add(stm)
                 }
             }
+
+            def dg = new DAGGenerator("test", processNames)
+
+            for (def x: input)
+                dg.addInputNode(x)
+
+            for (def x: output) {
+                println("Output: $x.text")
+            }
+
+
+            for (def stmt: body) {
+                dg.visit(stmt)
+            }
+
+            dg.writeDAG();
+
+            System.exit(1)
+
             // read the closure source
             readSource(closure, source, unit, true)
 
@@ -505,15 +545,17 @@ class NextflowDSLImpl implements ASTTransformation {
                 // manipulation is pointless here and we inject them into the scope
                 // of the target process body directly. ( script/ProcessDef.groovy
                 // )
-                body = (ArrayList<Statement>)[
-                    new ExpressionStatement(
+                body = [
+                    new ReturnStatement(
+                        new ExpressionStatement(
                             new MethodCallExpression(
                                 new VariableExpression('this'),
                                 new ConstantExpression(targetProcessName),
                                 new ArgumentListExpression([])
                             )
                         )
-                ]
+                    )
+                ] as List<Statement>
             }
 
             final bodyClosure = closureX(null, block(scope, body))
