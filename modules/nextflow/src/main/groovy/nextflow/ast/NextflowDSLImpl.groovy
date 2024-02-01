@@ -17,7 +17,7 @@
 package nextflow.ast
 
 import nextflow.dag.DAG
-import nextflow.dagGeneration.DAGGenerator
+import nextflow.dagGeneration.DAGGeneratorImpl
 import static nextflow.Const.*
 import static nextflow.ast.ASTHelpers.*
 import static org.codehaus.groovy.ast.tools.GeneralUtils.*
@@ -212,7 +212,6 @@ class NextflowDSLImpl implements ASTTransformation {
 
         @Override
         void visitExpressionStatement(ExpressionStatement stm) {
-
             if (stm.text.startsWith('this.process(')) {
               currentParentExpression = stm 
             }
@@ -468,11 +467,9 @@ class NextflowDSLImpl implements ASTTransformation {
             def output = new ArrayList<Statement>(codeStms.size())
             final source = new StringBuilder()
             String context = null
-            String previous = null
-
+            String previous
 
             for( Statement stm : codeStms ) {
-
                 previous = context
                 context = stm.statementLabel ?: context
                 // check for changing context
@@ -517,24 +514,6 @@ class NextflowDSLImpl implements ASTTransformation {
                         body.add(stm)
                 }
             }
-
-            def dg = new DAGGenerator("test", processNames)
-
-            for (def x: input)
-                dg.addInputNode(x)
-
-            for (def x: output) {
-                println("Output: $x.text")
-            }
-
-
-            for (def stmt: body) {
-                dg.visit(stmt)
-            }
-
-            dg.writeDAG();
-
-            System.exit(1)
 
             // read the closure source
             readSource(closure, source, unit, true)

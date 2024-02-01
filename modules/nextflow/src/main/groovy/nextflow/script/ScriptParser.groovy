@@ -20,12 +20,14 @@ import java.nio.file.Path
 
 import com.google.common.hash.Hashing
 import groovy.transform.CompileStatic
+import groovy.transform.Field
 import nextflow.Channel
 import nextflow.Nextflow
 import nextflow.Session
 import nextflow.ast.NextflowDSL
 import nextflow.ast.NextflowXform
 import nextflow.ast.OpXform
+import nextflow.dagGeneration.DAGGenerator
 import nextflow.exception.ScriptCompilationException
 import nextflow.extension.FilesEx
 import nextflow.file.FileHelper
@@ -109,7 +111,7 @@ class ScriptParser {
 
         // define the imports
         def importCustomizer = new ImportCustomizer()
-        importCustomizer.addImports( StringUtils.name, groovy.transform.Field.name )
+        importCustomizer.addImports( StringUtils.name, Field.name )
         importCustomizer.addImports( Path.name )
         importCustomizer.addImports( Channel.name )
         importCustomizer.addImports( Duration.name )
@@ -121,6 +123,7 @@ class ScriptParser {
         config = new CompilerConfiguration()
         config.addCompilationCustomizers( importCustomizer )
         config.scriptBaseClass = BaseScript.class.name
+        config.addCompilationCustomizers( new ASTTransformationCustomizer(DAGGenerator))
         config.addCompilationCustomizers( new ASTTransformationCustomizer(NextflowDSL))
         config.addCompilationCustomizers( new ASTTransformationCustomizer(NextflowXform))
         config.addCompilationCustomizers( new ASTTransformationCustomizer(OpXform))
@@ -210,15 +213,13 @@ class ScriptParser {
 
     private ScriptParser parse0(String scriptText, Path scriptPath, GroovyShell interpreter) {
         this.scriptPath = scriptPath
-        final String className = computeClassName(scriptText)
+        final String className = scriptPath.toString()
         try {
+            parseLocalImports(scriptText, scriptPath, interpreter);
+
             final parsed = scriptPath && session.debug
                     ? interpreter.parse(scriptPath.toFile())
                     : interpreter.parse(scriptText, className)
-
-            
-
-//            parseLocalImports(scriptText, scriptPath, interpreter);
 
             if( parsed !instanceof BaseScript ){
                throw new CompilationFailedException(0, null)
