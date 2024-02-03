@@ -217,7 +217,16 @@ class DAGGeneratorImpl implements ASTTransformation {
                     }
                     break
                 case Types.PIPE:
-                    // todo(ayush): handle
+                    def method = expr.rightExpression
+                    def arg = expr.leftExpression
+
+                    return visitMethodCallExpression(
+                        new MethodCallExpression(
+                            new ConstantExpression("this"),
+                            method,
+                            new ArgumentListExpression([arg])
+                        )
+                    )
                 default:
                     // todo(ayush): warn but continue instead?
                     throw new DAGGenerationException("Cannot handle operator in binary expression of type ${expr.operation.text}")

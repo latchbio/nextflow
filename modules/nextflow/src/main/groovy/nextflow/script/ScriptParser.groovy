@@ -170,7 +170,7 @@ class ScriptParser {
     }
 
     private static Map<String, Map<String, String>> getLocalImports(String scriptText) {
-        def import_expr = /include \{(?<aliases>.*)\}(\s+)from(\s+)'(?<path>.*)'/
+        def import_expr = /include \{(?<aliases>.*)\}(\s+)from(\s+)['|"](?<path>.*)['|"]/
         def alias_expr = /(?<module>[^\s]+)(\s+as\s+(?<local>[^\s]+))?/
 
         Map<String, Map<String, String>> res = [:]
