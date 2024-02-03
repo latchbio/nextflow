@@ -63,9 +63,9 @@ class ScriptRunner {
     private boolean preview
 
     /**
-     * Generate workflow metadata for an execution on Latch
+     * Parse NF script and generate a DAG for latch workflow registration
      */
-    private boolean latchJIT
+    private boolean latchRegister
 
     /**
      * Execute only a target operator or process
@@ -107,8 +107,8 @@ class ScriptRunner {
         return this
     }
 
-    void setLatchJIT(boolean value) {
-        this.latchJIT = value
+    void setLatchRegister(boolean value) {
+        this.latchRegister = value
     }
 
     void setLatchTarget(boolean value) {
@@ -151,6 +151,8 @@ class ScriptRunner {
             // parse the script
             try {
                 parseScript(scriptFile, entryName)
+
+                if (latchRegister) return
 
                 // run the code
                 run()
@@ -241,7 +243,7 @@ class ScriptRunner {
         return output
     }
 
-    protected void parseScript( ScriptFile scriptFile, String entryName ) {
+    void parseScript( ScriptFile scriptFile, String entryName ) {
         scriptParser = new ScriptParser(session)
                             .setEntryName(entryName)
                             .parse(scriptFile.main)
@@ -263,11 +265,11 @@ class ScriptRunner {
         def res = scriptParser.getResult()
         result = normalizeOutput(res)
         // -- ignite dataflow network
-        session.fireDataflowNetwork(preview, latchJIT, latchTarget)
+        session.fireDataflowNetwork(preview, latchTarget)
     }
 
     protected await() {
-        if( preview || latchJIT || latchTarget ) {
+        if( preview || latchTarget ) {
             previewAction?.call(session)
             return
         }

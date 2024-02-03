@@ -1,10 +1,12 @@
 package nextflow.dagGeneration
 
+import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicLong
 
 import groovy.json.JsonBuilder
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
+import nextflow.latch.LatchUtils
 import org.codehaus.groovy.ast.ASTNode
 import org.codehaus.groovy.ast.ClassCodeVisitorSupport
 import org.codehaus.groovy.ast.ClassNode
@@ -13,6 +15,7 @@ import org.codehaus.groovy.ast.ModuleNode
 import org.codehaus.groovy.ast.expr.ArgumentListExpression
 import org.codehaus.groovy.ast.expr.BinaryExpression
 import org.codehaus.groovy.ast.expr.BooleanExpression
+import org.codehaus.groovy.ast.expr.CastExpression
 import org.codehaus.groovy.ast.expr.ClosureExpression
 import org.codehaus.groovy.ast.expr.ConstantExpression
 import org.codehaus.groovy.ast.expr.Expression
@@ -29,6 +32,7 @@ import org.codehaus.groovy.control.SourceUnit
 import org.codehaus.groovy.syntax.Types
 import org.codehaus.groovy.transform.ASTTransformation
 import org.codehaus.groovy.transform.GroovyASTTransformation
+import org.iq80.leveldb.table.Block
 
 @Slf4j
 //@CompileStatic
@@ -72,6 +76,22 @@ class DAGGeneratorImpl implements ASTTransformation {
             super(Type.Conditional, label)
 
             this.condition = condition
+        }
+    }
+
+    static class ProcessVertex extends Vertex {
+        public MethodCallExpression definition
+        public MethodCallExpression call
+
+        ProcessVertex (
+            String label,
+            MethodCallExpression definition,
+            MethodCallExpression call
+        ) {
+            super(Type.Process, label)
+
+            this.definition = definition
+            this.call = call
         }
     }
 
@@ -216,13 +236,13 @@ class DAGGeneratorImpl implements ASTTransformation {
             //   - are there any cases where we need to evaluate an expression to figure out which method to call?
             // visitExpression(expr.method)
 
-            def typ = this.scope.get(expr.methodAsString)
+            def entity = this.scope.get(expr.methodAsString)
 
             Vertex v = null
-            if (typ == NFEntity.Process) {
-                v = new Vertex(Vertex.Type.Process, expr.methodAsString)
+            if (entity?.type == NFEntity.Type.Process) {
+                v = new ProcessVertex(expr.methodAsString, entity.definition, expr)
                 producers[expr.methodAsString] = v // allow processName.out calls
-            } else if (typ == NFEntity.Workflow) {
+            } else if (entity?.type == NFEntity.Type.Workflow) {
                 v = new Vertex(Vertex.Type.SubWorkflow, expr.methodAsString)
                 producers[expr.methodAsString] = v // allow workflowName.out calls
             } else if (expr.methodAsString in this.operatorNames) {
@@ -412,20 +432,32 @@ class DAGGeneratorImpl implements ASTTransformation {
             def ebs = new ArrayList<JsonBuilder>()
 
             for (Vertex v: this.vertices) {
+                Map<String, String> processMeta = null
+                if (v instanceof ProcessVertex) {
+                    processMeta = [call: v.call.text]
+                }
+
                 def vb = new JsonBuilder([
-                    id: v.id,
+                    id: v.id.toString(),
                     label: v.label,
                     type: v.type,
+                    processMeta: processMeta,
                 ])
 
                 vbs.add(vb)
             }
 
             for (Edge e: this.edges) {
+                Boolean branch = null
+                if (e instanceof ConditionalEdge) {
+                    branch = e.branch
+                }
+
                 def eb = new JsonBuilder([
                     label: e.label,
-                    from: e.from.id,
-                    to: e.to.id
+                    src: e.from.id.toString(),
+                    dest: e.to.id.toString(),
+                    branch: branch,
                 ])
 
                 ebs.add(eb)
@@ -444,6 +476,7 @@ class DAGGeneratorImpl implements ASTTransformation {
     @CompileStatic
     class Visitor extends ClassCodeVisitorSupport {
         SourceUnit unit
+        String currentImportPath
         Map<String, NFEntity> scope = new LinkedHashMap()
 
         Visitor(SourceUnit unit) {
@@ -454,9 +487,47 @@ class DAGGeneratorImpl implements ASTTransformation {
             this.unit
         }
 
+        void addToScope(Expression expr) {
+            Map<String, NFEntity> definingScope = scopes[currentImportPath]
+            if (definingScope == null) {
+                log.error "Attempted to include module before it was parsed"
+                log.error "keys: ${scopes.keySet()}"
+                log.error "looking for: ${currentImportPath}"
+                return
+            }
+
+            if (expr instanceof ConstantExpression) {
+                scope[expr.text] = definingScope[expr.text]
+            } else if (expr instanceof VariableExpression) {
+                scope[expr.name] = definingScope[expr.name]
+            } else if (expr instanceof CastExpression && expr.expression instanceof VariableExpression) {
+                def v = expr.expression as VariableExpression
+                scope[v.name] = definingScope[expr.type.name]
+            } else {
+                log.error "Malformed include statement"
+            }
+        }
+
+//        Map<String, List<String>> getProcessIO(MethodCallExpression expr) {
+//            def args = expr.arguments as ArgumentListExpression
+//            if (!args[0] instanceof ClosureExpression) return null;
+//
+//            def closure = args[0] as ClosureExpression
+//            def code = closure.code as BlockStatement
+//
+//            def context = null;
+//            for (def stmt: code.statements) {
+//                context = stmt.statementLabel ?: context
+//
+//                switch (context) {
+//                    case "":
+//                }
+//            }
+//        }
 
         @Override
         void visitMethodCallExpression(MethodCallExpression expr) {
+
             final preCondition = expr.objectExpression?.getText() == 'this'
 
             if (expr.methodAsString == "process" && preCondition) {
@@ -466,13 +537,48 @@ class DAGGeneratorImpl implements ASTTransformation {
                 }
                 def sub = args[0] as MethodCallExpression
 
-                scope[sub.methodAsString] = NFEntity.Process
+                scope[sub.methodAsString] = new NFEntity(NFEntity.Type.Process, expr)
 
                 // todo(ayush): record process inputs/outputs
             } else if (expr.methodAsString == "workflow") {
                 visitWorkflowDef(expr, scope)
-            } else if (expr.methodAsString == "include") {
-                log.info expr.text
+            } else if (expr.text.startsWith("this.include")) {
+                def args = (ArgumentListExpression) expr.arguments
+
+                if (args.size() != 1) {
+                    log.error "Malformed include statement"
+                    return
+                }
+
+                def arg = args[0]
+                if (expr.methodAsString == "from") {
+                    if (!(arg instanceof ConstantExpression)) {
+                        log.error "Malformed include statement"
+                        return
+                    }
+
+                    def c = arg as ConstantExpression
+                    if (c.text.startsWith("plugin")) {
+                        return
+                    }
+
+                    def parent = Path.of(this.unit.name).parent
+                    currentImportPath = "${Path.of(parent.toString(), c.text).normalize()}.nf"
+                } else if (arg instanceof ClosureExpression) {
+                    def closure = arg as ClosureExpression
+                    def code = closure.code as BlockStatement
+
+                    for (def stmt: code.statements) {
+                        if (!(stmt instanceof ExpressionStatement)) {
+                            log.error "Malformed include statement"
+                            return
+                        }
+
+                        addToScope(stmt.expression)
+                    }
+                } else {
+                    addToScope(arg)
+                }
             }
 
             super.visitMethodCallExpression(expr)
@@ -483,9 +589,25 @@ class DAGGeneratorImpl implements ASTTransformation {
     int anonymousWorkflows = 0
     Map<String, DAGBuilder> dags = new LinkedHashMap()
 
-    static enum NFEntity {
-        Process,
-        Workflow
+    static class NFEntity {
+        static enum Type {
+            Process,
+            Workflow
+        }
+
+        public Type type
+        public MethodCallExpression definition
+
+        public List<String> inputs
+        public List<String> outputs
+
+        NFEntity( Type type, MethodCallExpression definition ) {
+            this.type = type
+            this.definition = definition
+
+//            this.inputs = inputs
+//            this.outputs = outputs
+        }
     }
 
     Map<String, Map<String, NFEntity>> scopes = new LinkedHashMap();
@@ -493,7 +615,6 @@ class DAGGeneratorImpl implements ASTTransformation {
     // Errors in the script like typos, etc. are handled in other AST transforms
     void visitWorkflowDef(MethodCallExpression expr, Map<String, NFEntity> currentScope) {
         assert expr.arguments instanceof ArgumentListExpression
-
         def args = (ArgumentListExpression)expr.arguments
 
         if (args.size() != 1) {
@@ -502,7 +623,7 @@ class DAGGeneratorImpl implements ASTTransformation {
         }
 
         // anonymous workflows
-        def name = "main"
+        String name = "mainWorkflow"
         ClosureExpression closure
         if( args[0] instanceof ClosureExpression ) {
             if( anonymousWorkflows++ > 0 )
@@ -515,12 +636,12 @@ class DAGGeneratorImpl implements ASTTransformation {
             final nested = args[0] as MethodCallExpression
             name = nested.getMethodAsString()
 
-            currentScope[name] = NFEntity.Workflow
 
             def subargs = nested.arguments  as ArgumentListExpression
             closure = subargs[0] as ClosureExpression
         }
 
+        currentScope[name] = new NFEntity(NFEntity.Type.Workflow, expr)
         workflowNames.add(name)
 
         def body = new ArrayList<Statement>()
@@ -552,6 +673,8 @@ class DAGGeneratorImpl implements ASTTransformation {
 
         dags[name] = dagBuilder
     }
+
+
     @Override
     void visit(ASTNode[] nodes, SourceUnit source) {
         def v = new Visitor(source)

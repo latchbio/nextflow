@@ -488,7 +488,7 @@ class Session implements ISession {
         igniters.add(action)
     }
 
-    void fireDataflowNetwork(boolean preview=false, boolean latchJIT=false, boolean latchTarget=false) {
+    void fireDataflowNetwork(boolean preview=false, boolean latchTarget=false) {
         if (latchTarget) {
             terminated = true
             return
@@ -504,89 +504,7 @@ class Session implements ISession {
         // bridge any dataflow queue into a broadcast channel
         CH.broadcast()
 
-
-        if (latchJIT) {
-
-            def edgeBuilders = []
-            for ( e in getDag().edges ) {
-                def idVal = e.id
-                def labelVal = e.label
-                def inIdxVal = e.inIdx
-                def outIdxVal = e.outIdx
-                def connectionVal = [e.from != null ? e.from.id : null , e.to != null ? e.to.id : null]
-
-                edgeBuilders.add(
-                    new JsonBuilder(
-                        {
-                            id idVal
-                            label labelVal
-                            inIdx inIdxVal
-                            outIdx outIdxVal
-                            connection connectionVal
-                        }
-                    )
-                )
-            }
-
-            def vertexBuilders = []
-            for ( def v : getDag().vertices ) {
-
-                def vertexBuilder = new JsonBuilder()
-                def inputParamsBuilder = new JsonBuilder()
-                def outputParamsBuilder = new JsonBuilder()
-
-                if (v.type == DAG.Type.PROCESS) {
-
-                  ProcessConfig processConfig = v.process.config
-
-                  vertexBuilder {
-                    id v.id
-                    label v.label
-                    type v.type
-                    source v.process.taskBody.source
-                    inputParams (inputParamsBuilder processConfig.getInputs(), { param ->
-                        name param.getName()
-                        type param.getTypeName()
-                    })
-                    outputParams (outputParamsBuilder processConfig.getOutputs(), { param ->
-                        name (param.getName() ?: param.filePattern)
-                        type param.typeSimpleName
-                    })
-                  }
-
-                } else  {
-                  vertexBuilder {
-                    id v.id
-                    label v.label
-                    type v.type
-                    inputParams null
-                    outputParams null
-                  }
-                }
-
-                vertexBuilders.add(vertexBuilder)
-            }
-
-            def dagBuilder = new JsonBuilder()
-            dagBuilder {
-              vertices vertexBuilders
-              edges edgeBuilders
-            }
-
-            def directory = new File('.latch')
-            if (!directory.exists()) {
-                directory.mkdirs()
-            }
-            def latchInterface = new File('.latch/nextflowDAG.json')
-
-            latchInterface.write(dagBuilder.toPrettyString())
-
-            terminated = true
-        } else if( preview ) {
-            terminated = true
-        } else {
-            callIgniters()
-        }
+        callIgniters()
     }
 
     private void callIgniters() {

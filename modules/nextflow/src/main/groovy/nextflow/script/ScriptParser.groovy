@@ -170,7 +170,7 @@ class ScriptParser {
     }
 
     private static Map<String, Map<String, String>> getLocalImports(String scriptText) {
-        def import_expr = /include \{(?<aliases>.*)\} from '(?<path>.*)'/
+        def import_expr = /include \{(?<aliases>.*)\}(\s+)from(\s+)'(?<path>.*)'/
         def alias_expr = /(?<module>[^\s]+)(\s+as\s+(?<local>[^\s]+))?/
 
         Map<String, Map<String, String>> res = [:]
@@ -204,7 +204,7 @@ class ScriptParser {
         def imports = getLocalImports(scriptText)
 
         imports.each( {
-            def importPath = scriptPath.parent.resolve("${it.key}.nf").normalize()
+            def importPath = Path.of(scriptPath.parent.toString(),"${it.key}.nf").normalize()
             parse0(importPath.text, importPath, interpreter)
         })
 

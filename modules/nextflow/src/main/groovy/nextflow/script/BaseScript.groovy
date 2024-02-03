@@ -136,7 +136,6 @@ abstract class BaseScript extends Script implements ExecutionContext {
 
     private run0() {
         final result = runScript()
-        println(result)
         if( meta.isModule() ) {
             return result
         }

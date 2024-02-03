@@ -258,8 +258,8 @@ class CmdRun extends CmdBase implements HubOptions {
     @Parameter(names=['-preview'], description = "Run the workflow script skipping the execution of all processes")
     boolean preview
 
-    @Parameter(names=['-latchJIT'], description = "Generate workflow metadata for a latch execution.")
-    boolean latchJIT
+    @Parameter(names=['-latchRegister'], description = "Generate workflow metadata for a latch execution.")
+    boolean latchRegister
 
     @Parameter(names=['-latchTarget'], description = "Use nextflow to execute target process or operator as a task in a latch execution")
     boolean latchTarget
@@ -349,7 +349,7 @@ class CmdRun extends CmdBase implements HubOptions {
         final runner = new ScriptRunner(config)
         runner.setScript(scriptFile)
         runner.setPreview(this.preview, previewAction)
-        runner.setLatchJIT(this.latchJIT)
+        runner.setLatchRegister(this.latchRegister)
         runner.setLatchTarget(this.latchTarget)
         runner.session.profile = profile
         runner.session.commandLine = launcher.cliString

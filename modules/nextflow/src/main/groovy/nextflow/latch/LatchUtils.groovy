@@ -118,17 +118,21 @@ class LatchUtils {
 
             return ["map": res]
         } else if (value instanceof Serializable) {
-            def baos = new ByteArrayOutputStream();
-            def oos = new ObjectOutputStream( baos );
-            oos.writeObject( value );
-            oos.close();
-
-            def encoded = Base64.getEncoder().encodeToString(baos.toByteArray())
-
-            return ["object": encoded]
+            return serializeObject(value)
         } else {
             throw new Exception("Unable to serialized value $value of type ${value.getClass()}")
         }
+    }
+
+    static Map<String, String> serializeObject(Serializable value) {
+        def baos = new ByteArrayOutputStream();
+        def oos = new ObjectOutputStream( baos );
+        oos.writeObject( value );
+        oos.close();
+
+        def encoded = Base64.getEncoder().encodeToString(baos.toByteArray())
+
+        return ["object": encoded]
     }
 
     static String serializeParam(Object value) {
