@@ -416,7 +416,10 @@ class DAGGeneratorImpl implements ASTTransformation {
                             new VariableExpression(it),
                             Token.newSymbol("=", 0, 0),
                             new PropertyExpression(
-                                new VariableExpression(expr.methodAsString),
+                                new PropertyExpression(
+                                    new VariableExpression(expr.methodAsString),
+                                    "out"
+                                ),
                                 it
                             )
                         )
