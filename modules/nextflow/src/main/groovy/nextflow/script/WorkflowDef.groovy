@@ -238,14 +238,6 @@ class WorkflowDef extends BindableDef implements ChainableDef, IterableDef, Exec
                     [
                         "inputs": [CH.getReadChannel(channel)],
                         "listeners": [new DataflowEventAdapter() {
-                            @Override
-                            void afterRun(DataflowProcessor processor,  final List<Object> messages) {
-                                final item = messages.get(0)
-
-                                if (item == Channel.STOP) {
-                                    processor.terminate()
-                                }
-                            }
 
                             @Override
                             void afterStop(DataflowProcessor processor) {

@@ -151,29 +151,53 @@ class DAGGeneratorImpl implements ASTTransformation {
             "watchPath"
         ])
         final Set<String> operatorNames = new HashSet([
-            "filter",
-            "randomSample",
-            "take",
-            "unique",
+            "branch",
+            "buffer",
+            "collate",
             "collect",
-            "groupTuple",
-            "reduce",
-            "splitCsv",
-            "splitJson",
-            "splitText",
+            "collectFile",
             "combine",
             "concat",
-            "join",
-            "mix",
-            "branch",
-            "multiMap",
             "count",
-            "max",
-            "min",
-            "sum",
+            "countFasta",
+            "countFastq",
+            "countJson",
+            "countLines",
+            "cross",
+            "distinct",
+            "dump",
+            "filter",
+            "first",
+            "flatMap",
+            "flatten",
+            "groupTuple",
             "ifEmpty",
+            "join",
+            "last",
             "map",
-            "view"
+            "max",
+            "merge",
+            "min",
+            "mix",
+            "multiMap",
+            "randomSample",
+            "reduce",
+            "splitCsv",
+            "splitFasta",
+            "splitFastq",
+            "splitJson",
+            "splitText",
+            "subscribe",
+            "sum",
+            "take",
+            "tap",
+            "toInteger",
+            "toList",
+            "toSortedList",
+            "transpose",
+            "unique",
+            "until",
+            "view",
             // "set" is excluded on purpose as it does not warrant adding a vertex to the graph
         ])
 
@@ -381,20 +405,34 @@ class DAGGeneratorImpl implements ASTTransformation {
                     unaliased = entity.unaliased
                 }
 
+                List<String> outputNames = ["out"]
+                if (entity.outputs.size() > 0) {
+                    outputNames = entity.outputs
+                }
+
+                def ret = outputNames.collect {
+                    new ExpressionStatement(
+                        new BinaryExpression(
+                            new VariableExpression(it),
+                            Token.newSymbol("=", 0, 0),
+                            new PropertyExpression(
+                                new VariableExpression(expr.methodAsString),
+                                it
+                            )
+                        )
+                    )
+                }
+
                 v = new ProcessVertex(
                     expr.methodAsString,
                     new ExpressionStatement(
-                        new BinaryExpression(
-                            new VariableExpression("res"),
-                            Token.newSymbol("=", 0, 0),
-                            new MethodCallExpression(
-                                new VariableExpression('this'),
-                                new ConstantExpression(expr.methodAsString),
-                                new ArgumentListExpression([] as List<Expression>)
-                            )
+                        new MethodCallExpression(
+                            new VariableExpression('this'),
+                            new ConstantExpression(expr.methodAsString),
+                            new ArgumentListExpression([] as List<Expression>)
                         )
                     ),
-                    [new ExpressionStatement(new VariableExpression("res"))],
+                    ret,
                     entity.outputs,
                     module,
                     unaliased
@@ -913,6 +951,7 @@ class DAGGeneratorImpl implements ASTTransformation {
 
             def processName = sub.methodAsString
 
+
             def closure = ((ArgumentListExpression) sub.arguments)[0] as ClosureExpression
 
             List<String> outputNames = []
@@ -931,7 +970,7 @@ class DAGGeneratorImpl implements ASTTransformation {
                 List<Expression> args = isTupleX(call.arguments)?.expressions
                 if (args == null) continue
 
-                if (args.size() < 2 && (args.size() != 1 || call.methodAsString != "stdout")) return
+                if (args.size() < 2 && (args.size() != 1 || call.methodAsString != "stdout")) continue
 
                 for (def arg: args) {
                     MapExpression map = isMapX(arg)
