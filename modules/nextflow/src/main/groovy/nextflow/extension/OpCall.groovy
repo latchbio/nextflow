@@ -160,152 +160,49 @@ class OpCall implements Callable {
         return params
     }
 
-    private Object invoke2() {
+    protected Object invoke() {
         if( methodName==SET_OP_hack ) {
             // well this is ugly, the problem is that `set` is not a real operator
             // but it's exposed as such. let's live whit this for now
             return invoke1('set', [source, args[0]] as Object[])
         }
 
-        final DataflowReadChannel readSource = read0(source)
-        return invoke0(readSource, read1(args))
-    }
+        def serializedValues = System.getenv("LATCH_PARAM_VALS")
 
+        if (serializedValues != null) {
+            List<List<String>> channels = LatchUtils.deserializeParams(serializedValues)
 
-    protected Object invoke() {
-        def result = invoke2()
-        def operatorId = addGraphNode(result)
+            List<DataflowReadChannel> sources = []
+            for (def channel: channels) {
+                def ch = new DataflowQueue()
+                for (def x: channel)
+                    ch << x
 
-        def paramChannels = [source]
-        for (def arg: args) {
-            if ((arg instanceof DataflowBroadcast) || (arg instanceof DataflowQueue)) {
-                paramChannels << (DataflowWriteChannel)arg
+                ch.bind(Channel.STOP)
+
+                sources.add(ch)
             }
+
+            source = sources[0]
+            for (int i = 0; i < sources.size() - 1; i++)
+                args[i] = sources[i + 1]
         }
 
+        final DataflowReadChannel source = read0(source)
+        final result = invoke0(source, read1(args))
 
-        String mainTargetIds = System.getenv("LATCH_MAIN_TARGET_IDS")
-
-        if (mainTargetIds != null) {
-            def slurper = new JsonSlurper()
-            def targetIds = (List)slurper.parseText(mainTargetIds)
-
-            if (targetIds.size() == 0 || !targetIds.contains(operatorId)) return result;
-
-            def readParamChannels = [read0(source)]
-            for (def arg: args) {
-                if ((arg instanceof DataflowBroadcast) || (arg instanceof DataflowQueue)) {
-                    readParamChannels << (DataflowReadChannel)read0(arg)
-                }
-            }
-
-
-
-            Map<Integer, Map<Integer, String>> paths = [:].withDefault {opId ->
-                return [:].withDefault {idx ->
-                    File channelDir = new File(".latch/channels/${opId}")
-                    if (!channelDir.exists()) {
-                        channelDir.mkdirs()
-                    }
-
-                    return ".latch/channels/${opId}/${idx}.txt"
-                } as Map<Integer, String>
-            }
-
-            def j = 0;
-            readParamChannels.collect({
-                def ch = (DataflowReadChannel)it;
-
-                def params = [inputs:[ch, (new DataflowVariable() << operatorId)]]
-                Dataflow.operator(params, { x, id ->
-                    File outFile = new File(paths[id][j])
-
-                    def serialized = LatchUtils.serializeParam(x)
-                    outFile.append("${serialized}\n")
-                })
-
-                j++;
-            })
-
-            if (result instanceof ChannelOut) {
-                Map<String, DataflowWriteChannel> channelClone = [:]
-                ((ChannelOut)result).channels.each{
-                    k, v ->  {
-                        channelClone[k] = new DataflowQueue()
-                        (channelClone[k]).bind(Channel.STOP)
-                    }
-                }
-
-                return new ChannelOut(channelClone)
-            } else {
-                def noOp = new DataflowQueue()
-                noOp.bind(Channel.STOP)
-
-                return noOp
-            }
-        }
-
-
-        def serializedValsJson = System.getenv("LATCH_CHANNEL_VALS")
-        def targetId = System.getenv("LATCH_TARGET_OPERATOR_ID")
-        if (serializedValsJson != null && targetId != null && targetId != "") {
-            if (targetId.toInteger() != operatorId) return result
-
-            def channels = LatchUtils.deserializeChannels(serializedValsJson)
-
-            def inputChannels = [:]
-            if (result instanceof ChannelOut)
-                ((ChannelOut) result).channels.each{k,v ->  inputChannels[k] = read0(v)}
-            else
-                 inputChannels["default"] = read0(result)
-
-            Map<Integer, Map<Integer, String>> paths = [:].withDefault {opId ->
-                return [:].withDefault {idx ->
-                    File channelDir = new File(".latch/channels/${opId}")
-                    if (!channelDir.exists()) {
-                        channelDir.mkdirs()
-                    }
-
-                    return ".latch/channels/${opId}/${idx}.txt"
-                } as Map<Integer, String>
-            }
-
-            int j = 0
-            inputChannels.collect({k, it ->
-                def params = [inputs:[it, (new DataflowVariable() << operatorId)]]
-
-                Dataflow.operator(params, { x, idx ->
-                    File outFile = new File(paths[idx][j])
-
-                    def serialized = LatchUtils.serializeParam(x)
-                    outFile.append("${serialized}\n")
-                })
-
-                j += 1
-            })
-
-            j = 0
-            channels.collect { channel ->
-                def dest = paramChannels[j] as DataflowWriteChannel
-
-                channel.collect { val -> dest.bind(val) }
-
-                j++
-            }
-
-            ((DataflowWriteChannel)source).bind(Channel.STOP)
-        }
+        if (!ignoreDagNode) addGraphNode(result)
 
         return result
     }
 
-    protected Integer addGraphNode(Object result) {
+    protected void addGraphNode(Object result) {
         // infer inputs
         inputs.add( source )
         inputs.addAll( getInputChannels() )
         outputs.addAll( getOutputChannels(result))
 
-        return NodeMarker.addOperatorNode(methodName, inputs, outputs)
+        NodeMarker.addOperatorNode(methodName, inputs, outputs)
     }
 
     protected List getInputChannels() {

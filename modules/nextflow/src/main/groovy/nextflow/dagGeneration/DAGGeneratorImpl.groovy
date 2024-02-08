@@ -6,12 +6,11 @@ import java.util.concurrent.atomic.AtomicLong
 import groovy.json.JsonBuilder
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
-import nextflow.latch.LatchUtils
 import org.codehaus.groovy.ast.ASTNode
 import org.codehaus.groovy.ast.ClassCodeVisitorSupport
 import org.codehaus.groovy.ast.ClassNode
-import org.codehaus.groovy.ast.ImportNode
-import org.codehaus.groovy.ast.ModuleNode
+import org.codehaus.groovy.ast.Parameter
+import org.codehaus.groovy.ast.VariableScope
 import org.codehaus.groovy.ast.expr.ArgumentListExpression
 import org.codehaus.groovy.ast.expr.BinaryExpression
 import org.codehaus.groovy.ast.expr.BooleanExpression
@@ -19,6 +18,10 @@ import org.codehaus.groovy.ast.expr.CastExpression
 import org.codehaus.groovy.ast.expr.ClosureExpression
 import org.codehaus.groovy.ast.expr.ConstantExpression
 import org.codehaus.groovy.ast.expr.Expression
+import org.codehaus.groovy.ast.expr.GStringExpression
+import org.codehaus.groovy.ast.expr.ListExpression
+import org.codehaus.groovy.ast.expr.MapEntryExpression
+import org.codehaus.groovy.ast.expr.MapExpression
 import org.codehaus.groovy.ast.expr.MethodCallExpression
 import org.codehaus.groovy.ast.expr.PropertyExpression
 import org.codehaus.groovy.ast.expr.TupleExpression
@@ -29,10 +32,17 @@ import org.codehaus.groovy.ast.stmt.IfStatement
 import org.codehaus.groovy.ast.stmt.Statement
 import org.codehaus.groovy.control.CompilePhase
 import org.codehaus.groovy.control.SourceUnit
+import org.codehaus.groovy.syntax.Token
 import org.codehaus.groovy.syntax.Types
 import org.codehaus.groovy.transform.ASTTransformation
 import org.codehaus.groovy.transform.GroovyASTTransformation
-import org.iq80.leveldb.table.Block
+import static nextflow.ast.ASTHelpers.isBinaryX
+import static nextflow.ast.ASTHelpers.isConstX
+import static nextflow.ast.ASTHelpers.isMapX
+import static nextflow.ast.ASTHelpers.isStmtX
+import static nextflow.ast.ASTHelpers.isTupleX
+import static nextflow.ast.ASTHelpers.isVariableX
+import static org.codehaus.groovy.ast.tools.GeneralUtils.constX
 
 @Slf4j
 //@CompileStatic
@@ -62,36 +72,41 @@ class DAGGeneratorImpl implements ASTTransformation {
 
         public Type type
         public String label
+        public Statement call
+        public List<Statement> ret
+        public List<String> outputNames = []
+        public String module = ""
+        public String unaliased = ""
 
-        Vertex( Type type, String label ) {
+        Vertex( Type type, String label, Statement call, List<Statement> ret) {
             this.label = label
             this.type = type
+            this.call = call
+            this.ret = ret
         }
     }
 
     static class ConditionalVertex extends Vertex {
-        BooleanExpression condition
-
-        ConditionalVertex( String label, BooleanExpression condition ) {
-            super(Type.Conditional, label)
-
-            this.condition = condition
+        ConditionalVertex( String label, Statement stmt, List<Statement> ret ) {
+            super(Type.Conditional, label, stmt, ret)
         }
     }
 
     static class ProcessVertex extends Vertex {
-        public MethodCallExpression definition
-        public MethodCallExpression call
+        ProcessVertex ( String label, Statement stmt, List<Statement> ret, List<String> outputNames, String module, String unaliased ) {
+            super(Type.Process, label, stmt, ret)
 
-        ProcessVertex (
-            String label,
-            MethodCallExpression definition,
-            MethodCallExpression call
-        ) {
-            super(Type.Process, label)
+            this.outputNames = outputNames
+            this.module = module
+            this.unaliased = unaliased
+        }
+    }
 
-            this.definition = definition
-            this.call = call
+    static class SubWorkflowVertex extends Vertex {
+        SubWorkflowVertex ( String label, Statement stmt, List<Statement> ret, List<String> outputNames ) {
+            super(Type.SubWorkflow, label, stmt, ret)
+
+            this.outputNames = outputNames
         }
     }
 
@@ -122,7 +137,6 @@ class DAGGeneratorImpl implements ASTTransformation {
         }
     }
 
-//    @CompileStatic
     class DAGBuilder {
 
         final Set<String> channelFactories = new HashSet([
@@ -164,14 +178,16 @@ class DAGGeneratorImpl implements ASTTransformation {
         ])
 
         // todo(ayush): handle
-        final Set<String> specialOperatorNames = new HashSet(["set", "branch", "multiMap"])
+        final Set<String> specialOperatorNames = new HashSet(["branch", "multiMap"])
 
         String workflowName
+        String module = ""
         Map<String, NFEntity> scope
 
-        DAGBuilder(String workflowName, Map<String, NFEntity> scope) {
+        DAGBuilder(String workflowName, Map<String, NFEntity> scope, String module) {
             this.workflowName = workflowName
             this.scope = scope
+            this.module = module
         }
 
         List<Edge> edges = new ArrayList<>()
@@ -194,6 +210,7 @@ class DAGGeneratorImpl implements ASTTransformation {
             // currently supports:
             // - a = expr
             // - (a, b, ..., z) = expr
+            // - a comp b for comp in [<, >, <=, >=]
 
             switch (expr.operation.type) {
                 case Types.EQUAL:
@@ -228,9 +245,109 @@ class DAGGeneratorImpl implements ASTTransformation {
                         )
                     )
                 default:
-                    // todo(ayush): warn but continue instead?
-                    throw new DAGGenerationException("Cannot handle operator in binary expression of type ${expr.operation.text}")
+                    def left = visitExpression(expr.leftExpression)
+                    def right = visitExpression(expr.rightExpression)
 
+                    // todo(ayush): this sucks
+                    Expression call
+                    if ((left == null) && (right == null)) {
+                        call = expr
+                    } else {
+                        Expression leftExpr
+                        if (left == null) {
+                            if (expr.leftExpression.text.startsWith("Channel")) {
+                                // Channel.of(...)
+                                leftExpr = expr.leftExpression
+                            } else {
+                                leftExpr = new MethodCallExpression(
+                                    new VariableExpression("Channel"),
+                                    "value",
+                                    new ArgumentListExpression([expr.leftExpression])
+                                )
+                            }
+                        } else {
+                            leftExpr = new MethodCallExpression(
+                                new VariableExpression("Channel"),
+                                "of",
+                                new ArgumentListExpression([])
+                            )
+                        }
+
+                        Expression rightExpr
+                        if (right == null) {
+                            if (expr.rightExpression.text.startsWith("Channel")) {
+                                // Channel.of(...)
+                                rightExpr = expr.rightExpression
+                            } else {
+                                rightExpr = new MethodCallExpression(
+                                    new VariableExpression("Channel"),
+                                    "value",
+                                    new ArgumentListExpression([expr.rightExpression])
+                                )
+                            }
+                        } else {
+                            rightExpr = new MethodCallExpression(
+                                new VariableExpression("Channel"),
+                                "of",
+                                new ArgumentListExpression([])
+                            )
+                        }
+
+                        call = new MethodCallExpression(
+                            new MethodCallExpression(
+                                leftExpr,
+                                "combine",
+                                new ArgumentListExpression([rightExpr])
+                            ),
+                            "map",
+                            new ArgumentListExpression([
+                                new ClosureExpression(
+                                    [] as Parameter[],
+                                    new BlockStatement(
+                                        [
+                                            new ExpressionStatement(
+                                                new BinaryExpression(
+                                                    new BinaryExpression(
+                                                        new VariableExpression("it"),
+                                                        Token.newSymbol("[", -1, -1),
+                                                        new ConstantExpression(0)
+                                                    ),
+                                                    expr.operation,
+                                                    new BinaryExpression(
+                                                        new VariableExpression("it"),
+                                                        Token.newSymbol("[", -1, -1),
+                                                        new ConstantExpression(1)
+                                                    ),
+                                                )
+                                            )
+                                        ],
+                                        new VariableScope(),
+                                    )
+                                )
+                            ])
+                        )
+                    }
+
+                    def v = new Vertex(
+                        Vertex.Type.Generator,
+                        expr.text,
+                        new ExpressionStatement(
+                            new BinaryExpression(
+                                new VariableExpression("res"),
+                                Token.newSymbol("=", 0, 0),
+                                call
+                            )
+                        ),
+                        [new ExpressionStatement(new VariableExpression("res"))]
+                    )
+
+                    addVertex(v)
+                    if (left != null)
+                        edges.add(new Edge(left.label, left, v))
+                    if (right != null)
+                        edges.add(new Edge(right.label, right, v))
+
+                    return v
             }
         }
 
@@ -239,28 +356,139 @@ class DAGGeneratorImpl implements ASTTransformation {
             // exceptions:
             // - Anonymous channel factories like Channel.of etc.
 
+            Map<String, Vertex> dependencies = [:]
             def objProducer = visitExpression(expr.objectExpression)
+            if (objProducer != null)
+                dependencies[expr.objectExpression.text] = objProducer
 
-            // todo(ayush): is this even necessary?
-            //   - are there any cases where we need to evaluate an expression to figure out which method to call?
-            // visitExpression(expr.method)
+            if (expr.arguments instanceof ArgumentListExpression) {
+                for (def x: (ArgumentListExpression) expr.arguments) {
+                    def producer = visitExpression(x)
+                    if (producer == null) continue
+
+                    dependencies[x.text] = producer
+                }
+            }
 
             def entity = this.scope.get(expr.methodAsString)
 
             Vertex v = null
             if (entity?.type == NFEntity.Type.Process) {
-                v = new ProcessVertex(expr.methodAsString, entity.definition, expr)
-                producers[expr.methodAsString] = v // allow processName.out calls
+                def module = ""
+                def unaliased = ""
+                if (entity.module != this.module) {
+                    module = entity.module
+                    unaliased = entity.unaliased
+                }
+
+                v = new ProcessVertex(
+                    expr.methodAsString,
+                    new ExpressionStatement(
+                        new BinaryExpression(
+                            new VariableExpression("res"),
+                            Token.newSymbol("=", 0, 0),
+                            new MethodCallExpression(
+                                new VariableExpression('this'),
+                                new ConstantExpression(expr.methodAsString),
+                                new ArgumentListExpression([] as List<Expression>)
+                            )
+                        )
+                    ),
+                    [new ExpressionStatement(new VariableExpression("res"))],
+                    entity.outputs,
+                    module,
+                    unaliased
+                )
+
+                // allow processName.out calls
+                producers[expr.methodAsString] = v
+
             } else if (entity?.type == NFEntity.Type.Workflow) {
-                v = new Vertex(Vertex.Type.SubWorkflow, expr.methodAsString)
+                // todo(ayush): update subworkflow body too
+                v = new SubWorkflowVertex(
+                    expr.methodAsString,
+                    new ExpressionStatement(
+                        new BinaryExpression(
+                            new VariableExpression("res"),
+                            Token.newSymbol("=", 0, 0),
+                            new MethodCallExpression(
+                                new VariableExpression('this'),
+                                new ConstantExpression(expr.methodAsString),
+                                new ArgumentListExpression([] as List<Expression>)
+                            )
+                        )
+                    ),
+                    [new ExpressionStatement(new VariableExpression("res"))],
+                    entity.outputs
+                )
+
                 producers[expr.methodAsString] = v // allow workflowName.out calls
             } else if (expr.methodAsString in this.operatorNames) {
-                v = new Vertex(Vertex.Type.Operator, expr.methodAsString)
-            } else if (expr.objectExpression.text == "Channel" && expr.methodAsString in this.channelFactories) {
-                v = new Vertex(Vertex.Type.Generator, expr.text)
-            }
+                def ret = [new ExpressionStatement(new VariableExpression("res"))]
 
-            if (expr.methodAsString == "set") {
+                List<String> outputNames = [];
+                if (expr.methodAsString in this.specialOperatorNames) {
+
+                    def args = expr.arguments as ArgumentListExpression
+                    def closure = args.expressions[0] as ClosureExpression
+                    def block = closure.code as BlockStatement
+
+                    for (def x: block.statements) {
+                        for (def label: x.statementLabels) {
+                            outputNames.add(label)
+                        }
+                    }
+
+                    ret = outputNames.collect {
+                        new ExpressionStatement(
+                            new BinaryExpression(
+                                new VariableExpression(it),
+                                Token.newSymbol("=", 0, 0),
+                                new PropertyExpression(
+                                    new VariableExpression("res"),
+                                    it
+                                )
+                            )
+                        )
+                    }
+                }
+
+                v = new Vertex(
+                    Vertex.Type.Operator,
+                    expr.methodAsString,
+                    new ExpressionStatement(
+                        new BinaryExpression(
+                            new VariableExpression("res"),
+                            Token.newSymbol("=", 0, 0),
+                            new MethodCallExpression(
+                                new MethodCallExpression(
+                                    new VariableExpression('Channel'),
+                                    "of",
+                                    new ArgumentListExpression([])
+                                ),
+                                new ConstantExpression(expr.methodAsString),
+                                expr.arguments,
+                            )
+                        )
+                    ),
+                    ret
+                )
+
+                v.outputNames = outputNames
+            } else if (expr.objectExpression.text == "Channel" && expr.methodAsString in this.channelFactories) {
+                v = new Vertex(
+                    Vertex.Type.Generator,
+                    expr.text,
+                    new ExpressionStatement(
+                        new BinaryExpression(
+                            new VariableExpression("res"),
+                            Token.newSymbol("=", 0, 0),
+                            expr
+                        )
+                    ),
+                    [new ExpressionStatement(new VariableExpression("res"))]
+                )
+            } else if (expr.methodAsString == "set") {
                 if (objProducer == null)
                     return null
 
@@ -286,22 +514,12 @@ class DAGGeneratorImpl implements ASTTransformation {
 
             if (v != null) {
                 addVertex(v)
-                if (objProducer != null)
-                    edges.add(new Edge(expr.objectExpression.text, objProducer, v))
-            }
+                for (def x: dependencies) {
+                    if (x == null)
+                        continue
 
-            // a TupleExpression should really be named RecordExpression or MapExpression but w/e
-            if (!(expr.arguments instanceof ArgumentListExpression)) {
-                // handles operators which take in records, e.g. collectFile()
-                return v
-            }
-
-            def lst = (ArgumentListExpression) expr.arguments
-            for (def x: lst) {
-                def producer = visitExpression(x)
-                if (v == null || producer == null) continue
-
-                edges.add(new Edge(x.text, producer, v))
+                    edges.add(new Edge(x.key, x.value, v))
+                }
             }
 
             return v
@@ -331,6 +549,146 @@ class DAGGeneratorImpl implements ASTTransformation {
             return visitExpression(expr.objectExpression)
         }
 
+        Vertex visitListExpression(ListExpression expr) {
+            List<Vertex> producers = []
+
+            List<Expression> transformed = expr.expressions.collect {
+                def producer = visitExpression(it)
+                producers << producer
+
+                if (producer == null) {
+                    return it
+                }
+
+                return new MethodCallExpression(
+                    new VariableExpression("Channel"),
+                    "of",
+                    new ArgumentListExpression([])
+                )
+            }
+
+            def v = new Vertex(
+                Vertex.Type.Generator,
+                expr.text,
+                new ExpressionStatement(
+                    new BinaryExpression(
+                        new VariableExpression("res"),
+                        Token.newSymbol("=", -1, -1),
+                        new ListExpression(transformed)
+                    )
+                ),
+                [new ExpressionStatement(new VariableExpression("res"))]
+            )
+
+            addVertex(v)
+            producers.collect {
+                if (it == null) return
+
+                edges.add(new Edge(it.label, it, v))
+                return
+            }
+
+            return v
+        }
+
+
+        Vertex visitMapExpression(MapExpression expr) {
+            List<Vertex> producers = []
+
+            List<MapEntryExpression> transformed = expr.mapEntryExpressions.collect {
+                def keyProducer = visitExpression(it.keyExpression)
+                def valProducer = visitExpression(it.valueExpression)
+                producers << keyProducer
+                producers << valProducer
+
+                Expression keyExpr = it.keyExpression
+                if (keyProducer != null) {
+                    keyExpr = new MethodCallExpression(
+                        new VariableExpression("Channel"),
+                        "of",
+                        new ArgumentListExpression([])
+                    )
+                }
+
+                Expression valExpr = it.valueExpression
+                if (valProducer != null) {
+                    valExpr = new MethodCallExpression(
+                        new VariableExpression("Channel"),
+                        "of",
+                        new ArgumentListExpression([])
+                    )
+                }
+
+                return new MapEntryExpression(keyExpr, valExpr)
+            }
+
+            def v = new Vertex(
+                Vertex.Type.Generator,
+                expr.text,
+                new ExpressionStatement(
+                    new BinaryExpression(
+                        new VariableExpression("res"),
+                        Token.newSymbol("=", -1, -1),
+                        new MapExpression(transformed)
+                    )
+                ),
+                [new ExpressionStatement(new VariableExpression("res"))]
+            )
+
+            addVertex(v)
+            producers.collect {
+                if (it == null) return
+
+                edges.add(new Edge(it.label, it, v))
+                return
+            }
+
+            return v
+        }
+
+
+        Vertex visitGStringExpression(GStringExpression expr) {
+            List<Vertex> producers = []
+
+            List<Expression> transformed = expr.values.collect {
+                def producer = visitExpression(it)
+                producers << producer
+
+                if (producer == null) {
+                    return it
+                }
+
+                return new MethodCallExpression(
+                    new VariableExpression("Channel"),
+                    "of",
+                    new ArgumentListExpression([])
+                )
+            }
+
+            def v = new Vertex(
+                Vertex.Type.Generator,
+                expr.text,
+                new ExpressionStatement(
+                    new BinaryExpression(
+                        new VariableExpression("res"),
+                        Token.newSymbol("=", -1, -1),
+                        new GStringExpression(expr.text, expr.strings, transformed)
+                    )
+                ),
+                [new ExpressionStatement(new VariableExpression("res"))]
+            )
+
+            addVertex(v)
+            producers.collect {
+                if (it == null) return
+
+                edges.add(new Edge(it.label, it, v))
+                return
+            }
+
+            return v
+        }
+
 
         Vertex visitExpression(Expression expr) {
             Vertex res
@@ -350,10 +708,23 @@ class DAGGeneratorImpl implements ASTTransformation {
                 case PropertyExpression:
                     res = visitPropertyExpression(expr)
                     break
-
+                case BooleanExpression:
+                    res = visitExpression(expr.expression)
+                    break
+                case ListExpression:
+                    res = visitListExpression(expr)
+                    break
+                case MapExpression:
+                    res = visitMapExpression(expr)
+                    break
+                case GStringExpression:
+                    res = visitGStringExpression(expr)
+                    break
                 case ConstantExpression:
-                default:
                     res = null
+                    break
+                default:
+                    throw new DAGGenerationException("Cannot process expression of type ${expr?.class}")
             }
 
             log.debug "${expr.class}: $expr.text --> $res"
@@ -364,7 +735,7 @@ class DAGGeneratorImpl implements ASTTransformation {
             this.vertices.add(v)
 
             this.activeConditionals.forEach {cond, branch ->
-                this.edges.add(new ConditionalEdge(cond.condition.text, cond, v, branch))
+                this.edges.add(new ConditionalEdge(cond.call.text, cond, v, branch))
             }
         }
 
@@ -377,10 +748,30 @@ class DAGGeneratorImpl implements ASTTransformation {
                     def stmt = s as IfStatement
 
                     def bool = stmt.booleanExpression
-                    def cond = new ConditionalVertex(bool.text, bool)
+                    def condProducer = visitExpression(bool)
+
+                    def sub = bool
+                    if (condProducer != null) {
+                        sub = new MethodCallExpression(
+                            new VariableExpression("Channel"),
+                            "of",
+                            new ArgumentListExpression([])
+                        )
+                    }
+
+                    def cond = new ConditionalVertex(
+                        bool.text,
+                        new ExpressionStatement(
+                            new BinaryExpression(
+                                new VariableExpression("res"),
+                                Token.newSymbol("=", 0, 0),
+                                sub,
+                            )
+                        ),
+                        [new ExpressionStatement(new VariableExpression("res"))]
+                    )
                     addVertex(cond)
 
-                    def condProducer = visitExpression(bool)
                     if (condProducer != null) {
                         def e = new Edge(condProducer.label, condProducer, cond);
                         edges.add(e)
@@ -427,7 +818,7 @@ class DAGGeneratorImpl implements ASTTransformation {
             if (stmt instanceof ExpressionStatement) {
                 def expr = stmt.expression
                 if (expr instanceof VariableExpression) {
-                    def v = new Vertex(Vertex.Type.Input, expr.name)
+                    def v = new Vertex(Vertex.Type.Input, expr.name, null, null)
                     inputNodes.add(v)
                     addVertex(v)
                     producers[expr.name] = v
@@ -441,16 +832,15 @@ class DAGGeneratorImpl implements ASTTransformation {
             def ebs = new ArrayList<JsonBuilder>()
 
             for (Vertex v: this.vertices) {
-                Map<String, String> processMeta = null
-                if (v instanceof ProcessVertex) {
-                    processMeta = [call: v.call.text]
-                }
-
                 def vb = new JsonBuilder([
                     id: v.id.toString(),
                     label: v.label,
                     type: v.type,
-                    processMeta: processMeta,
+                    statement: v.call != null ? StatementJSONConverter.toJsonString(v.call) : null,
+                    ret: v.ret != null ? v.ret.collect {StatementJSONConverter.toJsonString(it)} : null,
+                    outputNames: v.outputNames,
+                    module: v.module,
+                    unaliased: v.unaliased
                 ])
 
                 vbs.add(vb)
@@ -517,22 +907,51 @@ class DAGGeneratorImpl implements ASTTransformation {
             }
         }
 
-//        Map<String, List<String>> getProcessIO(MethodCallExpression expr) {
-//            def args = expr.arguments as ArgumentListExpression
-//            if (!args[0] instanceof ClosureExpression) return null;
-//
-//            def closure = args[0] as ClosureExpression
-//            def code = closure.code as BlockStatement
-//
-//            def context = null;
-//            for (def stmt: code.statements) {
-//                context = stmt.statementLabel ?: context
-//
-//                switch (context) {
-//                    case "":
-//                }
-//            }
-//        }
+        void visitProcessDef(MethodCallExpression expr) {
+            def _args = expr.arguments as ArgumentListExpression
+            def sub = _args[0] as MethodCallExpression
+
+            def processName = sub.methodAsString
+
+            def closure = ((ArgumentListExpression) sub.arguments)[0] as ClosureExpression
+
+            List<String> outputNames = []
+
+            String context = null
+            for (Statement stmt: ((BlockStatement) closure.code).statements) {
+                context = stmt.statementLabel ?: context
+                if (context != "output")
+                    continue
+
+                if (!(stmt instanceof ExpressionStatement) || !((stmt as ExpressionStatement).expression instanceof MethodCallExpression))
+                    continue
+
+                MethodCallExpression call = (stmt as ExpressionStatement).expression as MethodCallExpression
+
+                List<Expression> args = isTupleX(call.arguments)?.expressions
+                if (args == null) continue
+
+                if (args.size() < 2 && (args.size() != 1 || call.methodAsString != "stdout")) return
+
+                for (def arg: args) {
+                    MapExpression map = isMapX(arg)
+                    if (map == null) continue
+
+                    for (int i = 0; i < map.mapEntryExpressions.size(); i++) {
+                        final entry = map.mapEntryExpressions[i]
+                        final key = isConstX(entry.keyExpression)
+                        final val = isVariableX(entry.valueExpression)
+
+                        if( key?.text == 'emit' && val != null ) {
+                            outputNames << val.text
+                            break
+                        }
+                    }
+                }
+            }
+
+            scope[processName] = new NFEntity(NFEntity.Type.Process, expr, outputNames, sourceUnit.name, processName)
+        }
 
         @Override
         void visitMethodCallExpression(MethodCallExpression expr) {
@@ -540,17 +959,9 @@ class DAGGeneratorImpl implements ASTTransformation {
             final preCondition = expr.objectExpression?.getText() == 'this'
 
             if (expr.methodAsString == "process" && preCondition) {
-                def args = expr.arguments as ArgumentListExpression
-                if (!args[0] instanceof MethodCallExpression) {
-                    log.debug "${args[0].class}: ${args[0].text}"
-                }
-                def sub = args[0] as MethodCallExpression
-
-                scope[sub.methodAsString] = new NFEntity(NFEntity.Type.Process, expr)
-
-                // todo(ayush): record process inputs/outputs
+                visitProcessDef(expr)
             } else if (expr.methodAsString == "workflow") {
-                visitWorkflowDef(expr, scope)
+                visitWorkflowDef(expr, scope, sourceUnit.name)
             } else if (expr.text.startsWith("this.include")) {
                 def args = (ArgumentListExpression) expr.arguments
 
@@ -606,23 +1017,34 @@ class DAGGeneratorImpl implements ASTTransformation {
 
         public Type type
         public MethodCallExpression definition
+        public String unaliased
+        public String module
 
-        public List<String> inputs
         public List<String> outputs
 
-        NFEntity( Type type, MethodCallExpression definition ) {
+        NFEntity( Type type, MethodCallExpression definition, List<String> outputs, String module, String unaliased ) {
             this.type = type
             this.definition = definition
+            this.outputs = outputs
+            this.module = module
+            this.unaliased = unaliased
+        }
 
-//            this.inputs = inputs
-//            this.outputs = outputs
+        static NFEntity copy(NFEntity entity) {
+            return new NFEntity(
+                entity.type,
+                entity.definition,
+                entity.outputs,
+                entity.module,
+                entity.unaliased,
+            )
         }
     }
 
     Map<String, Map<String, NFEntity>> scopes = new LinkedHashMap();
 
     // Errors in the script like typos, etc. are handled in other AST transforms
-    void visitWorkflowDef(MethodCallExpression expr, Map<String, NFEntity> currentScope) {
+    void visitWorkflowDef(MethodCallExpression expr, Map<String, NFEntity> currentScope, String module) {
         assert expr.arguments instanceof ArgumentListExpression
         def args = (ArgumentListExpression)expr.arguments
 
@@ -650,9 +1072,6 @@ class DAGGeneratorImpl implements ASTTransformation {
             closure = subargs[0] as ClosureExpression
         }
 
-        currentScope[name] = new NFEntity(NFEntity.Type.Workflow, expr)
-        workflowNames.add(name)
-
         def body = new ArrayList<Statement>()
         def input = new ArrayList<Statement>()
         def output = new ArrayList<Statement>()
@@ -675,12 +1094,30 @@ class DAGGeneratorImpl implements ASTTransformation {
             }
         }
 
-        def dagBuilder = new DAGBuilder(name, currentScope)
+        def dagBuilder = new DAGBuilder(name, currentScope, module)
 
         for (def s: input) dagBuilder.addInputNode(s)
         for (def s: body) dagBuilder.visit(s)
 
         dags[name] = dagBuilder
+
+        List<String> outputNames = []
+        for (def s: output) {
+            ExpressionStatement es = isStmtX(s)
+            if (es == null) continue
+
+            def be = isBinaryX(es.expression)
+            def v = isVariableX(es.expression)
+
+            if (be != null) {
+                outputNames << be.leftExpression.text
+            } else if (v != null) {
+                outputNames << v.text
+            }
+        }
+
+        currentScope[name] = new NFEntity(NFEntity.Type.Workflow, expr, outputNames, module, name)
+        workflowNames.add(name)
     }
 
 

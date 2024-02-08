@@ -16,14 +16,28 @@
 
 package nextflow.script
 
+import groovy.json.JsonBuilder
+import groovy.json.JsonSlurper
 import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
+import groovyx.gpars.dataflow.Dataflow
+import groovyx.gpars.dataflow.DataflowBroadcast
+import groovyx.gpars.dataflow.DataflowQueue
+import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
+import groovyx.gpars.dataflow.operator.DataflowEventAdapter
+import groovyx.gpars.dataflow.operator.DataflowEventListener
+import groovyx.gpars.dataflow.operator.DataflowOperator
+import groovyx.gpars.dataflow.operator.DataflowProcessor
+import nextflow.Channel
 import nextflow.exception.MissingProcessException
 import nextflow.exception.MissingValueException
 import nextflow.exception.ScriptRuntimeException
 import nextflow.extension.CH
+import nextflow.extension.DataflowHelper
+import nextflow.latch.LatchUtils
+
 /**
  * Models a script workflow component
  *
@@ -204,6 +218,52 @@ class WorkflowDef extends BindableDef implements ChainableDef, IterableDef, Exec
         closure.call()
         // collect the workflow outputs
         output = collectOutputs(declaredOutputs)
+
+        if (output.size() > 0) {
+            for (def ch: output.channels) {
+                List<Map> res = []
+
+                def name = ch.key
+
+                def channel
+                if (ch.value instanceof DataflowBroadcast || ch.value instanceof DataflowQueue) {
+                    channel = ch.value
+                } else {
+                    channel = new DataflowQueue()
+                    channel << ch.value
+                }
+                channel.bind(Channel.STOP)
+
+                DataflowHelper.newOperator(
+                    [
+                        "inputs": [CH.getReadChannel(channel)],
+                        "listeners": [new DataflowEventAdapter() {
+                            @Override
+                            void afterRun(DataflowProcessor processor,  final List<Object> messages) {
+                                final item = messages.get(0)
+
+                                if (item == Channel.STOP) {
+                                    processor.terminate()
+                                }
+                            }
+
+                            @Override
+                            void afterStop(DataflowProcessor processor) {
+                                def f = new File(".latch/task-outputs/${name}.json")
+                                new File(f.parent).mkdirs()
+                                f.createNewFile()
+
+                                def builder = new JsonBuilder()
+                                builder res
+                                f.write(builder.toString())
+                            }
+                        }]
+                    ],
+                    { res.add(LatchUtils.serialize(it)) }
+                )
+            }
+        }
+
         return output
     }
 

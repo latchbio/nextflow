@@ -72,11 +72,15 @@ class LatchUtils {
 
     static List deserializeParams(String serializedJson) {
         def slurper = new JsonSlurper()
-        def serializedVals = slurper.parseText(serializedJson)
+        List<List<String>> channels = slurper.parseText(serializedJson)
 
         def params = []
-        for (Object val: serializedVals) {
-            params << deserialize0(val)
+        for (Object channel: channels) {
+            def res = []
+            for (def x: channel) {
+                res << deserialize0(x)
+            }
+            params << res
         }
 
         return params

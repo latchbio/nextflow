@@ -568,54 +568,13 @@ class TaskProcessor {
         def params = [inputs: opInputs, maxForks: session.poolSize, listeners: [interceptor] ]
         def invoke = new InvokeTaskAdapter(this, opInputs.size())
 
-        String targetIdJson = System.getenv("LATCH_MAIN_TARGET_IDS")
-        List targetIds = []
-        if (targetIdJson != null) {
-            def slurper = new JsonSlurper()
-            targetIds = (List)slurper.parseText(targetIdJson)
-        }
-        Boolean isMainLatchTask = targetIdJson != null && targetIds != []
-
-        if (!isMainLatchTask) session.allOperators << (operator = new DataflowOperator(group, params, invoke))
+        session.allOperators << (operator = new DataflowOperator(group, params, invoke))
 
         // notify the creation of a new vertex the execution DAG
-        Integer processId = NodeMarker.addProcessNode(this, config.getInputs(), config.getOutputs())
-
-        if (isMainLatchTask && targetIds.contains(processId)) {
-
-            def j = 0;
-
-            Map<Integer, Map<Integer, String>> paths = [:].withDefault {procId ->
-                return [:].withDefault {idx ->
-                    File channelDir = new File(".latch/channels/${procId}")
-                    if (!channelDir.exists()) {
-                        channelDir.mkdirs()
-                    }
-
-                    return ".latch/channels/${procId}/${idx}.txt"
-                } as Map<Integer, String>
-            }
-
-            opInputs.collect({
-                def opParams = [inputs:[it, (new DataflowVariable() << processId)]]
-
-                Dataflow.operator(opParams, { x, i ->
-                    def id = (Integer)i
-
-                    File outFile = new File(paths[id][j])
-
-                    def serialized = LatchUtils.serializeParam(x)
-                    outFile.append("${serialized}\n")
-                })
-
-                j++;
-            })
-
-            terminateProcess()
-        }
+        NodeMarker.addProcessNode(this, config.getInputs(), config.getOutputs())
 
         // fix issue #41
-        if (!isMainLatchTask) start(operator)
+        start(operator)
     }
 
     private start(DataflowProcessor op) {
@@ -1417,16 +1376,10 @@ class TaskProcessor {
     synchronized protected void bindOutputs( TaskRun task ) {
 
         // -- creates the map of all tuple values to bind
-        Map<Short,List> tuples = [:]
+        Map<Short, List> tuples = [:]
         for( OutParam param : config.getOutputs() ) {
             tuples.put(param.index, [])
         }
-
-        def targetProcessName = System.getenv("LATCH_TARGET_PROCESS_NAME")
-        log.trace "Target Process Name: $targetProcessName"
-        def isTargetProcess = targetProcessName != null && targetProcessName != ""
-
-        List<Object> processOutputs = [];
 
         for( OutParam param: task.outputs.keySet() ){
             def value = task.outputs.get(param)
@@ -1453,30 +1406,12 @@ class TaskProcessor {
             default:
                 throw new IllegalArgumentException("Illegal output parameter type: $param")
             }
-
-            processOutputs.add(LatchUtils.serialize(value))
-        }
-
-        if (isTargetProcess) {
-            log.trace "Writing output from process $name to .latch/process-out.txt"
-
-            def directory = new File('.latch')
-            if (!directory.exists()) {
-                directory.mkdirs()
-            }
-            def outFile = new File('.latch/process-out.txt')
-
-            def builder = new JsonBuilder();
-            builder processOutputs
-
-            outFile.append(builder.toString())
         }
 
         // bind the output
         if( isFair0 ) {
             fairBindOutputs0(tuples, task)
-        }
-        else {
+        } else {
             bindOutputs0(tuples)
         }
 

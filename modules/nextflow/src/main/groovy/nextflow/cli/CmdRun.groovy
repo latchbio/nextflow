@@ -261,9 +261,6 @@ class CmdRun extends CmdBase implements HubOptions {
     @Parameter(names=['-latchRegister'], description = "Generate workflow metadata for a latch execution.")
     boolean latchRegister
 
-    @Parameter(names=['-latchTarget'], description = "Use nextflow to execute target process or operator as a task in a latch execution")
-    boolean latchTarget
-
     @Parameter(names=['-plugins'], description = 'Specify the plugins to be applied for this run e.g. nf-amazon,nf-tower')
     String plugins
 
@@ -350,7 +347,6 @@ class CmdRun extends CmdBase implements HubOptions {
         runner.setScript(scriptFile)
         runner.setPreview(this.preview, previewAction)
         runner.setLatchRegister(this.latchRegister)
-        runner.setLatchTarget(this.latchTarget)
         runner.session.profile = profile
         runner.session.commandLine = launcher.cliString
         runner.session.ansiLog = launcher.options.ansiLog

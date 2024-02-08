@@ -488,12 +488,7 @@ class Session implements ISession {
         igniters.add(action)
     }
 
-    void fireDataflowNetwork(boolean preview=false, boolean latchTarget=false) {
-        if (latchTarget) {
-            terminated = true
-            return
-        }
-
+    void fireDataflowNetwork(boolean preview=false) {
         checkConfig()
         notifyFlowBegin()
 
@@ -504,7 +499,11 @@ class Session implements ISession {
         // bridge any dataflow queue into a broadcast channel
         CH.broadcast()
 
-        callIgniters()
+        if (preview) {
+            terminated = true
+        } else {
+            callIgniters()
+        }
     }
 
     private void callIgniters() {

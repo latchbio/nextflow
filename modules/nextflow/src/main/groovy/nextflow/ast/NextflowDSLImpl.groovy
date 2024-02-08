@@ -16,8 +16,8 @@
 
 package nextflow.ast
 
-import nextflow.dag.DAG
-import nextflow.dagGeneration.DAGGeneratorImpl
+import groovy.json.JsonSlurper
+import nextflow.dagGeneration.StatementJSONConverter
 import static nextflow.Const.*
 import static nextflow.ast.ASTHelpers.*
 import static org.codehaus.groovy.ast.tools.GeneralUtils.*
@@ -132,22 +132,19 @@ class NextflowDSLImpl implements ASTTransformation {
 
         private Set<String> functionNames = []
 
-        private DAG dag = new DAG();
-
-        private Map<String, Integer> channelProducers = [:]
-
         private int anonymousWorkflow
 
         protected SourceUnit getSourceUnit() { unit }
 
-        private ExpressionStatement currentParentExpression
+        private String targetExpression
 
-        private String targetProcessName
+        private String returnStatements
 
 
         DslCodeVisitor(SourceUnit unit) {
             this.unit = unit
-            this.targetProcessName = System.getenv("LATCH_TARGET_PROCESS_NAME")
+            this.targetExpression = System.getenv("LATCH_EXPRESSION")
+            this.returnStatements = System.getenv("LATCH_RETURN")
         }
 
         @Override
@@ -176,20 +173,6 @@ class NextflowDSLImpl implements ASTTransformation {
                 currentLabel = null
                 currentTaskName = methodName
                 try {
-                    def list = (methodCall.arguments as ArgumentListExpression).getExpressions()
-                    def mce = list[0] as MethodCallExpression
-                    def name = mce.getMethodAsString()
-
-
-//                    if (targetProcessName != null && name != targetProcessName) {
-//                      MethodCallExpression printlnCall = new MethodCallExpression(
-//                        new VariableExpression("this"),
-//                        new ConstantExpression("println"),
-//                        new ArgumentListExpression(new ConstantExpression(name))
-//                      )
-//                      currentParentExpression.setExpression(printlnCall)
-//                    } else
-
                     convertProcessDef(methodCall, sourceUnit)
 
                     super.visitMethodCallExpression(methodCall)
@@ -212,10 +195,6 @@ class NextflowDSLImpl implements ASTTransformation {
 
         @Override
         void visitExpressionStatement(ExpressionStatement stm) {
-            if (stm.text.startsWith('this.process(')) {
-              currentParentExpression = stm 
-            }
-
             if( stm.text.startsWith('this.include(') && stm.getExpression() instanceof MethodCallExpression )  {
                 final methodCall = (MethodCallExpression)stm.getExpression()
                 convertIncludeDef(methodCall)
@@ -223,6 +202,7 @@ class NextflowDSLImpl implements ASTTransformation {
                 final loadCall = new MethodCallExpression(methodCall, 'load0', new ArgumentListExpression(new VariableExpression('params')))
                 stm.setExpression(loadCall)
             }
+
             super.visitExpressionStatement(stm)
         }
 
@@ -368,7 +348,10 @@ class NextflowDSLImpl implements ASTTransformation {
 
             final body = (ClosureExpression)args[0]
             newArgs.addExpression( constX(name) )
-            newArgs.addExpression( makeWorkflowDefWrapper(body,false) )
+            def wrap = makeWorkflowDefWrapper(body,false)
+            newArgs.addExpression( wrap )
+
+
 
             // set the new list as the new arguments
             methodCall.setArguments( newArgs )
@@ -463,8 +446,6 @@ class NextflowDSLImpl implements ASTTransformation {
             final emitNames = new LinkedHashSet<String>(codeStms.size())
             final wrap = new ArrayList<Statement>(codeStms.size())
             def body = new ArrayList<Statement>(codeStms.size())
-            def input = new ArrayList<Statement>(codeStms.size())
-            def output = new ArrayList<Statement>(codeStms.size())
             final source = new StringBuilder()
             String context = null
             String previous
@@ -483,21 +464,12 @@ class NextflowDSLImpl implements ASTTransformation {
 
                 switch (context) {
                     case WORKFLOW_TAKE:
-                        if( !(stm instanceof ExpressionStatement) ) {
-                            syntaxError(stm, "Workflow malformed parameter definition")
-                            break
-                        }
-                        wrap.add(normWorkflowParam(stm as ExpressionStatement, context, emitNames, body))
-                        input.add(stm)
-                        break
-
                     case WORKFLOW_EMIT:
                         if( !(stm instanceof ExpressionStatement) ) {
                             syntaxError(stm, "Workflow malformed parameter definition")
                             break
                         }
                         wrap.add(normWorkflowParam(stm as ExpressionStatement, context, emitNames, body))
-                        output.add(stm)
                         break
 
                     case WORKFLOW_MAIN:
@@ -518,23 +490,36 @@ class NextflowDSLImpl implements ASTTransformation {
             // read the closure source
             readSource(closure, source, unit, true)
 
-            if (targetProcessName != null) {
+            if (targetExpression != null) {
                 // Strip all process calls in the workflow body save one empty call
                 // to our target process. Values are deserialized as objects so AST
                 // manipulation is pointless here and we inject them into the scope
                 // of the target process body directly. ( script/ProcessDef.groovy
                 // )
-                body = [
-                    new ReturnStatement(
-                        new ExpressionStatement(
-                            new MethodCallExpression(
-                                new VariableExpression('this'),
-                                new ConstantExpression(targetProcessName),
-                                new ArgumentListExpression([])
-                            )
+                body = [StatementJSONConverter.fromJsonString(targetExpression)] as List<Statement>
+
+                def ret = [new ExpressionStatement(new VariableExpression("res"))]
+
+                if (returnStatements != null) {
+                    def slurper = new JsonSlurper()
+                    List<String> statementStrings = slurper.parseText(returnStatements) as List<String>
+
+                    ret = statementStrings.collect {
+                        StatementJSONConverter.fromJsonString(it) as ExpressionStatement
+                    }
+                }
+
+                wrap.clear()
+                for (def r: ret) {
+                    wrap.add(
+                        normWorkflowParam(
+                            r,
+                            WORKFLOW_EMIT,
+                            emitNames,
+                            body
                         )
                     )
-                ] as List<Statement>
+                }
             }
 
             final bodyClosure = closureX(null, block(scope, body))

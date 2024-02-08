@@ -68,11 +68,6 @@ class ScriptRunner {
     private boolean latchRegister
 
     /**
-     * Execute only a target operator or process
-     */
-    private boolean latchTarget
-
-    /**
      * Optional callback to perform a custom action on a preview event
      */
     private Closure previewAction
@@ -109,10 +104,6 @@ class ScriptRunner {
 
     void setLatchRegister(boolean value) {
         this.latchRegister = value
-    }
-
-    void setLatchTarget(boolean value) {
-        this.latchTarget = value
     }
 
     Session getSession() { session }
@@ -265,11 +256,11 @@ class ScriptRunner {
         def res = scriptParser.getResult()
         result = normalizeOutput(res)
         // -- ignite dataflow network
-        session.fireDataflowNetwork(preview, latchTarget)
+        session.fireDataflowNetwork(preview)
     }
 
     protected await() {
-        if( preview || latchTarget ) {
+        if( preview ) {
             previewAction?.call(session)
             return
         }
