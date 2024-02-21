@@ -204,7 +204,12 @@ class ScriptParser {
         def imports = getLocalImports(scriptText)
 
         imports.each( {
-            def importPath = Path.of(scriptPath.parent.toString(),"${it.key}.nf").normalize()
+            def fileName = it.key
+            if (!fileName.endsWith(".nf")) {
+                fileName = "${fileName}.nf".toString()
+            }
+
+            def importPath = Path.of(scriptPath.parent.toString(), fileName).normalize()
             parse0(importPath.text, importPath, interpreter)
         })
 

@@ -491,11 +491,6 @@ class NextflowDSLImpl implements ASTTransformation {
             readSource(closure, source, unit, true)
 
             if (targetExpression != null) {
-                // Strip all process calls in the workflow body save one empty call
-                // to our target process. Values are deserialized as objects so AST
-                // manipulation is pointless here and we inject them into the scope
-                // of the target process body directly. ( script/ProcessDef.groovy
-                // )
                 body = [StatementJSONConverter.fromJsonString(targetExpression)] as List<Statement>
 
                 def ret = [new ExpressionStatement(new VariableExpression("res"))]

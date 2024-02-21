@@ -16,6 +16,7 @@
 
 package nextflow
 
+import nextflow.latch.LatchUtils
 import static nextflow.util.CheckHelper.*
 
 import java.nio.file.FileSystem
@@ -94,6 +95,7 @@ class Channel  {
         if( value==null )
             return
         Object[] items = array0(value)
+
         if( items.size()==1 && CH.isChannel(items[0]))
             throw new IllegalArgumentException("Argument of '$name' method cannot be a channel object — Likely you can replace the use of '$name' with the channel object itself")
         for( int i=0; i<items.size(); i++ ) {
@@ -137,7 +139,26 @@ class Channel  {
         return result
     }
 
+    private static Object[] injectLatchValues(Object... items) {
+        String serializedValues = System.getenv("LATCH_PARAM_VALS")
+        if (serializedValues == null) return items
+
+        List<List<Object>> deserialized = LatchUtils.deserializeParams(serializedValues) as List<List<Object>>
+
+        int j = 0
+        for (int i = 0; i < items.size(); i++) {
+            if (CH.isChannel(items[i])) {
+                // assume that there is only one value in the input channel
+                items[i] = deserialized[j][0]
+                j++
+            }
+        }
+
+        return items
+    }
+
     static DataflowWriteChannel of(Object ... items) {
+        items = injectLatchValues(items)
         checkNoChannels('channel.of', items)
         final result = CH.create()
         final values = new ArrayList()
@@ -200,6 +221,7 @@ class Channel  {
      */
     @Deprecated
     static DataflowWriteChannel from( Object... items ) {
+        items = injectLatchValues(items)
         checkNoChannels('channel.from', items)
         for( Object it : items ) if(CH.isChannel(it))
             throw new IllegalArgumentException("channel.from argument is already a channel object")
@@ -210,6 +232,7 @@ class Channel  {
     }
 
     static DataflowVariable value( obj = null ) {
+        obj = injectLatchValues([obj])[0]
         checkNoChannels('channel.value', obj)
         obj != null ? CH.value(obj) : CH.value()
     }
@@ -289,6 +312,7 @@ class Channel  {
      */
     static DataflowWriteChannel<Path> fromPath( Map opts = null, pattern ) {
         if( !pattern ) throw new AbortOperationException("Missing `fromPath` parameter")
+        pattern = injectLatchValues(pattern)[0]
         checkNoChannels('channel.fromPath', pattern)
 
         // verify that the 'type' parameter has a valid value
@@ -441,6 +465,7 @@ class Channel  {
      *      A channel emitting the file pairs matching the specified pattern(s)
      */
     static DataflowWriteChannel fromFilePairs(Map options = null, pattern) {
+        pattern = injectLatchValues(pattern)[0]
         checkNoChannels('channel.fromFilePairs', pattern)
         final allPatterns = pattern instanceof List ? pattern : [pattern]
         final allGrouping = new ArrayList(allPatterns.size())
@@ -474,6 +499,7 @@ class Channel  {
      *      A channel emitting the file pairs matching the specified pattern(s)
      */
     static DataflowWriteChannel fromFilePairs(Map options = null, pattern, Closure grouping) {
+        pattern = injectLatchValues(pattern)[0]
         checkNoChannels('channel.fromFilePairs', pattern)
         final allPatterns = pattern instanceof List ? pattern : [pattern]
         final allGrouping = new ArrayList(allPatterns.size())
@@ -630,11 +656,13 @@ class Channel  {
     }
 
     static DataflowWriteChannel fromSRA(query) {
+        query = injectLatchValues(query)[0]
         checkNoChannels('channel.fromSRA', query)
         fromSRA( Collections.emptyMap(), query )
     }
 
     static DataflowWriteChannel fromSRA(Map opts, query) {
+        query = injectLatchValues(query)[0]
         checkParams('fromSRA', opts, SraExplorer.PARAMS)
         checkNoChannels('channel.fromSRA', query)
 

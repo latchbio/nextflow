@@ -49,6 +49,7 @@ class LangHelpers {
      * @param right Right equals operand
      * @return 
      */
+
     @PackageScope
     static boolean compareEqual( Object left, Object right )  {
         // -- legacy

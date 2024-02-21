@@ -9,6 +9,7 @@ import groovy.json.JsonSlurper
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import groovyx.gpars.dataflow.DataflowBroadcast
+import groovyx.gpars.dataflow.DataflowChannel
 import groovyx.gpars.dataflow.DataflowQueue
 import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
@@ -184,8 +185,15 @@ class OpCall implements Callable {
             }
 
             source = sources[0]
-            for (int i = 0; i < sources.size() - 1; i++)
-                args[i] = sources[i + 1]
+            int sourceIdx = 1
+            for (int argIdx = 0; argIdx < args.size(); argIdx++) {
+                def arg = args[argIdx]
+
+                if (arg instanceof DataflowChannel) {
+                    args[argIdx] = sources[sourceIdx]
+                    sourceIdx += 1
+                }
+            }
         }
 
         final DataflowReadChannel source = read0(source)

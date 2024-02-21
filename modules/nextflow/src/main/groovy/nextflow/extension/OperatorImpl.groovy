@@ -16,6 +16,7 @@
 
 package nextflow.extension
 
+import groovyx.gpars.dataflow.DataflowQueue
 import static nextflow.extension.DataflowHelper.*
 import static nextflow.splitter.SplitterFactory.*
 import static nextflow.util.CheckHelper.*
@@ -1095,6 +1096,33 @@ class OperatorImpl {
     // NO DAG
     DataflowWriteChannel merge(final DataflowReadChannel source, final List<DataflowReadChannel> others, final Closure closure=null) {
         new MergeOp(source,others,closure).apply()
+    }
+
+    DataflowReadChannel getReadChannel(final Object arg) {
+        DataflowReadChannel ch
+        if (arg instanceof DataflowReadChannel) {
+            ch = arg
+        } else {
+            def tmp = new DataflowQueue()
+            tmp << arg
+            tmp.bind(Channel.STOP)
+
+            ch = CH.getReadChannel(tmp)
+        }
+
+        return ch
+    }
+
+    DataflowWriteChannel binaryOp(final Object left, final Object right, String op) {
+        return binaryOp(getReadChannel(left), getReadChannel(right), op, false)
+    }
+
+    DataflowWriteChannel binaryOp(final Object left, final Object right, String op, boolean swap) {
+        return binaryOp(getReadChannel(left), getReadChannel(right), op, swap)
+    }
+
+    DataflowWriteChannel binaryOp(final DataflowReadChannel left, final DataflowReadChannel right, String op, boolean swap) {
+        return new BinaryOp(left, right, op, swap).apply()
     }
 
     DataflowWriteChannel randomSample(DataflowReadChannel source, int n, Long seed = null) {

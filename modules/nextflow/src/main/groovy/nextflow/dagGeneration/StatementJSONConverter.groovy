@@ -3,6 +3,7 @@ package nextflow.dagGeneration
 import groovy.json.JsonBuilder
 import groovy.json.JsonSlurper
 import groovy.util.logging.Slf4j
+import nextflow.Nextflow
 import org.codehaus.groovy.ast.ClassCodeVisitorSupport
 import org.codehaus.groovy.ast.ClassHelper
 import org.codehaus.groovy.ast.ClassNode
@@ -22,6 +23,7 @@ import org.codehaus.groovy.ast.expr.MapExpression
 import org.codehaus.groovy.ast.expr.MethodCallExpression
 import org.codehaus.groovy.ast.expr.NotExpression
 import org.codehaus.groovy.ast.expr.PropertyExpression
+import org.codehaus.groovy.ast.expr.StaticMethodCallExpression
 import org.codehaus.groovy.ast.expr.TernaryExpression
 import org.codehaus.groovy.ast.expr.TupleExpression
 import org.codehaus.groovy.ast.expr.VariableExpression
@@ -86,6 +88,14 @@ class StatementJSONConverter {
                             "arguments": visitExpression(expr.arguments)
                         ]
                     ]
+                case StaticMethodCallExpression:
+                    return [
+                        "StaticMethodCallExpression": [
+                            "ownerType": expr.ownerType.text,
+                            "method": expr.methodAsString,
+                            "arguments": visitExpression(expr.arguments)
+                        ]
+                    ]
                 case ArgumentListExpression:
                     return [
                         "ArgumentListExpression": [
@@ -127,7 +137,7 @@ class StatementJSONConverter {
                         ]
                     ]
                 default:
-                    throw new Exception("Cannot JSONify expression of type $expr.class")
+                    throw new Exception("Cannot JSONify expression of type $expr.class: $expr.text")
             }
         }
 
@@ -197,6 +207,15 @@ class StatementJSONConverter {
 
         SourceUnit getSourceUnit() {return null}
 
+        ClassNode classNodeFromString(String s) {
+            switch (s) {
+                case "nextflow.Nextflow":
+                    return new ClassNode(Nextflow)
+                default:
+                    throw new Exception("Cannot convert unknown class to ClassNode: $s")
+            }
+        }
+
         private static String getKey(Object s) {
             if (!(s instanceof Map)) {
                 throw new Exception("Cannot convert non-Map object to statement: $s")
@@ -250,6 +269,12 @@ class StatementJSONConverter {
                 case "MethodCallExpression":
                     return new MethodCallExpression(
                         visitExpression(expr["objectExpression"]),
+                        expr["method"] as String,
+                        visitExpression(expr["arguments"])
+                    )
+                case "StaticMethodCallExpression":
+                    return new StaticMethodCallExpression(
+                        classNodeFromString(expr["ownerType"] as String),
                         expr["method"] as String,
                         visitExpression(expr["arguments"])
                     )

@@ -234,25 +234,21 @@ class WorkflowDef extends BindableDef implements ChainableDef, IterableDef, Exec
                 }
                 channel.bind(Channel.STOP)
 
-                DataflowHelper.newOperator(
-                    [
-                        "inputs": [CH.getReadChannel(channel)],
-                        "listeners": [new DataflowEventAdapter() {
+                def events = new HashMap<String, Closure>(2);
+                events["onComplete"] = {ignored ->
+                    def f = new File(".latch/task-outputs/${name}.json")
+                    new File(f.parent).mkdirs()
+                    f.createNewFile()
 
-                            @Override
-                            void afterStop(DataflowProcessor processor) {
-                                def f = new File(".latch/task-outputs/${name}.json")
-                                new File(f.parent).mkdirs()
-                                f.createNewFile()
+                    def builder = new JsonBuilder()
+                    builder res
+                    f.write(builder.toString())
+                }
+                events["onNext"] = {it ->
+                    res.add(LatchUtils.serialize(it));
+                }
 
-                                def builder = new JsonBuilder()
-                                builder res
-                                f.write(builder.toString())
-                            }
-                        }]
-                    ],
-                    { res.add(LatchUtils.serialize(it)) }
-                )
+                DataflowHelper.subscribeImpl(CH.getReadChannel(channel), events)
             }
         }
 

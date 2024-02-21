@@ -16,6 +16,7 @@
 
 package nextflow.script
 
+import groovy.json.JsonSlurper
 import nextflow.exception.ScriptCompilationException
 import nextflow.plugin.extension.PluginExtensionProvider
 import nextflow.plugin.Plugins
@@ -101,6 +102,16 @@ class IncludeDef {
      * @param ownerParams The params in the owner context
      */
     void load0(ScriptBinding.ParamsMap ownerParams) {
+        String includeMeta = System.getenv("LATCH_INCLUDE_META")
+        if (includeMeta != null && includeMeta != "") {
+            def slurper = new JsonSlurper()
+            Map<String, String> includeJson = slurper.parseText(includeMeta) as Map<String, String>
+
+            this.path = includeJson["path"]
+            this.modules = new ArrayList<Module>(1);
+            this.modules << new Module(includeJson["name"], includeJson["alias"])
+        }
+
         checkValidPath(path)
         if( path.toString().startsWith(PLUGIN_PREFIX) ) {
             loadPlugin0(path.toString().substring(PLUGIN_PREFIX.length()))

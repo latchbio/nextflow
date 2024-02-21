@@ -8,8 +8,16 @@ import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import java.util.Base64
 
+import groovy.util.logging.Slf4j
+import groovyx.gpars.dataflow.DataflowBroadcast
+import groovyx.gpars.dataflow.DataflowQueue
+import groovyx.gpars.dataflow.DataflowReadChannel
+import groovyx.gpars.dataflow.DataflowVariable
+import nextflow.Channel
+import nextflow.extension.CH
 import nextflow.file.http.XPath
 
+@Slf4j
 class LatchUtils {
 
     private static decoder = Base64.getDecoder()
@@ -22,7 +30,7 @@ class LatchUtils {
             return null;
         }
 
-        for (def k: ["boolean", "string", "integer", "float", "double"]) {
+        for (def k: ["boolean", "string", "integer", "float", "double", "number"]) {
             if (!json.containsKey(k)) continue;
             return json.get(k)
         }
@@ -86,16 +94,17 @@ class LatchUtils {
         return params
     }
 
-    static List deserializeChannels(String serializedJson) {
-        def slurper = new JsonSlurper()
-        def serializedChannels = slurper.parseText(serializedJson) as List<List<Object>>
-
-        return serializedChannels.collect {channel ->
-            channel.collect { deserialize0(it) }
-        }
-    }
-
     static Map serialize(Object value) {
+        if (value instanceof DataflowVariable) {
+            return serialize(value.get())
+        } else if (value instanceof DataflowReadChannel) {
+            return serialize(value.getVal())
+        } else if (value instanceof DataflowBroadcast || value instanceof DataflowQueue) {
+            value.bind(Channel.STOP)
+
+            return serialize(CH.getReadChannel(value))
+        }
+
         if (value == null) {
             return ["null": null]
         } else if (value instanceof Boolean) {
@@ -108,6 +117,8 @@ class LatchUtils {
             return  ["float": value]
         } else if (value instanceof Double) {
             return  ["double": value]
+        } else if (value instanceof Number) {
+            return  ["number": value]
         } else if (value instanceof Path) {
             return  ["path": value.toString()]
         } else if (value instanceof List) {
