@@ -892,17 +892,15 @@ class DAGBuilder {
                 for (def name: ifScope.bindings.keySet() + elseScope.bindings.keySet()) {
                     def ifBinding = ifScope.get(name)
                     def elseBinding = elseScope.get(name)
-
-                    if (ifBinding == null || elseBinding == null) {
-                        // todo(ayush): we should probably allow this, but we need to make sure that if this explodes
-                        //  at runtime, the error is clear (which will be very hard to do right now)
-                        throw new DAGGenerationException("Name ${name} is potentially unbound.")
-                    }
-
+                    
                     def v = ifBinding
 
-                    // merge separate assignments
-                    if (ifBinding.id != elseBinding.id) {
+                    if (ifBinding == null || elseBinding == null) {
+                        // todo(ayush): there is potential here for having unbound variables downstream - we need to make
+                        //  sure that if this explodes at runtime, the error is clear (which will be very hard to do right
+                        //  now)
+                        v = ifBinding ?: elseBinding
+                    } else if (ifBinding.id != elseBinding.id) {
                         v = new MergeVertex("Merge $name")
 
                         edges << new Edge(name, ifBinding, v)

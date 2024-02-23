@@ -187,9 +187,8 @@ class OpCall implements Callable {
             source = sources[0]
             int sourceIdx = 1
             for (int argIdx = 0; argIdx < args.size(); argIdx++) {
-                def arg = args[argIdx]
-
-                if (arg instanceof DataflowChannel) {
+                // todo(ayush): should we also check for ReadChannel here?
+                if (args[argIdx] instanceof DataflowWriteChannel) {
                     args[argIdx] = sources[sourceIdx]
                     sourceIdx += 1
                 }
