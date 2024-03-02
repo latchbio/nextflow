@@ -18,7 +18,9 @@ package nextflow.script
 
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
+import groovyx.gpars.dataflow.DataflowBroadcast
 import groovyx.gpars.dataflow.DataflowQueue
+import groovyx.gpars.dataflow.DataflowWriteChannel
 import nextflow.Channel
 import nextflow.Const
 import nextflow.Global
@@ -177,10 +179,9 @@ class ProcessDef extends BindableDef implements IterableDef, ChainableDef {
         List params
         def serializedValsJson = System.getenv("LATCH_PARAM_VALS")
 
-        if (serializedValsJson == null) {
-            params = ChannelOut.spread(args)
-        } else {
-            params = LatchUtils.deserializeParams(serializedValsJson).collect {
+        params = ChannelOut.spread(args)
+        if (serializedValsJson != null) {
+            def overrides = LatchUtils.deserializeParams(serializedValsJson).collect {
                 def ch = new DataflowQueue()
                 for (def x: it) {
                     ch << x
@@ -188,6 +189,18 @@ class ProcessDef extends BindableDef implements IterableDef, ChainableDef {
                 ch.bind(Channel.STOP)
 
                 return ch
+            }
+
+            int j = 0;
+            for (int i = 0; i < params.size(); i++) {
+                if (params[i] instanceof DataflowWriteChannel) {
+                    params[i] = overrides[j]
+                    j++
+                }
+            }
+
+            for (int k = j; k < overrides.size(); k++) {
+                params << overrides[k]
             }
         }
 

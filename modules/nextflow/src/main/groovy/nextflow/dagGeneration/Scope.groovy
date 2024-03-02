@@ -59,4 +59,11 @@ class Scope {
     void set(String name, Vertex v) {
         this.bindings[name] = v
     }
+
+    void forEach(Closure cb) {
+        if (this.parent != null) {
+            this.parent.forEach(cb)
+        }
+        this.bindings.forEach(cb)
+    }
 }

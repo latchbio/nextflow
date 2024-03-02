@@ -2,6 +2,7 @@ package nextflow.dagGeneration
 
 import java.util.concurrent.atomic.AtomicLong
 
+import groovyjarjarantlr4.v4.misc.OrderedHashMap
 import org.codehaus.groovy.ast.stmt.Statement
 
 class Vertex {
@@ -19,6 +20,7 @@ class Vertex {
         Input,
         Output,
         Merge,
+        Tuple,
     }
 
     final long id = nextID.getAndIncrement()
@@ -59,6 +61,10 @@ class Vertex {
             other.unaliased
         )
     }
+
+    String toString() {
+        return "${this.type}Vertex(id=${this.id})"
+    }
 }
 
 class ConditionalVertex extends Vertex {
@@ -88,5 +94,44 @@ class OutputVertex extends Vertex {
 class MergeVertex extends Vertex {
     MergeVertex(String label) {
         super(Type.Merge, label, null, null)
+    }
+}
+
+// TupleVertices will NEVER be added to the graph
+// they are strictly for internal plumbing
+class TupleVertex extends Vertex {
+    Map<String, Vertex> members = new OrderedHashMap<String, Vertex>()
+
+    TupleVertex(String label, Map<String, Vertex> members) {
+        super(Type.Tuple, label, null, null)
+
+        this.members = members
+    }
+
+    void unpack(String prefix, Map<String, Vertex> res) {
+        for (def entry: this.members) {
+            Vertex v = entry.value
+            String label = "${prefix}${entry.key}"
+
+            if (v instanceof TupleVertex) {
+                v.unpack("$label.", res)
+            } else {
+                res[label] = v
+            }
+        }
+    }
+
+    Map<String, Vertex> unpack() {
+        Map<String, Vertex> res = new OrderedHashMap<String, Vertex>()
+        this.unpack("", res)
+        return res
+    }
+
+    // since this uses unpack, this flattens all the layers, which is technically wrong bc Nextflow is weird only flattens
+    // one layer deep when doing tuple unpacking (ie [[[1], 2], [3, 4]] -> [[1], 2, 3, 4]), however
+    // i think this is esoteric enough that we shouldn't support it unless someone really wants it
+    TupleVertex remap(Map<Vertex, Vertex> mapping) {
+        def xs = this.unpack()
+        return new TupleVertex(this.label, xs.collectEntries { _, x -> mapping[x]})
     }
 }

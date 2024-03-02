@@ -42,7 +42,7 @@ class LatchUtils {
             def lst = json.get("list") as List
             return lst.collect { deserialize0(it) }
         } else if (json.containsKey("map")) {
-            def lst = json.get("list") as List
+            def lst = json.get("map") as List
             def res = [:]
 
             lst.collect {

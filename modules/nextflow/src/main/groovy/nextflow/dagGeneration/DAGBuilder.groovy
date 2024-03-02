@@ -2,9 +2,7 @@ package nextflow.dagGeneration
 
 import groovy.json.JsonBuilder
 import groovy.util.logging.Slf4j
-import nextflow.ast.ASTHelpers
-import org.codehaus.groovy.ast.Parameter
-import org.codehaus.groovy.ast.VariableScope
+import groovyjarjarantlr4.v4.misc.OrderedHashMap
 import org.codehaus.groovy.ast.expr.ArgumentListExpression
 import org.codehaus.groovy.ast.expr.BinaryExpression
 import org.codehaus.groovy.ast.expr.BooleanExpression
@@ -241,9 +239,9 @@ class DAGBuilder {
 
                 addVertex(v)
                 if (left != null)
-                    edges.add(new Edge(left.label, left, v))
+                    addEdge(left.label, left, v)
                 if (right != null)
-                    edges.add(new Edge(right.label, right, v))
+                    addEdge(right.label, right, v)
 
                 return v
         }
@@ -302,6 +300,11 @@ class DAGBuilder {
 
                 dependencies[x.text] = producer
             }
+        } else if (expr.arguments instanceof TupleExpression) {
+            for (def x: (TupleExpression) expr.arguments) {
+                // todo(ayush): support upstream channel inputs here
+                newArgs.add(x)
+            }
         }
 
         def entity = this.entities.get(expr.methodAsString)
@@ -346,7 +349,7 @@ class DAGBuilder {
                     new MethodCallExpression(
                         new VariableExpression('this'),
                         new ConstantExpression(expr.methodAsString),
-                        new ArgumentListExpression([] as List<Expression>)
+                        new ArgumentListExpression(newArgs as List<Expression>)
                     )
                 ),
                 ret,
@@ -355,15 +358,32 @@ class DAGBuilder {
                 entity.unaliased
             )
 
-            // todo(ayush): enable this always to support tuple unpacking
-            if (entity.outputs.size() == 0) {
-                scope.set("${expr.methodAsString}.out", v)
+            addVertex(v)
+
+            Map<String, Vertex> tupleMembers = new OrderedHashMap<String, Vertex>()
+            // todo(ayush): generate default names for unnamed outputs
+            for (String name: entity.outputs) {
+                scope.set("${expr.methodAsString}.out.$name", v)
+                tupleMembers[name] = v
             }
 
-            for (String o: entity.outputs) {
-                scope.set("${expr.methodAsString}.out.$o", v)
+            for (def x: dependencies) {
+                String label = x.key
+                Vertex prod = x.value
+
+                if (prod instanceof TupleVertex) {
+                    prod.unpack().forEach {k, y ->
+                        addEdge(k, y, v)
+                    }
+                } else {
+                    addEdge(label, prod, v)
+                }
             }
 
+            v = new TupleVertex(expr.methodAsString, tupleMembers)
+            scope.set("${expr.methodAsString}.out", v)
+
+            return v
         } else if (entity?.type == NFEntity.Type.Workflow) {
             List<Vertex> inputs = []
             DAGBuilder subWorkflowDag = generator.dags[entity.unaliased]
@@ -401,17 +421,26 @@ class DAGBuilder {
                     )
                 }
 
+                // don't need to use addEdge here - neither `to` nor `from` will ever be a
+                // TupleVertex as those are never added to the graph
                 this.edges << subE
             }
 
-            int i = -1;
-            for (def x: dependencies) {
-                i += 1
-                if (x == null)
-                    continue
+            int i = 0;
 
-                def subV = inputs[i]
-                edges.add(new Edge(x.key, x.value, subV))
+            for (def x: dependencies) {
+                String label = x.key
+                Vertex prod = x.value
+
+                if (prod instanceof TupleVertex) {
+                    prod.unpack().forEach {k, y ->
+                        addEdge(k, y, inputs[i])
+                        i += 1
+                    }
+                } else {
+                    addEdge(label, prod, inputs[i])
+                    i += 1
+                }
             }
 
             v = new OutputVertex(
@@ -421,23 +450,25 @@ class DAGBuilder {
 
             addVertex(v)
 
-            for (def output: entity.outputs) {
+            Map<String, Vertex> tupleMembers = new OrderedHashMap<String, Vertex>();
+            // todo(ayush): generate default names for unnamed outputs
+            for (def outputName: entity.outputs) {
+                def subV = subWorkflowDag.scope.get(outputName)
+                def prod = idMapping[subV]
 
-                def prod = idMapping[subWorkflowDag.scope.get(output)]
-
-                edges.add(new Edge(output, prod, v))
+                addEdgeAndRemap(outputName, prod, v, idMapping)
+                tupleMembers[outputName] = v
             }
 
-            // todo(ayush): enable this always to support tuple unpacking
-            if (entity.outputs.size() == 0) {
-                scope.set("${expr.methodAsString}.out", v)
-            }
+            def tv = new TupleVertex(expr.methodAsString, tupleMembers)
+
+            scope.set("${expr.methodAsString}.out", tv)
 
             for (String o: entity.outputs) {
                 scope.set("${expr.methodAsString}.out.$o", v)
             }
 
-            return v
+            return tv
         } else if (expr.methodAsString in this.operatorNames) {
 
             def ret = [new ExpressionStatement(new VariableExpression("res"))]
@@ -503,6 +534,8 @@ class DAGBuilder {
             )
 
             v.outputNames = outputNames
+
+            addVertex(v)
         } else if (expr.objectExpression.text == "Channel" && expr.methodAsString in this.channelFactories) {
             v = new Vertex(
                 Vertex.Type.Generator,
@@ -520,15 +553,16 @@ class DAGBuilder {
                 ),
                 [new ExpressionStatement(new VariableExpression("res"))]
             )
+
+            addVertex(v)
         }
 
         if (v != null) {
-            addVertex(v)
             for (def x: dependencies) {
                 if (x == null)
                     continue
 
-                edges.add(new Edge(x.key, x.value, v))
+                addEdge(x.key, x.value, v)
             }
         }
 
@@ -552,6 +586,7 @@ class DAGBuilder {
 
         // todo(ayush): what are the cases where a closure has a nontrivial producer?
         //  - can you reference other channels within closures?
+
         return null
     }
 
@@ -563,7 +598,12 @@ class DAGBuilder {
         def res = scope.get(expr.text)
         if (res != null) return res
 
-        return visitExpression(expr.objectExpression)
+        def v = visitExpression(expr.objectExpression)
+        if (v instanceof TupleVertex && expr.propertyAsString != "out") {
+            return v.members[expr.propertyAsString]
+        }
+
+        return v
     }
 
     Vertex visitListExpression(ListExpression expr) {
@@ -604,8 +644,7 @@ class DAGBuilder {
         addVertex(v)
         producers.collect {
             if (it == null) return
-
-            edges.add(new Edge(it.label, it, v))
+            addEdge(it.label, it, v)
             return
         }
 
@@ -663,8 +702,7 @@ class DAGBuilder {
         addVertex(v)
         producers.collect {
             if (it == null) return
-
-            edges.add(new Edge(it.label, it, v))
+            addEdge(it.label, it, v)
             return
         }
 
@@ -710,8 +748,7 @@ class DAGBuilder {
         addVertex(v)
         producers.collect {
             if (it == null) return
-
-            edges.add(new Edge(it.label, it, v))
+            addEdge(it.label, it, v)
             return
         }
 
@@ -757,8 +794,6 @@ class DAGBuilder {
     Vertex visitExpressionWithLiteralCheck(Expression expr) {
         // should only be called from expressions that don't generate their own vertices, e.g. set, =
         if (isLiteralExpression(expr)) {
-            log.debug "$expr.class: $expr.text --> literal"
-
             def v = new Vertex(
                 Vertex.Type.Literal,
                 expr.text,
@@ -817,7 +852,6 @@ class DAGBuilder {
                 throw new DAGGenerationException("Cannot process expression of type ${expr?.class}")
         }
 
-        log.debug "${expr.class}: $expr.text --> $res"
         return res
     }
 
@@ -829,10 +863,32 @@ class DAGBuilder {
         }
     }
 
+    void addEdge(String label, Vertex src, Vertex dst) {
+        if (src == null || dst == null) return
+
+        if (src instanceof TupleVertex) {
+            def xs = new OrderedHashMap<String, Vertex>()
+            src.unpack(label, xs)
+            xs.collect {k, v -> addEdge(k, v, dst)}
+        } else {
+            this.edges.add(new Edge(label, src, dst))
+        }
+    }
+
+    void addEdgeAndRemap(String label, Vertex src, Vertex dst, Map<Vertex, Vertex> mapping) {
+        if (src == null || dst == null) return
+
+        if (src instanceof TupleVertex) {
+            src = src.remap(mapping)
+        }
+
+        addEdge(label, src, dst)
+    }
+
     void visitStatement(Statement s) {
         switch (s) {
             case ExpressionStatement:
-                visitExpression(s.expression)
+                def res = visitExpression(s.expression)
                 break
             case IfStatement:
                 def stmt = s as IfStatement
@@ -874,16 +930,18 @@ class DAGBuilder {
                 this.scope = ifScope
                 def ifBlock = stmt.ifBlock as BlockStatement
                 this.activeConditionals[cond] = true
-                for (def x: ifBlock.statements)
+                for (def x: ifBlock.statements) {
                     visitStatement(x)
+                }
 
                 this.scope = elseScope
                 // guard against ifs without else blocks
                 if (stmt.elseBlock instanceof BlockStatement) {
                     def elseBlock = stmt.elseBlock as BlockStatement
                     this.activeConditionals[cond] = false
-                    for (def x: elseBlock.statements)
+                    for (def x: elseBlock.statements) {
                         visitStatement(x)
+                    }
                 }
 
                 this.activeConditionals.remove(cond)
@@ -896,16 +954,14 @@ class DAGBuilder {
                     def v = ifBinding
 
                     if (ifBinding == null || elseBinding == null) {
-                        // todo(ayush): there is potential here for having unbound variables downstream - we need to make
-                        //  sure that if this explodes at runtime, the error is clear (which will be very hard to do right
-                        //  now)
+                        // todo(ayush): there is potential here for using unbound variables downstream - we need to make
+                        //  sure that if this explodes at runtime, the error is clear
                         v = ifBinding ?: elseBinding
                     } else if (ifBinding.id != elseBinding.id) {
                         v = new MergeVertex("Merge $name")
 
-                        edges << new Edge(name, ifBinding, v)
-                        edges << new Edge(name, elseBinding, v)
-
+                        addEdge(name, ifBinding, v)
+                        addEdge(name, elseBinding, v)
                         addVertex(v)
                     }
 
@@ -919,15 +975,15 @@ class DAGBuilder {
             visitStatement(stmt)
         } catch (DAGGenerationException e) {
             log.error """\
-                There was an error parsing your workflow body - please ensure you don't have any typos. 
-                If the offending line below seems correct, please reach out to us at support@latch.bio.
-                
-                Offending Line:
-                L$stmt.lineNumber: $stmt.text
-    
-                Error:
-                $e
-                """.stripIndent()
+            There was an error parsing your workflow body - please ensure you don't have any typos. 
+            If the offending line below seems correct, please reach out to us at support@latch.bio.
+            
+            Offending Line:
+            L$stmt.lineNumber: $stmt.text
+
+            Error:
+            $e
+            """.stripIndent()
 
             System.exit(1)
         }

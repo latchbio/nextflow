@@ -16,6 +16,8 @@
 
 package nextflow.file.http
 
+import javax.net.ssl.HttpsURLConnection
+
 import static nextflow.file.http.XFileSystemConfig.*
 
 import java.nio.ByteBuffer
@@ -469,10 +471,15 @@ abstract class XFileSystemProvider extends FileSystemProvider implements Seriali
 
     protected XFileAttributes readHttpAttributes(XPath path) {
         final conn = toConnection(path)
+        log.info "connecting to $path"
+        if (conn instanceof HttpURLConnection) {
+            log.info "Response code: ${conn.getResponseCode()}"
+        }
+
         if( conn instanceof FtpURLConnection ) {
             return new XFileAttributes(null,-1)
         }
-        if ( conn instanceof HttpURLConnection && conn.getResponseCode() in [200, 301, 302, 307, 308]) {
+        if (conn instanceof HttpURLConnection && conn.getResponseCode() in [200, 301, 302, 307, 308]) {
             final header = conn.getHeaderFields()
             return readHttpAttributes(header)
         }

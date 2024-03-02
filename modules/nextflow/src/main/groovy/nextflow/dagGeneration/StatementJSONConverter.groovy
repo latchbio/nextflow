@@ -293,7 +293,7 @@ class StatementJSONConverter {
                     )
                 case "ClosureExpression":
                     return new ClosureExpression(
-                        ((expr["parameters"] as List).collect { new Parameter(null, it as String) }).toArray() as Parameter[],
+                        ((expr["parameters"] as List).collect { new Parameter(new ClassNode(Object), it as String) }).toArray() as Parameter[],
                         visit(expr["code"])
                     )
                 case "GStringExpression":
@@ -335,6 +335,9 @@ class StatementJSONConverter {
                     break
                 case "EmptyStatement":
                     res = new EmptyStatement()
+                    break
+                case "ReturnStatement":
+                    res = new ReturnStatement(visitExpression(stmt))
                     break
                 default:
                     throw new Exception("Cannot infer statement from malformed JSON: $s")

@@ -66,9 +66,11 @@ class DAGGeneratorImpl implements ASTTransformation {
         void addToScope(Expression expr) {
             Map<String, NFEntity> definingScope = scopes[currentImportPath]
             if (definingScope == null) {
-                log.error "Attempted to include module before it was parsed"
-                log.error "keys: ${scopes.keySet()}"
-                log.error "looking for: ${currentImportPath}"
+                log.error """\
+                Attempted to include module before it was parsed 
+                    keys: ${scopes.keySet()}
+                    looking for: ${currentImportPath}
+                """.stripIndent()
                 return
             }
 
@@ -97,6 +99,8 @@ class DAGGeneratorImpl implements ASTTransformation {
 
             String context = null
             for (Statement stmt: ((BlockStatement) closure.code).statements) {
+                // keep track of input ordering here too
+
                 context = stmt.statementLabel ?: context
                 if (context != "output")
                     continue

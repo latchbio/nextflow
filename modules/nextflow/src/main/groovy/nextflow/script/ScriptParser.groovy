@@ -21,6 +21,7 @@ import java.nio.file.Path
 import com.google.common.hash.Hashing
 import groovy.transform.CompileStatic
 import groovy.transform.Field
+import groovy.util.logging.Slf4j
 import nextflow.Channel
 import nextflow.Nextflow
 import nextflow.Session
@@ -45,6 +46,7 @@ import org.codehaus.groovy.control.customizers.ImportCustomizer
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @CompileStatic
+@Slf4j
 class ScriptParser {
 
     private ClassLoader classLoader
@@ -170,12 +172,12 @@ class ScriptParser {
     }
 
     private static Map<String, Map<String, String>> getLocalImports(String scriptText) {
-        def import_expr = /include \{(?<aliases>.*)\}(\s+)from(\s+)['|"](?<path>.*)['|"]/
+        def import_expr = /include(\s+)\{(?<aliases>.*)\}(\s+)from(\s+)['|"](?<path>.*)['|"]/
         def alias_expr = /(?<module>[^\s]+)(\s+as\s+(?<local>[^\s]+))?/
 
         Map<String, Map<String, String>> res = [:]
         scriptText.tokenize("\n").forEach {
-            def matcher = it =~ import_expr
+            def matcher = (it =~ import_expr)
             if (!matcher.matches()) return;
 
             def aliases = matcher.group("aliases")
