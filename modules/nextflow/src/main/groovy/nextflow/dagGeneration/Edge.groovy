@@ -1,6 +1,6 @@
 package nextflow.dagGeneration
 
-class Edge {
+class Edge implements EdgeLike<Vertex> {
     String label
     Vertex from
     Vertex to

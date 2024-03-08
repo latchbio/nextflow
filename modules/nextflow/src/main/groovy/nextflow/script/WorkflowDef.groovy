@@ -25,7 +25,9 @@ import groovyx.gpars.dataflow.Dataflow
 import groovyx.gpars.dataflow.DataflowBroadcast
 import groovyx.gpars.dataflow.DataflowQueue
 import groovyx.gpars.dataflow.DataflowReadChannel
+import groovyx.gpars.dataflow.DataflowVariable
 import groovyx.gpars.dataflow.DataflowWriteChannel
+import groovyx.gpars.dataflow.expression.DataflowExpression
 import groovyx.gpars.dataflow.operator.DataflowEventAdapter
 import groovyx.gpars.dataflow.operator.DataflowEventListener
 import groovyx.gpars.dataflow.operator.DataflowOperator
@@ -220,28 +222,23 @@ class WorkflowDef extends BindableDef implements ChainableDef, IterableDef, Exec
         output = collectOutputs(declaredOutputs)
 
         if (output.size() > 0) {
-            for (def ch: output.channels) {
+            for (Map.Entry<String, DataflowWriteChannel> ch: output.channels) {
                 List<Map> res = []
 
                 def name = ch.key
+                def channel = ch.value
 
-                def channel
-                if (ch.value instanceof DataflowBroadcast || ch.value instanceof DataflowQueue) {
-                    channel = ch.value
-                } else {
-                    channel = new DataflowQueue()
-                    channel << ch.value
-                }
-                channel.bind(Channel.STOP)
+                if (!(channel instanceof DataflowExpression))
+                    channel.bind(Channel.STOP)
 
                 def events = new HashMap<String, Closure>(2);
-                events["onComplete"] = {ignored ->
+                events["onComplete"] = {
                     def f = new File(".latch/task-outputs/${name}.json")
                     new File(f.parent).mkdirs()
                     f.createNewFile()
 
                     def builder = new JsonBuilder()
-                    builder res
+                    builder(res)
                     f.write(builder.toString())
                 }
                 events["onNext"] = {it ->

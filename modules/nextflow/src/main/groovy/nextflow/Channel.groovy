@@ -232,7 +232,7 @@ class Channel  {
     }
 
     static DataflowVariable value( obj = null ) {
-        obj = injectLatchValues([obj])[0]
+//        obj = injectLatchValues([obj])[0]
         checkNoChannels('channel.value', obj)
         obj != null ? CH.value(obj) : CH.value()
     }

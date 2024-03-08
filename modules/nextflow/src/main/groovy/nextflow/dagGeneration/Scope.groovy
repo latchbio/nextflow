@@ -8,6 +8,8 @@ class NFEntity {
         Workflow
     }
 
+    public boolean called = false
+
     public Type type
     public MethodCallExpression definition
     public String unaliased
@@ -22,41 +24,31 @@ class NFEntity {
         this.module = module
         this.unaliased = unaliased
     }
-
-    static NFEntity copy(NFEntity entity) {
-        return new NFEntity(
-            entity.type,
-            entity.definition,
-            entity.outputs,
-            entity.module,
-            entity.unaliased,
-        )
-    }
 }
 
 
 class Scope {
     Scope parent;
-    Map<String, Vertex> bindings;
+    Map<String, ScopeVariable> bindings;
 
     Scope(Scope parent) {
         this.parent = parent
-        this.bindings = new HashMap<String, Vertex>()
+        this.bindings = new HashMap<String, ScopeVariable>()
     }
 
     Scope() {
         this.parent = null
-        this.bindings = new HashMap<String, Vertex>()
+        this.bindings = new HashMap<String, ScopeVariable>()
     }
 
-    Vertex get(String name) {
+    ScopeVariable get(String name) {
         def ret = bindings.get(name)
         if (ret != null) return ret
 
         return parent?.get(name)
     }
 
-    void set(String name, Vertex v) {
+    void set(String name, ScopeVariable v) {
         this.bindings[name] = v
     }
 

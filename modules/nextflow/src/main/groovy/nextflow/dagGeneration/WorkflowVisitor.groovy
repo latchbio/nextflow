@@ -3,6 +3,7 @@ package nextflow.dagGeneration
 import groovy.json.JsonBuilder
 import groovy.util.logging.Slf4j
 import groovyjarjarantlr4.v4.misc.OrderedHashMap
+import nextflow.ast.ASTHelpers
 import org.codehaus.groovy.ast.expr.ArgumentListExpression
 import org.codehaus.groovy.ast.expr.BinaryExpression
 import org.codehaus.groovy.ast.expr.BooleanExpression
@@ -16,6 +17,7 @@ import org.codehaus.groovy.ast.expr.MapExpression
 import org.codehaus.groovy.ast.expr.MethodCallExpression
 import org.codehaus.groovy.ast.expr.PropertyExpression
 import org.codehaus.groovy.ast.expr.StaticMethodCallExpression
+import org.codehaus.groovy.ast.expr.TernaryExpression
 import org.codehaus.groovy.ast.expr.TupleExpression
 import org.codehaus.groovy.ast.expr.VariableExpression
 import org.codehaus.groovy.ast.stmt.BlockStatement
@@ -26,14 +28,14 @@ import org.codehaus.groovy.syntax.Token
 import org.codehaus.groovy.syntax.Types
 
 @Slf4j
-class DAGBuilder {
+class WorkflowVisitor {
     static class DAGGenerationException extends Exception {
         DAGGenerationException(String msg) {
             super(msg)
         }
     }
 
-    final Set<String> channelFactories = new HashSet([
+    static final Set<String> channelFactories = new HashSet([
         "empty",
         "from",
         "fromList",
@@ -44,7 +46,7 @@ class DAGBuilder {
         "value",
         "watchPath"
     ])
-    final Set<String> operatorNames = new HashSet([
+    static final Set<String> operatorNames = new HashSet([
         "branch",
         "buffer",
         "collate",
@@ -95,7 +97,7 @@ class DAGBuilder {
         // "set" is excluded on purpose as it does not warrant adding a vertex to the graph
     ])
 
-    final Set<String> specialOperatorNames = new HashSet(["branch", "multiMap"])
+    static final Set<String> specialOperatorNames = new HashSet(["branch", "multiMap"])
 
     String workflowName
     String module = ""
@@ -104,18 +106,19 @@ class DAGBuilder {
     DAGGeneratorImpl generator
     Scope scope
 
-    DAGBuilder(String workflowName, Map<String, NFEntity> entities, String module, DAGGeneratorImpl generator) {
+    DAG<Vertex, Edge> dag;
+
+    WorkflowVisitor(String workflowName, Map<String, NFEntity> entities, String module, DAGGeneratorImpl generator) {
         this.workflowName = workflowName
         this.entities = entities
         this.module = module
         this.generator = generator
         this.scope = new Scope()
+
+        this.dag = new DAG()
     }
 
-    List<Edge> edges = new ArrayList<>()
-    List<Vertex> vertices = new ArrayList<>()
     List<Vertex> inputNodes = new ArrayList<>()
-
 
     /*
      * cond in activeConditionals => cond is active
@@ -123,9 +126,7 @@ class DAGBuilder {
      */
     Map<ConditionalVertex, Boolean> activeConditionals = new LinkedHashMap<>()
 
-
-
-    Vertex visitBinaryExpression (BinaryExpression expr) {
+    ScopeVariable visitBinaryExpression (BinaryExpression expr) {
         // currently supports:
         // - a = expr
         // - (a, b, ..., z) = expr
@@ -135,24 +136,47 @@ class DAGBuilder {
 
         switch (expr.operation.type) {
             case Types.EQUAL:
-                // assignment should update producers
-
-                def res = visitExpressionWithLiteralCheck(expr.rightExpression)
-
+                Vertex newV;
                 if (expr.leftExpression instanceof VariableExpression) {
+                    def dep = visitExpressionWithLiteralCheck(expr.rightExpression)
                     def v = expr.leftExpression as VariableExpression
 
-                    scope.set(v.name, res)
+                    scope.set(v.name, dep)
+
+                    return null
                 } else if (expr.leftExpression instanceof TupleExpression) {
                     def t = expr.leftExpression as TupleExpression
 
-                    // todo(ayush): figure out how to distinguish edges here
-                    for (def sub: t.expressions) {
-                        def v = sub as VariableExpression
-                        scope.set(v.name, res)
+                    def rExpList = ASTHelpers.isListX(expr.rightExpression)
+                    if (rExpList != null) {
+                        if (t.expressions.size() != rExpList.expressions.size()) {
+                            throw new DAGGenerationException(
+                                "Invalid multiple assignment statement: right and left don't have the same number of elements."
+                            )
+                        }
+
+                        for (int i = 0; i < t.expressions.size(); i++) {
+                            def subLeft = t.expressions[i]
+                            def subRight = rExpList.expressions[i]
+
+                            visitBinaryExpression(
+                                new BinaryExpression(
+                                    subLeft,
+                                    Token.newSymbol("=", -1, -1),
+                                    subRight,
+                                )
+                            )
+                        }
+
+                        return null
                     }
+
+                    throw new DAGGenerationException("Multiple assignment from non-literal Lists is not supported yet.")
+
                 } else {
-                    throw new DAGGenerationException("Cannot handle left expression in binary expression of type $expr.leftExpression.class: $expr.leftExpression.text ")
+                    throw new DAGGenerationException(
+                        "Cannot handle left expression in binary expression of type $expr.leftExpression.class: $expr.leftExpression.text"
+                    )
                 }
 
                 return null
@@ -160,9 +184,8 @@ class DAGBuilder {
                 def method = expr.rightExpression
                 def arg = expr.leftExpression
 
-                if (arg instanceof VariableExpression) {
+                if (arg instanceof VariableExpression && scope.get(arg.text) == null) {
                     // proc_1 | proc_2 => proc_2(proc_1()), not proc_2(proc_1)
-
                     arg = new MethodCallExpression(
                         new ConstantExpression("this"),
                         arg.text,
@@ -170,20 +193,41 @@ class DAGBuilder {
                     )
                 }
 
-                return visitMethodCallExpression(
-                    new MethodCallExpression(
-                        new ConstantExpression("this"),
-                        method.text, // superhack
-                        new ArgumentListExpression([arg])
-                    )
+                MethodCallExpression call = new MethodCallExpression(
+                    new ConstantExpression("this"),
+                    method.text,
+                    new ArgumentListExpression([arg])
                 )
+
+                if (method instanceof MethodCallExpression) {
+                    def args = method.arguments
+
+                    if (args instanceof TupleExpression) {
+                        args = new TupleExpression([arg, *args.expressions])
+                    } else if (args instanceof ArgumentListExpression) {
+                        args = new ArgumentListExpression([arg, *args.expressions])
+                    }
+
+                    call = new MethodCallExpression(
+                        method.objectExpression,
+                        method.method,
+                        args
+                    )
+                }
+
+                return visitMethodCallExpression(call)
             case Types.BITWISE_AND:
                 throw new DAGGenerationException("'&' operator is not currently supported")
             default:
                 def left = visitExpression(expr.leftExpression)
-                def right = visitExpression(expr.rightExpression)
+                if (expr.operation.type == Types.LEFT_SQUARE_BRACKET) {
+                    def right = ASTHelpers.isConstX(expr.rightExpression)
+                    if (left instanceof ProcessVariable && right != null) {
+                        return left.properties["unnamed_output_${right.value}"]
+                    }
+                }
 
-                // todo(ayush): this sucks
+                def right = visitExpression(expr.rightExpression)
                 Expression call
                 if ((left == null) && (right == null)) {
                     call = expr
@@ -239,91 +283,162 @@ class DAGBuilder {
 
                 addVertex(v)
                 if (left != null)
-                    addEdge(left.label, left, v)
+                    addDependency(left, v)
                 if (right != null)
-                    addEdge(right.label, right, v)
+                    addDependency(right, v)
 
-                return v
+                return new ScopeVariable(v)
         }
     }
 
-    Vertex visitMethodCallExpression (MethodCallExpression expr) {
-        // a method call expression should add either
-        // - an operator node
-        // - a process node
-        // - a suworkflow node
-        // - a generator node (anonymous channel factories e.g.)
+    ScopeVariable visitTernaryExpression (TernaryExpression expr) {
+        def bool = visitExpression(expr.booleanExpression)
 
+        def sub = expr.booleanExpression
+        if (bool != null) {
+            sub = new MethodCallExpression(
+                new VariableExpression("Channel"),
+                "of",
+                new ArgumentListExpression([])
+            )
+        }
+
+        def cond = new ConditionalVertex(
+            expr.booleanExpression.text,
+            new ExpressionStatement(
+                new BinaryExpression(
+                    new VariableExpression("condition"),
+                    Token.newSymbol("=", 0, 0),
+                    sub,
+                )
+            ),
+            [new ExpressionStatement(new VariableExpression("condition"))]
+        )
+
+        addVertex(cond)
+        if (bool != null) {
+            addDependency(bool, cond)
+        }
+
+        this.activeConditionals[cond] = true
+        def left = visitExpressionWithLiteralCheck(expr.trueExpression)
+
+        this.activeConditionals[cond] = false
+        def right = visitExpressionWithLiteralCheck(expr.falseExpression)
+
+        this.activeConditionals.remove(cond)
+
+        def v = new MergeVertex(expr.text)
+        addDependency(left, v)
+        addDependency(right, v)
+
+        return new ScopeVariable(v)
+    }
+
+    ScopeVariable visitMethodCallExpression (MethodCallExpression expr) {
         if (expr.methodAsString == "set") {
             def lst = (ArgumentListExpression) expr.arguments
 
-            if (lst.size() != 1 || !(lst[0] instanceof ClosureExpression))
-                throw new DAGGenerationException("Cannot parse non-closure argument(s) to Channel.set(): $lst")
+            if (lst.size() != 1)
+                throw new DAGGenerationException("Channel.set() takes exactly one argument, provided ${lst.size()} arguments: $lst")
 
-            ClosureExpression ce = lst[0] as ClosureExpression
-            BlockStatement b = ce.code as BlockStatement
+            ClosureExpression ce = ASTHelpers.isClosureX(lst[0])
+            if (ce == null) {
+                throw new DAGGenerationException("Channel.set() argument must be a closure, provided ${lst[0].class}: ${lst[0]}")
+            }
+
+            BlockStatement b = ASTHelpers.isBlockStmt(ce.code)
+            if (b == null) {
+                throw new DAGGenerationException("Malformed closure: ${lst[0]}")
+            }
 
             if (b.statements.size() != 1)
                 throw new DAGGenerationException("Cannot parse closure argument to Channel.set() w/ more than one statement: $b")
 
             ExpressionStatement stmt = b.statements[0] as ExpressionStatement
-
-            if (!(stmt.expression instanceof VariableExpression))
+            VariableExpression ve = ASTHelpers.isVariableX(stmt.expression)
+            if (ve == null)
                 throw new DAGGenerationException("Statement in closure argument to Channel.set() must be a variable: $b")
-
-            VariableExpression ve = stmt.expression as VariableExpression
 
             return visitBinaryExpression(new BinaryExpression(ve, Token.newSymbol("=", -1, -1), expr.objectExpression))
         }
 
-        Map<String, Vertex> dependencies = [:]
+        Map<Integer, ScopeVariable> dependencies = new OrderedHashMap<Integer, ScopeVariable>()
+        int depIdx = 0
         def objProducer = visitExpression(expr.objectExpression)
         if (objProducer != null)
-            dependencies[expr.objectExpression.text] = objProducer
+            dependencies[depIdx] = objProducer
+
+        def entity = this.entities.get(expr.methodAsString)
 
         List<Expression> newArgs = []
-        if (expr.arguments instanceof ArgumentListExpression) {
-            for (def x: (ArgumentListExpression) expr.arguments) {
-                def producer = visitExpression(x)
+        if (expr.arguments instanceof TupleExpression) {
+            for (def x: (TupleExpression) expr.arguments) {
+                depIdx += 1
+
+                def me = ASTHelpers.isMapEntryX(x)
+                if (me != null) {
+                    // hack: this assumes that all keyword arguments are literals,
+                    // which seems to be the case but could be wrong
+                    newArgs.add(x)
+                    continue
+                }
+
+                ScopeVariable producer
+                if (entity?.type == NFEntity.Type.Workflow) {
+                    producer = visitExpressionWithLiteralCheck(x)
+                } else {
+                    producer = visitExpression(x)
+                }
+
                 if (producer == null) {
                     newArgs.add(x)
                     continue
                 }
 
-                newArgs.add(
-                    new MethodCallExpression(
-                        new VariableExpression('Channel'),
-                        "of",
-                        new ArgumentListExpression([])
+                if (producer instanceof ProcessVariable) {
+                    producer.properties.collect {
+                        newArgs << new MethodCallExpression(
+                            new VariableExpression('Channel'),
+                            "of",
+                            new ArgumentListExpression([])
+                        )
+                    }
+                } else {
+                    newArgs.add(
+                        new MethodCallExpression(
+                            new VariableExpression('Channel'),
+                            "of",
+                            new ArgumentListExpression([])
+                        )
                     )
-                )
+                }
 
-                dependencies[x.text] = producer
-            }
-        } else if (expr.arguments instanceof TupleExpression) {
-            for (def x: (TupleExpression) expr.arguments) {
-                // todo(ayush): support upstream channel inputs here
-                newArgs.add(x)
+                dependencies[depIdx] = producer
             }
         }
 
-        def entity = this.entities.get(expr.methodAsString)
+
 
         Vertex v = null
         if (entity?.type == NFEntity.Type.Process) {
             List<Statement> ret
             if (entity.outputs.size() > 0) {
+                def outExpr = new PropertyExpression(
+                    new VariableExpression(expr.methodAsString),
+                    "out"
+                )
+
+                int idx = 0
                 ret = entity.outputs.collect {
                     new ExpressionStatement(
                         new BinaryExpression(
                             new VariableExpression(it),
                             Token.newSymbol("=", 0, 0),
-                            new PropertyExpression(
-                                new PropertyExpression(
-                                    new VariableExpression(expr.methodAsString),
-                                    "out"
-                                ),
-                                it
+                            new BinaryExpression(
+                                outExpr,
+                                Token.newSymbol("[", -1, -1),
+                                new ConstantExpression(idx++)
                             )
                         )
                     )
@@ -359,51 +474,67 @@ class DAGBuilder {
             )
 
             addVertex(v)
-
-            Map<String, Vertex> tupleMembers = new OrderedHashMap<String, Vertex>()
-            // todo(ayush): generate default names for unnamed outputs
-            for (String name: entity.outputs) {
-                scope.set("${expr.methodAsString}.out.$name", v)
-                tupleMembers[name] = v
-            }
-
             for (def x: dependencies) {
-                String label = x.key
-                Vertex prod = x.value
-
-                if (prod instanceof TupleVertex) {
-                    prod.unpack().forEach {k, y ->
-                        addEdge(k, y, v)
-                    }
-                } else {
-                    addEdge(label, prod, v)
-                }
+                addDependency(x.value, v)
             }
 
-            v = new TupleVertex(expr.methodAsString, tupleMembers)
-            scope.set("${expr.methodAsString}.out", v)
+            OrderedHashMap<String, PropertyVariable> props = new OrderedHashMap<String, PropertyVariable>()
+            int idx = 0
+            for (String name: entity.outputs) {
+                props[name] = new PropertyVariable(v, idx++)
+            }
 
-            return v
+            def processVariable = new ProcessVariable(v, props)
+            scope.set(expr.methodAsString, processVariable)
+            return processVariable
         } else if (entity?.type == NFEntity.Type.Workflow) {
             List<Vertex> inputs = []
-            DAGBuilder subWorkflowDag = generator.dags[entity.unaliased]
+            WorkflowVisitor subWorkflowDag = generator.visitors[entity.unaliased]
             Map<Vertex, Vertex> idMapping = new HashMap<Vertex, Vertex>();
 
-            for (def _subV: subWorkflowDag.vertices) {
+            for (def _subV: subWorkflowDag.dag.vertices) {
                 // maintain distinct IDs (only a problem if a subworkflow is called more than once)
                 def subV = Vertex.clone(_subV)
                 idMapping[_subV] = subV
 
                 if (subV.type == Vertex.Type.Input) {
                     inputs << subV
+                } else {
+                    addVertex(subV)
                 }
-
-                addVertex(subV)
             }
 
-            for (def _subE: subWorkflowDag.edges) {
+            Map<Vertex, ScopeVariable> inputBindings = new HashMap<Vertex, ScopeVariable>()
+
+            int i = 0;
+            for (def x: dependencies) {
+                ScopeVariable dep = x.value
+
+                if (dep instanceof ProcessVariable) {
+                    // tuple unpacking
+                    for (PropertyVariable prop: dep.properties.values()) {
+                        inputBindings[inputs[i++]] = prop
+                    }
+                } else if (dep instanceof SubWorkflowVariable) {
+                    // tuple unpacking
+                    for (ScopeVariable prop: dep.properties.values()) {
+                        inputBindings[inputs[i++]] = prop
+                    }
+                } else {
+                    inputBindings[inputs[i++]] = dep
+                }
+            }
+
+            def inputSet = new HashSet<Vertex>(inputs);
+
+            for (def _subE: subWorkflowDag.dag.edges) {
                 def from = idMapping[_subE.from]
                 def to = idMapping[_subE.to]
+
+                if (from in inputSet) {
+                    addDependency(inputBindings[from], to)
+                    continue
+                }
 
                 Edge subE
                 if (_subE instanceof ConditionalEdge) {
@@ -421,61 +552,25 @@ class DAGBuilder {
                     )
                 }
 
-                // don't need to use addEdge here - neither `to` nor `from` will ever be a
-                // TupleVertex as those are never added to the graph
-                this.edges << subE
+                this.dag.addEdge(subE)
             }
 
-            int i = 0;
+            OrderedHashMap<String, ScopeVariable> properties = new OrderedHashMap<String, ScopeVariable>();
 
-            for (def x: dependencies) {
-                String label = x.key
-                Vertex prod = x.value
-
-                if (prod instanceof TupleVertex) {
-                    prod.unpack().forEach {k, y ->
-                        addEdge(k, y, inputs[i])
-                        i += 1
-                    }
-                } else {
-                    addEdge(label, prod, inputs[i])
-                    i += 1
-                }
-            }
-
-            v = new OutputVertex(
-                "${expr.methodAsString} Output",
-                entity.outputs
-            )
-
-            addVertex(v)
-
-            Map<String, Vertex> tupleMembers = new OrderedHashMap<String, Vertex>();
-            // todo(ayush): generate default names for unnamed outputs
             for (def outputName: entity.outputs) {
-                def subV = subWorkflowDag.scope.get(outputName)
-                def prod = idMapping[subV]
-
-                addEdgeAndRemap(outputName, prod, v, idMapping)
-                tupleMembers[outputName] = v
+                def outVar = subWorkflowDag.scope.get(outputName)
+                properties[outputName] = outVar.remap(idMapping)
             }
 
-            def tv = new TupleVertex(expr.methodAsString, tupleMembers)
+            scope.set(expr.methodAsString, new SubWorkflowVariable(properties))
 
-            scope.set("${expr.methodAsString}.out", tv)
-
-            for (String o: entity.outputs) {
-                scope.set("${expr.methodAsString}.out.$o", v)
-            }
-
-            return tv
-        } else if (expr.methodAsString in this.operatorNames) {
+            return null
+        } else if (expr.methodAsString in operatorNames) {
 
             def ret = [new ExpressionStatement(new VariableExpression("res"))]
 
             List<String> outputNames = [];
-            if (expr.methodAsString in this.specialOperatorNames) {
-
+            if (expr.methodAsString in specialOperatorNames) {
                 def args = expr.arguments as ArgumentListExpression
                 def closure = args.expressions[0] as ClosureExpression
                 def block = closure.code as BlockStatement
@@ -536,6 +631,22 @@ class DAGBuilder {
             v.outputNames = outputNames
 
             addVertex(v)
+            for (def dep: dependencies) {
+                addDependency(dep.value, v)
+            }
+
+            ScopeVariable outVar = new ScopeVariable(v)
+            if (expr.methodAsString in specialOperatorNames) {
+                OrderedHashMap<String, PropertyVariable> props = new OrderedHashMap<String, PropertyVariable>()
+                int i = 0
+                for (def outputName: outputNames) {
+                    props[outputName] = new PropertyVariable(v, i++)
+                }
+
+                outVar = new SpecialOperatorVariable(v, props)
+            }
+
+            return outVar
         } else if (expr.objectExpression.text == "Channel" && expr.methodAsString in this.channelFactories) {
             v = new Vertex(
                 Vertex.Type.Generator,
@@ -555,28 +666,23 @@ class DAGBuilder {
             )
 
             addVertex(v)
-        }
-
-        if (v != null) {
-            for (def x: dependencies) {
-                if (x == null)
-                    continue
-
-                addEdge(x.key, x.value, v)
+            for (def dep: dependencies) {
+                addDependency(dep.value, v)
             }
-        }
 
-        return v
+            ScopeVariable outVar = new ScopeVariable(v)
+            return outVar
+        }
     }
 
-    Vertex visitVariableExpression(VariableExpression expr) {
+    ScopeVariable visitVariableExpression(VariableExpression expr) {
         // visiting a variable expression var should look up
         // and return the most recent producer of var
 
         return scope.get(expr.name)
     }
 
-    Vertex visitClosureExpression(ClosureExpression expr) {
+    ScopeVariable visitClosureExpression(ClosureExpression expr) {
 
         // for the most part we don't need to care about closures, except for when the parent expr is a MCE and the method is
         // - branch: we need to figure out what the forks are called
@@ -590,36 +696,50 @@ class DAGBuilder {
         return null
     }
 
-    Vertex visitPropertyExpression(PropertyExpression expr) {
+    ScopeVariable visitPropertyExpression(PropertyExpression expr) {
         if (isLiteralExpression(expr)) {
             return null
         }
 
-        def res = scope.get(expr.text)
-        if (res != null) return res
+        def obj = visitExpression(expr.objectExpression)
 
-        def v = visitExpression(expr.objectExpression)
-        if (v instanceof TupleVertex && expr.propertyAsString != "out") {
-            return v.members[expr.propertyAsString]
+        if (obj instanceof ProcessVariable || obj instanceof SubWorkflowVariable) {
+            Map<String, ScopeVariable> props = obj.properties as Map<String, ScopeVariable>
+
+            if (expr.propertyAsString != "out") {
+                return props.get(expr.propertyAsString)
+            }
+
+            if (props.size() == 1) {
+                // process.out -> channel
+                for (def prop: props) {
+                    return prop.value
+                }
+            }
+
+            // process.out -> map of channels
+            return obj
+        } else if (obj instanceof SpecialOperatorVariable) {
+            return obj.properties.get(expr.propertyAsString)
         }
 
-        return v
+        return obj
     }
 
-    Vertex visitListExpression(ListExpression expr) {
+    ScopeVariable visitListExpression(ListExpression expr) {
         if (isLiteralExpression(expr)) {
             return null
         }
 
-        List<Vertex> producers = []
+        List<ScopeVariable> dependencies = []
 
         List<Expression> transformed = expr.expressions.collect {
-            def producer = visitExpression(it)
-            producers << producer
-
-            if (producer == null) {
+            def dep = visitExpression(it)
+            if (dep == null) {
                 return it
             }
+
+            dependencies << dep
 
             return new MethodCallExpression(
                 new VariableExpression("Channel"),
@@ -642,31 +762,25 @@ class DAGBuilder {
         )
 
         addVertex(v)
-        producers.collect {
-            if (it == null) return
-            addEdge(it.label, it, v)
-            return
+        dependencies.each {
+            addDependency(it, v)
         }
 
-        return v
+        return new ScopeVariable(v)
     }
 
 
-    Vertex visitMapExpression(MapExpression expr) {
+    ScopeVariable visitMapExpression(MapExpression expr) {
         if (isLiteralExpression(expr)) {
             return null
         }
 
-        List<Vertex> producers = []
-
+        List<ScopeVariable> dependencies = []
         List<MapEntryExpression> transformed = expr.mapEntryExpressions.collect {
-            def keyProducer = visitExpression(it.keyExpression)
-            def valProducer = visitExpression(it.valueExpression)
-            producers << keyProducer
-            producers << valProducer
-
+            def keyDep = visitExpression(it.keyExpression)
             Expression keyExpr = it.keyExpression
-            if (keyProducer != null) {
+            if (keyDep != null) {
+                dependencies << keyDep
                 keyExpr = new MethodCallExpression(
                     new VariableExpression("Channel"),
                     "of",
@@ -674,8 +788,10 @@ class DAGBuilder {
                 )
             }
 
+            def valDep = visitExpression(it.valueExpression)
             Expression valExpr = it.valueExpression
-            if (valProducer != null) {
+            if (valDep != null) {
+                dependencies << valDep
                 valExpr = new MethodCallExpression(
                     new VariableExpression("Channel"),
                     "of",
@@ -700,30 +816,27 @@ class DAGBuilder {
         )
 
         addVertex(v)
-        producers.collect {
-            if (it == null) return
-            addEdge(it.label, it, v)
-            return
+        dependencies.each {
+            addDependency(it, v)
         }
 
-        return v
+        return new ScopeVariable(v)
     }
 
 
-    Vertex visitGStringExpression(GStringExpression expr) {
+    ScopeVariable visitGStringExpression(GStringExpression expr) {
         if (isLiteralExpression(expr)) {
             return null
         }
 
-        List<Vertex> producers = []
-
+        List<ScopeVariable> dependencies = []
         List<Expression> transformed = expr.values.collect {
-            def producer = visitExpression(it)
-            producers << producer
-
-            if (producer == null) {
+            def dep = visitExpression(it)
+            if (dep == null) {
                 return it
             }
+
+            dependencies << dep
 
             return new MethodCallExpression(
                 new VariableExpression("Channel"),
@@ -746,13 +859,11 @@ class DAGBuilder {
         )
 
         addVertex(v)
-        producers.collect {
-            if (it == null) return
-            addEdge(it.label, it, v)
-            return
+        dependencies.each {
+            addDependency(it, v)
         }
 
-        return v
+        return new ScopeVariable(v)
     }
 
 
@@ -791,7 +902,7 @@ class DAGBuilder {
         }
     }
 
-    Vertex visitExpressionWithLiteralCheck(Expression expr) {
+    ScopeVariable visitExpressionWithLiteralCheck(Expression expr) {
         // should only be called from expressions that don't generate their own vertices, e.g. set, =
         if (isLiteralExpression(expr)) {
             def v = new Vertex(
@@ -808,18 +919,21 @@ class DAGBuilder {
             )
 
             addVertex(v)
-            return v
+            return new ScopeVariable(v)
         }
 
         return visitExpression(expr)
     }
 
 
-    Vertex visitExpression(Expression expr) {
-        Vertex res
+    ScopeVariable visitExpression(Expression expr) {
+        ScopeVariable res
         switch (expr) {
             case BinaryExpression:
                 res = visitBinaryExpression(expr)
+                break
+            case TernaryExpression:
+                res = visitTernaryExpression(expr)
                 break
             case MethodCallExpression:
                 res = visitMethodCallExpression(expr)
@@ -856,10 +970,30 @@ class DAGBuilder {
     }
 
     void addVertex(Vertex v) {
-        this.vertices.add(v)
+        this.dag.addVertex(v)
 
         this.activeConditionals.forEach {cond, branch ->
-            this.edges.add(new ConditionalEdge(cond.call.text, cond, v, branch))
+            this.dag.addEdge(new ConditionalEdge(cond.call.text, cond, v, branch))
+        }
+    }
+
+    void addDependency(ScopeVariable src, Vertex dst) {
+        switch (src) {
+            case PropertyVariable:
+                addEdge(src.index.toString(), src.vertex, dst)
+                break
+            case ProcessVariable:
+                src.properties.collect {_, prop ->
+                    addDependency(prop, dst)
+                }
+                break
+            case SubWorkflowVariable:
+                src.properties.collect {_, prop ->
+                    addDependency(prop, dst)
+                }
+                break
+            default:
+                addEdge("", src.vertex, dst)
         }
     }
 
@@ -871,18 +1005,8 @@ class DAGBuilder {
             src.unpack(label, xs)
             xs.collect {k, v -> addEdge(k, v, dst)}
         } else {
-            this.edges.add(new Edge(label, src, dst))
+            this.dag.addEdge(new Edge(label, src, dst))
         }
-    }
-
-    void addEdgeAndRemap(String label, Vertex src, Vertex dst, Map<Vertex, Vertex> mapping) {
-        if (src == null || dst == null) return
-
-        if (src instanceof TupleVertex) {
-            src = src.remap(mapping)
-        }
-
-        addEdge(label, src, dst)
     }
 
     void visitStatement(Statement s) {
@@ -919,8 +1043,7 @@ class DAGBuilder {
                 addVertex(cond)
 
                 if (condProducer != null) {
-                    def e = new Edge(condProducer.label, condProducer, cond);
-                    edges.add(e)
+                    addDependency(condProducer, cond)
                 }
 
                 def parentScope = this.scope
@@ -951,21 +1074,23 @@ class DAGBuilder {
                     def ifBinding = ifScope.get(name)
                     def elseBinding = elseScope.get(name)
                     
-                    def v = ifBinding
+                    ScopeVariable binding = ifBinding
 
                     if (ifBinding == null || elseBinding == null) {
                         // todo(ayush): there is potential here for using unbound variables downstream - we need to make
                         //  sure that if this explodes at runtime, the error is clear
-                        v = ifBinding ?: elseBinding
-                    } else if (ifBinding.id != elseBinding.id) {
-                        v = new MergeVertex("Merge $name")
+                        binding = ifBinding ?: elseBinding
+                    } else if (ifBinding != elseBinding) {
+                        def v = new MergeVertex("Merge $name")
 
-                        addEdge(name, ifBinding, v)
-                        addEdge(name, elseBinding, v)
                         addVertex(v)
+                        addDependency(ifBinding, v)
+                        addDependency(elseBinding, v)
+
+                        binding = new ScopeVariable(v)
                     }
 
-                    this.scope.set(name, v)
+                    this.scope.set(name, binding)
                 }
         }
     }
@@ -989,15 +1114,16 @@ class DAGBuilder {
         }
     }
 
-
+    // todo(ayush): get rid of input nodes entirely
     void addInputNode(Statement stmt) {
         if (stmt instanceof ExpressionStatement) {
             def expr = stmt.expression
             if (expr instanceof VariableExpression) {
                 def v = new Vertex(Vertex.Type.Input, expr.name, null, null)
-                inputNodes.add(v)
+
                 addVertex(v)
-                scope.set(expr.name, v)
+                inputNodes.add(v)
+                scope.set(expr.name, new ScopeVariable(v))
             }
         }
     }
@@ -1007,7 +1133,7 @@ class DAGBuilder {
         def vbs = new ArrayList<JsonBuilder>()
         def ebs = new ArrayList<JsonBuilder>()
 
-        for (Vertex v: this.vertices) {
+        for (Vertex v: this.dag.vertices) {
             def vb = new JsonBuilder([
                 id: v.id.toString(),
                 label: v.label,
@@ -1022,7 +1148,7 @@ class DAGBuilder {
             vbs.add(vb)
         }
 
-        for (Edge e: this.edges) {
+        for (Edge e: this.dag.edges) {
             Boolean branch = null
             if (e instanceof ConditionalEdge) {
                 branch = e.branch

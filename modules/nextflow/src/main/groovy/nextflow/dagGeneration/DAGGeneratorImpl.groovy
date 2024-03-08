@@ -1,39 +1,26 @@
 package nextflow.dagGeneration
 
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicLong
 
-import groovy.json.JsonBuilder
-import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import org.codehaus.groovy.ast.ASTNode
 import org.codehaus.groovy.ast.ClassCodeVisitorSupport
 import org.codehaus.groovy.ast.ClassNode
-import org.codehaus.groovy.ast.Parameter
-import org.codehaus.groovy.ast.VariableScope
 import org.codehaus.groovy.ast.expr.ArgumentListExpression
 import org.codehaus.groovy.ast.expr.BinaryExpression
-import org.codehaus.groovy.ast.expr.BooleanExpression
 import org.codehaus.groovy.ast.expr.CastExpression
 import org.codehaus.groovy.ast.expr.ClosureExpression
 import org.codehaus.groovy.ast.expr.ConstantExpression
 import org.codehaus.groovy.ast.expr.Expression
-import org.codehaus.groovy.ast.expr.GStringExpression
-import org.codehaus.groovy.ast.expr.ListExpression
-import org.codehaus.groovy.ast.expr.MapEntryExpression
 import org.codehaus.groovy.ast.expr.MapExpression
 import org.codehaus.groovy.ast.expr.MethodCallExpression
-import org.codehaus.groovy.ast.expr.PropertyExpression
-import org.codehaus.groovy.ast.expr.TupleExpression
 import org.codehaus.groovy.ast.expr.VariableExpression
 import org.codehaus.groovy.ast.stmt.BlockStatement
 import org.codehaus.groovy.ast.stmt.ExpressionStatement
-import org.codehaus.groovy.ast.stmt.IfStatement
 import org.codehaus.groovy.ast.stmt.Statement
 import org.codehaus.groovy.control.CompilePhase
 import org.codehaus.groovy.control.SourceUnit
 import org.codehaus.groovy.syntax.Token
-import org.codehaus.groovy.syntax.Types
 import org.codehaus.groovy.transform.ASTTransformation
 import org.codehaus.groovy.transform.GroovyASTTransformation
 import static nextflow.ast.ASTHelpers.isBinaryX
@@ -42,14 +29,10 @@ import static nextflow.ast.ASTHelpers.isMapX
 import static nextflow.ast.ASTHelpers.isStmtX
 import static nextflow.ast.ASTHelpers.isTupleX
 import static nextflow.ast.ASTHelpers.isVariableX
-import static org.codehaus.groovy.ast.tools.GeneralUtils.constX
 
 @Slf4j
-//@CompileStatic
 @GroovyASTTransformation(phase = CompilePhase.CONVERSION)
 class DAGGeneratorImpl implements ASTTransformation {
-
-    @CompileStatic
     class Visitor extends ClassCodeVisitorSupport {
         SourceUnit unit
         String currentImportPath
@@ -92,44 +75,61 @@ class DAGGeneratorImpl implements ASTTransformation {
 
             def processName = sub.methodAsString
 
-
             def closure = ((ArgumentListExpression) sub.arguments)[0] as ClosureExpression
 
             List<String> outputNames = []
 
             String context = null
+            int j = 0
             for (Statement stmt: ((BlockStatement) closure.code).statements) {
-                // keep track of input ordering here too
-
                 context = stmt.statementLabel ?: context
                 if (context != "output")
                     continue
 
-                if (!(stmt instanceof ExpressionStatement) || !((stmt as ExpressionStatement).expression instanceof MethodCallExpression))
+                if (!(stmt instanceof ExpressionStatement))
                     continue
 
-                MethodCallExpression call = (stmt as ExpressionStatement).expression as MethodCallExpression
+                VariableExpression var = isVariableX(stmt.expression)
+                if (var?.name == "stdout") {
+                    outputNames << "unnamed_output_${j++}".toString()
+                    continue
+                }
 
-                List<Expression> args = isTupleX(call.arguments)?.expressions
-                if (args == null) continue
+                if (stmt.expression instanceof MethodCallExpression) {
+                    def outputName = "unnamed_output_${j++}".toString()
 
-                if (args.size() < 2 && (args.size() != 1 || call.methodAsString != "stdout")) continue
+                    MethodCallExpression call = stmt.expression as MethodCallExpression
+                    List<Expression> args = isTupleX(call.arguments)?.expressions
 
-                for (def arg: args) {
-                    MapExpression map = isMapX(arg)
-                    if (map == null) continue
+                    if (
+                        args != null &&
+                        (
+                            args.size() >= 2 ||
+                            (args.size() == 1 && call.methodAsString == "stdout")
+                        )
+                    ) {
+                        for (def arg: args) {
+                            MapExpression map = isMapX(arg)
+                            if (map == null) continue
 
-                    for (int i = 0; i < map.mapEntryExpressions.size(); i++) {
-                        final entry = map.mapEntryExpressions[i]
-                        final key = isConstX(entry.keyExpression)
-                        final val = isVariableX(entry.valueExpression)
+                            for (int i = 0; i < map.mapEntryExpressions.size(); i++) {
+                                final entry = map.mapEntryExpressions[i]
+                                final key = isConstX(entry.keyExpression)
+                                final val = isVariableX(entry.valueExpression)
 
-                        if( key?.text == 'emit' && val != null ) {
-                            outputNames << val.text
+                                if( key?.text == 'emit' && val != null ) {
+                                    outputName = val.text
+                                    break
+                                }
+                            }
+
                             break
                         }
                     }
+
+                    outputNames << outputName
                 }
+
             }
 
             scope[processName] = new NFEntity(NFEntity.Type.Process, expr, outputNames, sourceUnit.name, processName)
@@ -194,7 +194,7 @@ class DAGGeneratorImpl implements ASTTransformation {
 
     Set<String> workflowNames = new HashSet<String>()
     int anonymousWorkflows = 0
-    Map<String, DAGBuilder> dags = new LinkedHashMap<String, DAGBuilder>()
+    Map<String, WorkflowVisitor> visitors = new LinkedHashMap<String, WorkflowVisitor>()
 
     Map<String, Map<String, NFEntity>> scopes = new LinkedHashMap();
 
@@ -222,7 +222,6 @@ class DAGGeneratorImpl implements ASTTransformation {
             final nested = args[0] as MethodCallExpression
             name = nested.getMethodAsString()
 
-
             def subargs = nested.arguments  as ArgumentListExpression
             closure = subargs[0] as ClosureExpression
         }
@@ -249,15 +248,13 @@ class DAGGeneratorImpl implements ASTTransformation {
             }
         }
 
-        def dagBuilder = new DAGBuilder(name, currentScope, module, this)
+        def dagBuilder = new WorkflowVisitor(name, currentScope, module, this)
 
         for (def s: input) dagBuilder.addInputNode(s)
         for (def s: body) dagBuilder.visit(s)
-        for (def s: output) dagBuilder.visit(s)
-
-        dags[name] = dagBuilder
 
         List<String> outputNames = []
+        int outputIdx = 0
         for (def s: output) {
             ExpressionStatement es = isStmtX(s)
             if (es == null) continue
@@ -269,8 +266,24 @@ class DAGGeneratorImpl implements ASTTransformation {
                 outputNames << be.leftExpression.text
             } else if (v != null) {
                 outputNames << v.text
+            } else {
+                outputNames << "unnamed_output_$outputIdx".toString()
+
+                es.setExpression(
+                    new BinaryExpression(
+                        new VariableExpression("unnamed_output_$outputIdx"),
+                        Token.newSymbol("=", -1, -1),
+                        es.expression
+                    )
+                )
             }
+
+            dagBuilder.visit(es)
+
+            outputIdx += 1
         }
+
+        visitors[name] = dagBuilder
 
         currentScope[name] = new NFEntity(NFEntity.Type.Workflow, expr, outputNames, module, name)
         workflowNames.add(name)
@@ -283,6 +296,6 @@ class DAGGeneratorImpl implements ASTTransformation {
         v.visitClass((ClassNode) nodes[1])
         scopes[source.name] = v.scope
 
-        workflowNames.forEach {name -> this.dags[name].writeDAG()}
+        workflowNames.forEach {name -> this.visitors[name].writeDAG()}
     }
 }

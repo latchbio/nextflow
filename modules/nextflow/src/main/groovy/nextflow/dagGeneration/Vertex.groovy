@@ -17,7 +17,7 @@ class Vertex {
 
         // Internal Plumbing
         Conditional,
-        Input,
+        Input, // rename
         Output,
         Merge,
         Tuple,

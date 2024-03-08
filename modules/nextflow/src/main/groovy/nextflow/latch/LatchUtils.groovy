@@ -96,7 +96,7 @@ class LatchUtils {
 
     static Map serialize(Object value) {
         if (value instanceof DataflowVariable) {
-            return serialize(value.get())
+            return ["value": serialize(value.get())]
         } else if (value instanceof DataflowReadChannel) {
             return serialize(value.getVal())
         } else if (value instanceof DataflowBroadcast || value instanceof DataflowQueue) {
