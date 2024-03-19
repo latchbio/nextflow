@@ -16,9 +16,6 @@
 
 package nextflow.cli
 
-import org.yaml.snakeyaml.DumperOptions
-import org.yaml.snakeyaml.Yaml
-
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -125,10 +122,7 @@ class CmdConfig extends CmdBase {
     }
 
     @PackageScope void printYaml0(ConfigObject config, OutputStream output) {
-        def options = new DumperOptions()
-        options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK)
-        final String yaml = new Yaml(options).dump(config)
-        output << yaml
+        output << ConfigHelper.toYamlString(config)
     }
 
     /**

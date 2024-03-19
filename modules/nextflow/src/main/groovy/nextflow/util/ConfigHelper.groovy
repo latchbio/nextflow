@@ -18,6 +18,9 @@ package nextflow.util
 
 import java.nio.file.Path
 
+import org.yaml.snakeyaml.DumperOptions
+import org.yaml.snakeyaml.Yaml
+
 import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
@@ -302,6 +305,24 @@ class ConfigHelper {
 
     static String toFlattenString(Map map, boolean sort=false) {
         flattenFormat(map.toConfigObject(), sort)
+    }
+
+    private static Map<Object, Object> toMap(ConfigObject config) {
+        config.collectEntries { key, value ->
+            if (value instanceof ConfigObject) {
+                return [key, toMap(value)]
+            } else {
+                if( value instanceof GString )
+                    return [key, value.toString()]
+                return [key, value]
+            }
+        }
+    }
+
+    static String toYamlString(ConfigObject config) {
+        DumperOptions options = new DumperOptions()
+        options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK)
+        return new Yaml(options).dump(toMap(config))
     }
 
     static boolean isValidIdentifier(String s) {
