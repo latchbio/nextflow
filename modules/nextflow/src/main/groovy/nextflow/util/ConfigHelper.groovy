@@ -24,7 +24,9 @@ import org.yaml.snakeyaml.Yaml
 import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
+
 import nextflow.secret.SecretHolder
+
 import org.codehaus.groovy.runtime.InvokerHelper
 /**
  * Helper method to handle configuration object
@@ -309,13 +311,12 @@ class ConfigHelper {
 
     private static Map<Object, Object> toMap(ConfigObject config) {
         config.collectEntries { key, value ->
-            if (value instanceof ConfigObject) {
-                return [key, toMap(value)]
-            } else {
-                if( value instanceof GString )
-                    return [key, value.toString()]
-                return [key, value]
-            }
+            if (value instanceof ConfigObject)
+                [key, toMap(value)]
+            else if( value instanceof GString )
+                [key, value.toString()]
+            else
+                [key, value]
         }
     }
 
