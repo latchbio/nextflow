@@ -41,7 +41,7 @@ class CmdConfig extends CmdBase {
 
     static final public NAME = 'config'
 
-    static final public List<String> VALID_FORMATS = ['properties', 'flat', 'yaml']
+    static final public List<String> VALID_FORMATS = ['properties', 'flat', 'json']
 
     @Parameter(description = 'project name')
     List<String> args = []
@@ -104,8 +104,8 @@ class CmdConfig extends CmdBase {
                 printProperties0(config, stream)
             else if (format == 'flat')
                 printFlatten0(config, stream)
-            else if (format == 'yaml')
-                printYaml0(config, stream)
+            else if (format == 'json')
+                printJson0(config, stream)
             else
                 throw new AbortOperationException("Format not supported: $format")
         }
@@ -121,8 +121,8 @@ class CmdConfig extends CmdBase {
             log.warn(msg)
     }
 
-    @PackageScope void printYaml0(ConfigObject config, OutputStream output) {
-        output << ConfigHelper.toYamlString(config)
+    @PackageScope void printJson0(ConfigObject config, OutputStream output) {
+        output << ConfigHelper.toJsonString(config)
     }
 
     /**
