@@ -41,6 +41,8 @@ class CmdConfig extends CmdBase {
 
     static final public NAME = 'config'
 
+    static final public List<String> VALID_FORMATS = ['properties', 'flat', 'json']
+
     @Parameter(description = 'project name')
     List<String> args = []
 
@@ -50,17 +52,17 @@ class CmdConfig extends CmdBase {
     @Parameter(names=['-profile'], description = 'Choose a configuration profile')
     String profile
 
-    @Parameter(names = '-properties', description = 'Prints config using Java properties notation')
-    boolean printProperties
-
-    @Parameter(names = '-flat', description = 'Print config using flat notation')
-    boolean printFlatten
+    @Parameter(names = '-format', description = 'Prints config using the specified format')
+    String format
 
     @Parameter(names = '-sort', description = 'Sort config attributes')
     boolean sort
 
     @Parameter(names = '-value', description = 'Print the value of a config option, or fail if the option is not defined')
     String printValue
+
+    @Parameter(names = '-output', description = 'Write config to the specified path')
+    String outputPath
 
     @Override
     String getName() { NAME }
@@ -74,18 +76,14 @@ class CmdConfig extends CmdBase {
         if( args ) base = getBaseDir(args[0])
         if( !base ) base = Paths.get('.')
 
-        if( profile && showAllProfiles ) {
+        if( profile && showAllProfiles )
             throw new AbortOperationException("Option `-profile` conflicts with option `-show-profiles`")
-        }
 
-        if( printProperties && printFlatten )
-            throw new AbortOperationException("Option `-flat` and `-properties` conflicts")
+        if( format && printValue )
+            throw new AbortOperationException("Option `-format` and `-value` conflicts")
 
-        if ( printValue && printFlatten )
-            throw new AbortOperationException("Option `-value` and `-flat` conflicts")
-
-        if ( printValue && printProperties )
-            throw new AbortOperationException("Option `-value` and `-properties` conflicts")
+        if( format && !VALID_FORMATS.contains(format) )
+            throw new AbortOperationException("Not a valid output format: $format -- It must be one of the following: ${VALID_FORMATS.join(',')}")
 
         final builder = new ConfigBuilder()
                 .setShowClosures(true)
@@ -96,21 +94,35 @@ class CmdConfig extends CmdBase {
 
         final config = builder.buildConfigObject()
 
-        if( printProperties ) {
-            printProperties0(config, stdout)
+        OutputStream stream = stdout
+        if( outputPath ) {
+            stream = new FileOutputStream(outputPath)
         }
-        else if( printFlatten ) {
-            printFlatten0(config, stdout)
+
+        if( format ) {
+            if (format == 'properties')
+                printProperties0(config, stream)
+            else if (format == 'flat')
+                printFlatten0(config, stream)
+            else if (format == 'json')
+                printJson0(config, stream)
+            else
+                throw new AbortOperationException("Format not supported: $format")
         }
         else if( printValue ) {
-            printValue0(config, printValue, stdout)
+            printValue0(config, printValue, stream)
         }
         else {
-            printCanonical0(config, stdout)
+            printCanonical0(config, stream)
         }
+
 
         for( String msg : builder.warnings )
             log.warn(msg)
+    }
+
+    @PackageScope void printJson0(ConfigObject config, OutputStream output) {
+        output << ConfigHelper.toJsonString(config)
     }
 
     /**
