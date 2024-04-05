@@ -624,6 +624,30 @@ class TaskProcessor {
         int count = makeTaskContextStage1(task, secondPass, values)
         makeTaskContextStage2(task, secondPass, count)
 
+        final attempt = System.getenv('FLYTE_ATTEMPT_NUMBER')
+        if (attempt != null) {
+            task.config.attempt = attempt.toInteger()
+        }
+
+        final preExec = System.getenv('FLYTE_PRE_EXECUTE')
+        if (preExec != null) {
+            log.info "Getting Resource requirements"
+            final cpus = task.config.getCpus()
+            final memory = task.config.getMemory()
+            final disk = task.config.getDisk()
+            final resources = [
+                cpus: cpus,
+                memory: memory != null ? memory.toBytes() : null,
+                disk: disk != null ? disk.toBytes(): null
+            ]
+
+            final jsonString = new JsonBuilder(resources).toString()
+            OutputStream stream = new FileOutputStream(".latch/resources.json")
+            stream << jsonString
+
+            System.exit(0)
+        }
+
         // verify that `when` guard, when specified, is satisfied
         if( !checkWhenGuard(task) )
             return
