@@ -46,10 +46,9 @@ class NodeMarker {
      * @param inputs The list of inputs entering in the process
      * @param outputs the list of outputs leaving the process
      */
-    static Integer addProcessNode( TaskProcessor process, InputsList inputs, OutputsList outputs ) {
+    static void addProcessNode( TaskProcessor process, InputsList inputs, OutputsList outputs ) {
         if( session && session.dag && !session.aborted )
-            return session.dag.addProcessNode( process.name, inputs, outputs, process )
-        return -1
+            session.dag.addProcessNode( process.name, inputs, outputs, process )
     }
 
     /**
@@ -59,13 +58,11 @@ class NodeMarker {
      * @param inputs The operator input(s). It can be either a single channel or a list of channels.
      * @param outputs The operator output(s). It can be either a single channel, a list of channels or {@code null} if the operator has no output.
      */
-    static Integer addOperatorNode( String name, inputs, outputs )  {
+    static void addOperatorNode( String name, inputs, outputs )  {
         if( session && session.dag && !session.aborted ) {
-            Integer id = session.dag.addOperatorNode(name, inputs, outputs, new ArrayList<DataflowProcessor>(operators))
+            session.dag.addOperatorNode(name, inputs, outputs, new ArrayList<DataflowProcessor>(operators))
             operators.clear()
-            return id
         }
-        return -1
     }
 
     /**

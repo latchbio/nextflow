@@ -21,6 +21,10 @@ class ScopeVariable {
             (this.vertex.id == obj.vertex.id)
         )
     }
+
+    ScopeVariable makeClone() {
+        return new ScopeVariable(this.vertex)
+    }
 }
 
 class PropertyVariable extends ScopeVariable {
@@ -44,6 +48,10 @@ class PropertyVariable extends ScopeVariable {
             (this.vertex.id == obj.vertex.id) &&
             (this.index == obj.index)
         )
+    }
+
+    PropertyVariable makeClone() {
+        return new PropertyVariable(this.vertex, this.index)
     }
 }
 
@@ -74,12 +82,30 @@ class ProcessVariable extends ScopeVariable {
             this.properties == obj.properties
         )
     }
+
+    ProcessVariable makeClone() {
+        Map<String, PropertyVariable> cloned = new OrderedHashMap<String, PropertyVariable>()
+        for (def entry: this.properties) {
+            cloned[entry.key] = entry.value.makeClone()
+        }
+
+        return new ProcessVariable(this.vertex, cloned)
+    }
 }
 
 // handling for branch/multimap outputs
 class SpecialOperatorVariable extends ProcessVariable {
     SpecialOperatorVariable(Vertex vertex, OrderedHashMap<String, PropertyVariable> properties) {
         super(vertex, properties)
+    }
+
+    SpecialOperatorVariable makeClone() {
+        Map<String, PropertyVariable> cloned = new OrderedHashMap<String, PropertyVariable>()
+        for (def entry: this.properties) {
+            cloned[entry.key] = entry.value.makeClone()
+        }
+
+        return new SpecialOperatorVariable(this.vertex, cloned)
     }
 }
 
@@ -107,5 +133,14 @@ class SubWorkflowVariable extends ScopeVariable {
             (obj instanceof SubWorkflowVariable) &&
             this.properties == obj.properties
         )
+    }
+
+    SubWorkflowVariable makeClone() {
+        Map<String, ScopeVariable> cloned = new OrderedHashMap<String, ScopeVariable>()
+        for (def entry: this.properties) {
+            cloned[entry.key] = entry.value.makeClone()
+        }
+
+        return new SubWorkflowVariable(cloned)
     }
 }

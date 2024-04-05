@@ -16,6 +16,8 @@
 
 package nextflow.script
 
+import java.lang.reflect.Array
+
 import groovy.json.JsonBuilder
 import groovy.json.JsonSlurper
 import groovy.transform.CompileStatic
@@ -228,21 +230,33 @@ class WorkflowDef extends BindableDef implements ChainableDef, IterableDef, Exec
                 def name = ch.key
                 def channel = ch.value
 
-                if (!(channel instanceof DataflowExpression))
-                    channel.bind(Channel.STOP)
+                boolean isValueChannel = channel instanceof DataflowExpression
 
                 def events = new HashMap<String, Closure>(2);
                 events["onComplete"] = {
+                    def builder = new JsonBuilder()
+                    if (isValueChannel) {
+                        if (res.size() != 1) {
+                            log.info "No output found for channel $name"
+                            return
+                        }
+
+                        builder(res[0])
+                    } else {
+                        builder(res)
+                    }
+
                     def f = new File(".latch/task-outputs/${name}.json")
                     new File(f.parent).mkdirs()
                     f.createNewFile()
-
-                    def builder = new JsonBuilder()
-                    builder(res)
                     f.write(builder.toString())
                 }
                 events["onNext"] = {it ->
-                    res.add(LatchUtils.serialize(it));
+                    Object val = LatchUtils.serialize(it)
+                    if (isValueChannel)
+                        val = ["value": val]
+
+                    res.add(val)
                 }
 
                 DataflowHelper.subscribeImpl(CH.getReadChannel(channel), events)
@@ -251,7 +265,6 @@ class WorkflowDef extends BindableDef implements ChainableDef, IterableDef, Exec
 
         return output
     }
-
 }
 
 /**

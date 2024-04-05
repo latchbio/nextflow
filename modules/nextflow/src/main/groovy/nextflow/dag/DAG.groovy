@@ -50,6 +50,7 @@ import java.util.concurrent.atomic.AtomicLong
 @Slf4j
 class DAG {
 
+    @PackageScope
     static enum Type {
         PROCESS,
         OPERATOR,
@@ -95,11 +96,11 @@ class DAG {
      * @param inputs The list of inputs entering in the process
      * @param outputs the list of outputs leaving the process
      */
-    Integer addProcessNode( String label, InputsList inputs, OutputsList outputs, TaskProcessor process=null ) {
+    void addProcessNode( String label, InputsList inputs, OutputsList outputs, TaskProcessor process=null ) {
         assert label
         assert inputs
         assert outputs
-        return addVertex( Type.PROCESS, label, normalizeInputs(inputs), normalizeOutputs(outputs), process )
+        addVertex( Type.PROCESS, label, normalizeInputs(inputs), normalizeOutputs(outputs), process )
     }
 
     /**
@@ -109,11 +110,10 @@ class DAG {
      * @param inputs The operator input(s). It can be either a single channel or a list of channels.
      * @param outputs The operator output(s). It can be either a single channel, a list of channels or {@code null} if the operator has no output.
      */
-    Integer addOperatorNode( String label, inputs, outputs, List<DataflowProcessor> operators=null )  {
+    void addOperatorNode( String label, inputs, outputs, List<DataflowProcessor> operators=null )  {
         assert label
         assert inputs
-
-        return addVertex(Type.OPERATOR, label, normalizeChannels(inputs), normalizeChannels(outputs), operators )
+        addVertex(Type.OPERATOR, label, normalizeChannels(inputs), normalizeChannels(outputs), operators )
     }
 
     /**
@@ -137,23 +137,17 @@ class DAG {
      * @param outbounds The outbounds channels leaving the vertex
      */
     @PackageScope
-    Integer addVertex( Type type, String label, List<ChannelHandler> inbounds, List<ChannelHandler> outbounds, Object extra=null) {
+    void addVertex( Type type, String label, List<ChannelHandler> inbounds, List<ChannelHandler> outbounds, Object extra=null) {
 
         final vertex = createVertex( type, label, extra )
 
-        def inIdx = 0
         for( ChannelHandler channel : inbounds ) {
-            inbound( vertex, channel, inIdx )
-            inIdx += 1
+            inbound( vertex, channel )
         }
 
-        def outIdx = 0
         for( ChannelHandler channel : outbounds ) {
-            outbound( vertex, channel, outIdx )
-            outIdx += 1
+            outbound( vertex, channel )
         }
-
-        return vertex.id
     }
 
     /**
@@ -180,19 +174,18 @@ class DAG {
         return result
     }
 
-    private void inbound( Vertex vertex, ChannelHandler entering, Integer idx)  {
+    private void inbound( Vertex vertex, ChannelHandler entering )  {
 
         // look for an existing edge for the given dataflow channel
         def edge = findEdge(entering.channel)
 
         // if does not exist just create it
         if( !edge ) {
-            edges << new Edge(channel: entering.channel, to: vertex, label: entering.label, inIdx: idx)
+            edges << new Edge(channel: entering.channel, to: vertex, label: entering.label)
         }
         // link the edge to given `edge`
         else if( edge.to == null ) {
             edge.to = vertex
-            edge.inIdx = idx
         }
         // handle the special case for dataflow variable
         // this kind of channel can be used more than one time as an input
@@ -203,7 +196,7 @@ class DAG {
                 if(p!=-1) vertices.add(p,edge.from)
                 else vertices.add(edge.from)
             }
-            def fork = new Edge(channel: entering.channel, from: edge.from, to: vertex, label: entering.label, inIdx: idx)
+            def fork = new Edge(channel: entering.channel, from: edge.from, to: vertex, label: entering.label)
             edges << fork
         }
         // the same channel - apart the above case - cannot be used multiple times as an input
@@ -223,16 +216,15 @@ class DAG {
         return obj instanceof DataflowQueue && CH.isBridge(obj)
     }
 
-    private void outbound( Vertex vertex, ChannelHandler leaving, Integer outIdx) {
+    private void outbound( Vertex vertex, ChannelHandler leaving) {
 
         // look for an existing edge for the given dataflow channel
         final edge = findEdge(leaving.channel)
         if( !edge ) {
-            edges << new Edge(channel: leaving.channel, from: vertex, label: leaving.label, outIdx: outIdx)
+            edges << new Edge(channel: leaving.channel, from: vertex, label: leaving.label)
         }
         else if( edge.from == null ) {
             edge.from = vertex
-            edge.outIdx = outIdx
         }
         // the same channel cannot be used multiple times as an output
         // thus throws an exception
@@ -472,16 +464,6 @@ class DAG {
          * A descriptive label
          */
         String label
-
-        /**
-         * Index of inbound / receiving parameter
-         */
-        Integer inIdx
-
-        /**
-         * Index of outbound / broadcasting parameter
-         */
-        Integer outIdx
 
         /**
          * unique Id

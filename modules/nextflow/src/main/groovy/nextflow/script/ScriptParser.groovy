@@ -177,13 +177,15 @@ class ScriptParser {
 
         Map<String, Map<String, String>> res = [:]
         scriptText.tokenize("\n").forEach {
+            it = it.strip()
+
             def matcher = (it =~ import_expr)
             if (!matcher.matches()) return;
 
             def aliases = matcher.group("aliases")
             def path = matcher.group("path")
 
-            if (!path.startsWith(".")) return; // only parse local imports
+            if (path.startsWith("plugin")) return; // only parse local imports
 
             Map<String, String> subRes = [:]
             aliases.strip().tokenize(";").forEach {
@@ -202,16 +204,17 @@ class ScriptParser {
         return res
     }
 
+    static Path realModulePath(Path p) {
+        return (new IncludeDef()).realModulePath(p)
+    }
+
     private ScriptParser parseLocalImports(String scriptText, Path scriptPath, GroovyShell interpreter) {
         def imports = getLocalImports(scriptText)
 
         imports.each( {
             def fileName = it.key
-            if (!fileName.endsWith(".nf")) {
-                fileName = "${fileName}.nf".toString()
-            }
+            def importPath = realModulePath(Path.of(scriptPath.parent.toString(), fileName).normalize())
 
-            def importPath = Path.of(scriptPath.parent.toString(), fileName).normalize()
             parse0(importPath.text, importPath, interpreter)
         })
 

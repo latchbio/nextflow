@@ -1,6 +1,6 @@
 package nextflow.dagGeneration
 
-class Edge implements EdgeLike<Vertex> {
+class Edge implements EdgeLike<Vertex, Edge> {
     String label
     Vertex from
     Vertex to
@@ -9,6 +9,10 @@ class Edge implements EdgeLike<Vertex> {
         this.label = label
         this.from = from
         this.to = to
+    }
+
+    Edge make_clone() {
+        return new Edge(label, from, to)
     }
 }
 
@@ -24,5 +28,10 @@ class ConditionalEdge extends Edge {
         super("Conditional: $label - Branch: $branch", cond, to)
 
         this.branch = branch
+    }
+
+    @Override
+    ConditionalEdge make_clone() {
+        return new ConditionalEdge(label, from, to, branch)
     }
 }

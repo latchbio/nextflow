@@ -2,14 +2,20 @@ package nextflow.dagGeneration
 
 import groovyjarjarantlr4.v4.misc.OrderedHashMap
 
-interface EdgeLike<T> {
+interface VertexLike<THIS extends VertexLike<THIS>> {
+    long getId()
+    THIS make_clone()
+}
+
+interface EdgeLike<T, THIS extends EdgeLike<T, THIS>> {
     T getFrom()
     T getTo()
     void setFrom(T from)
     void setTo(T to)
+    THIS make_clone()
 }
 
-class DAG<V, E extends EdgeLike<V>> {
+class DAG<V extends VertexLike<V>, E extends EdgeLike<V, E>> {
     List<V> vertices
     List<E> edges
 
@@ -25,6 +31,27 @@ class DAG<V, E extends EdgeLike<V>> {
         downstream = new HashMap<V, List<E>>().withDefault {new ArrayList<E>()}
         upstream = new HashMap<V, List<E>>().withDefault {new ArrayList<E>()}
         vertexSet = new HashSet<V>();
+    }
+
+
+    DAG<V,E> make_clone() {
+        DAG<V,E> newDAG = new DAG()
+        Map<V,V> vertexMapping = new OrderedHashMap<V,V>()
+
+        for (V v: this.vertices) {
+            V newV = v.make_clone()
+            vertexMapping[v] = newV
+            newDAG.addVertex(newV)
+        }
+
+        for (E e: this.edges) {
+            E newE = e.make_clone()
+            newE.from = vertexMapping[newE.from]
+            newE.to = vertexMapping[newE.to]
+            newDAG.addEdge(newE)
+        }
+
+        return newDAG
     }
 
     void addVertex(V v) {

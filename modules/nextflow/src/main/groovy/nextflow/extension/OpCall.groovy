@@ -168,33 +168,6 @@ class OpCall implements Callable {
             return invoke1('set', [source, args[0]] as Object[])
         }
 
-        def serializedValues = System.getenv("LATCH_PARAM_VALS")
-
-        if (serializedValues != null) {
-            List<List<String>> channels = LatchUtils.deserializeParams(serializedValues)
-
-            List<DataflowReadChannel> sources = []
-            for (def channel: channels) {
-                def ch = new DataflowQueue()
-                for (def x: channel)
-                    ch << x
-
-                ch.bind(Channel.STOP)
-
-                sources.add(ch)
-            }
-
-            source = sources[0]
-            int sourceIdx = 1
-            for (int argIdx = 0; argIdx < args.size(); argIdx++) {
-                // todo(ayush): should we also check for ReadChannel here?
-                if (args[argIdx] instanceof DataflowWriteChannel) {
-                    args[argIdx] = sources[sourceIdx]
-                    sourceIdx += 1
-                }
-            }
-        }
-
         final DataflowReadChannel source = read0(source)
         final result = invoke0(source, read1(args))
 

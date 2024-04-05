@@ -15,6 +15,7 @@ import org.codehaus.groovy.ast.expr.BooleanExpression
 import org.codehaus.groovy.ast.expr.ClassExpression
 import org.codehaus.groovy.ast.expr.ClosureExpression
 import org.codehaus.groovy.ast.expr.ConstantExpression
+import org.codehaus.groovy.ast.expr.ConstructorCallExpression
 import org.codehaus.groovy.ast.expr.Expression
 import org.codehaus.groovy.ast.expr.GStringExpression
 import org.codehaus.groovy.ast.expr.ListExpression
@@ -23,6 +24,7 @@ import org.codehaus.groovy.ast.expr.MapExpression
 import org.codehaus.groovy.ast.expr.MethodCallExpression
 import org.codehaus.groovy.ast.expr.NotExpression
 import org.codehaus.groovy.ast.expr.PropertyExpression
+import org.codehaus.groovy.ast.expr.RangeExpression
 import org.codehaus.groovy.ast.expr.StaticMethodCallExpression
 import org.codehaus.groovy.ast.expr.TernaryExpression
 import org.codehaus.groovy.ast.expr.TupleExpression
@@ -134,6 +136,21 @@ class StatementJSONConverter {
                     return [
                         "ClassExpression": [
                             "type": expr.type.text
+                        ]
+                    ]
+                case RangeExpression:
+                    return [
+                        "RangeExpression": [
+                            "from": visitExpression(expr.from),
+                            "to": visitExpression(expr.to),
+                            "inclusive": expr.inclusive
+                        ]
+                    ]
+                case ConstructorCallExpression:
+                    return [
+                        "ConstructorCallExpression": [
+                            "type": expr.type.text,
+                            "arguments": visitExpression(expr.arguments)
                         ]
                     ]
                 default:
@@ -303,7 +320,18 @@ class StatementJSONConverter {
                         (expr["values"] as List).collect { visitExpression(it) }
                     )
                 case "ClassExpression":
-                    return new ClassExpression(ClassHelper.DYNAMIC_TYPE) // todo(ayush): preserve types
+                    return new ClassExpression(ClassHelper.make(expr["type"] as String))
+                case "RangeExpression":
+                    return new RangeExpression(
+                        visitExpression(expr["from"]),
+                        visitExpression(expr["to"]),
+                        expr["inclusive"] as Boolean
+                    )
+                case "ConstructorCallExpression":
+                    return new ConstructorCallExpression(
+                        ClassHelper.make(expr["type"] as String),
+                        visitExpression(expr["arguments"])
+                    )
                 default:
                     throw new Exception("Cannot convert malformed JSON into statement: $s")
             }

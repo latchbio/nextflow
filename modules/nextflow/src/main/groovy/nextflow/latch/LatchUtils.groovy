@@ -2,6 +2,7 @@ package nextflow.latch
 
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.regex.Matcher
 
 import groovy.json.JsonBuilder
 import groovy.json.JsonOutput
@@ -13,9 +14,12 @@ import groovyx.gpars.dataflow.DataflowBroadcast
 import groovyx.gpars.dataflow.DataflowQueue
 import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowVariable
+import groovyx.gpars.dataflow.expression.DataflowExpression
 import nextflow.Channel
 import nextflow.extension.CH
 import nextflow.file.http.XPath
+import nextflow.script.TokenBranchChoice
+import nextflow.script.TokenMultiMapDef
 
 @Slf4j
 class LatchUtils {
@@ -38,6 +42,16 @@ class LatchUtils {
         if (json.containsKey("path")) {
             String path = json.get("path")
             return Paths.get(path)
+        } else if (json.containsKey("value")) {
+            def result = new DataflowVariable()
+            result << deserialize0(json.get("value"))
+            return result
+        } else if (json.containsKey("branchChoice")) {
+            def tbc = json.get("branchChoice") as Map
+            return new TokenBranchChoice(
+                deserialize0(tbc.get("value")),
+                tbc.get("choice") as String
+            )
         } else if (json.containsKey("list")) {
             def lst = json.get("list") as List
             return lst.collect { deserialize0(it) }
@@ -71,19 +85,25 @@ class LatchUtils {
         throw new Exception("Cannot deserialize unsupported JSON Item ${json}")
     }
 
-    static Object deserialize(String val) {
-        def slurper = new JsonSlurper()
-
-        Object parsed = slurper.parseText(val)
-        return deserialize0(parsed)
-    }
-
     static List deserializeParams(String serializedJson) {
         def slurper = new JsonSlurper()
-        List<List<String>> channels = slurper.parseText(serializedJson)
+        List channels = slurper.parseText(serializedJson) as List
 
         def params = []
         for (Object channel: channels) {
+            if (channel instanceof Map) {
+                def val = deserialize0(channel)
+
+                if (!(val instanceof DataflowExpression))
+                    throw new Exception("non-list channel input must be a value channel: $channel")
+
+                params << val
+                continue
+            }
+
+            if (!(channel instanceof List<String>))
+                throw new Exception("non-list channel input must be a value channel: $channel")
+
             def res = []
             for (def x: channel) {
                 res << deserialize0(x)
@@ -95,10 +115,8 @@ class LatchUtils {
     }
 
     static Map serialize(Object value) {
-        if (value instanceof DataflowVariable) {
-            return ["value": serialize(value.get())]
-        } else if (value instanceof DataflowReadChannel) {
-            return serialize(value.getVal())
+        if (value instanceof DataflowExpression) {
+            return ["value": serialize(value.getVal())]
         } else if (value instanceof DataflowBroadcast || value instanceof DataflowQueue) {
             value.bind(Channel.STOP)
 
@@ -111,6 +129,8 @@ class LatchUtils {
             return  ["boolean": value]
         } else if (value instanceof String) {
             return  ["string": value]
+        } else if (value instanceof GString) {
+            return ["string": value.toString()]
         } else if (value instanceof Integer) {
             return  ["integer": value]
         } else if (value instanceof Float) {
@@ -132,29 +152,24 @@ class LatchUtils {
             }
 
             return ["map": res]
+        } else if (value instanceof TokenBranchChoice) {
+            return serialize(value.value)
         } else if (value instanceof Serializable) {
-            return serializeObject(value)
+            def baos = new ByteArrayOutputStream();
+            def oos = new ObjectOutputStream( baos );
+            try {
+                oos.writeObject( value );
+            } catch (NotSerializableException e) {
+                throw new Exception("Unable to serialize value $value of type ${value.getClass()} as it is not Serializable")
+            }
+            oos.close();
+
+            def encoded = Base64.getEncoder().encodeToString(baos.toByteArray())
+
+            return ["object": encoded]
         } else {
-            throw new Exception("Unable to serialized value $value of type ${value.getClass()}")
+            throw new Exception("Unable to serialize value $value of type ${value.getClass()}")
         }
-    }
-
-    static Map<String, String> serializeObject(Serializable value) {
-        def baos = new ByteArrayOutputStream();
-        def oos = new ObjectOutputStream( baos );
-        oos.writeObject( value );
-        oos.close();
-
-        def encoded = Base64.getEncoder().encodeToString(baos.toByteArray())
-
-        return ["object": encoded]
-    }
-
-    static String serializeParam(Object value) {
-        def builder = new JsonBuilder()
-        builder serialize(value)
-
-        return builder.toString()
     }
 }
 

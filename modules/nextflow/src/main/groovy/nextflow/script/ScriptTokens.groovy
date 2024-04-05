@@ -28,7 +28,7 @@ import groovy.transform.TupleConstructor
 @ToString
 @EqualsAndHashCode
 @TupleConstructor
-class TokenVar {
+class TokenVar implements Serializable {
 
     /** The variable name */
     String name
@@ -43,7 +43,7 @@ class TokenVar {
  *      </pre>
  *
  */
-class TokenFileCall {
+class TokenFileCall implements Serializable {
     final target
     TokenFileCall(target)  { this.target = target }
 }
@@ -56,7 +56,7 @@ class TokenFileCall {
  *      </pre>
  *
  */
-class TokenPathCall {
+class TokenPathCall implements Serializable {
     final target
     final Map opts
 
@@ -81,7 +81,7 @@ class TokenPathCall {
  * @see nextflow.ast.NextflowDSLImpl
  * @see nextflow.script.params.TupleInParam#bind(java.lang.Object[])
  */
-class TokenStdinCall { }
+class TokenStdinCall implements Serializable { }
 
 /**
  * An object of this class replace the {@code stdout} token in input map declaration. For example:
@@ -93,7 +93,7 @@ class TokenStdinCall { }
  * @see nextflow.ast.NextflowDSLImpl
  * @see nextflow.script.params.TupleOutParam#bind(java.lang.Object[])
  */
-class TokenStdoutCall { }
+class TokenStdoutCall implements Serializable { }
 
 /**
  * Token used by the DSL to identify a environment variable declaration, like this
@@ -105,7 +105,7 @@ class TokenStdoutCall { }
 @ToString
 @EqualsAndHashCode
 @TupleConstructor
-class TokenEnvCall {
+class TokenEnvCall implements Serializable {
     Object val
 }
 
@@ -125,14 +125,14 @@ class TokenEnvCall {
 @ToString
 @EqualsAndHashCode
 @TupleConstructor
-class TokenValCall {
+class TokenValCall implements Serializable {
     Object val
 }
 
 
 @ToString
 @EqualsAndHashCode
-class TokenValRef {
+class TokenValRef implements Serializable {
     String name
     int lineNum
     int colNum
@@ -149,7 +149,7 @@ class TokenValRef {
 @EqualsAndHashCode
 @TupleConstructor
 @CompileStatic
-class TokenBranchDef {
+class TokenBranchDef implements Serializable {
     Closure<TokenBranchChoice> closure
     List<String> branches
 }
@@ -158,7 +158,7 @@ class TokenBranchDef {
 @EqualsAndHashCode
 @TupleConstructor
 @CompileStatic
-class TokenBranchChoice {
+class TokenBranchChoice implements Serializable {
     Object value
     String choice
 }
@@ -167,7 +167,7 @@ class TokenBranchChoice {
 @EqualsAndHashCode
 @TupleConstructor
 @CompileStatic
-class TokenMultiMapDef {
+class TokenMultiMapDef implements Serializable {
     Closure<Map> closure
     List<String> names
 }

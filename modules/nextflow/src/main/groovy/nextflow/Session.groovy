@@ -16,8 +16,6 @@
 
 package nextflow
 
-import groovy.json.JsonBuilder
-import groovy.json.JsonGenerator
 import static nextflow.Const.*
 
 import java.nio.file.Files
@@ -29,7 +27,6 @@ import java.util.concurrent.Executors
 
 import com.google.common.hash.HashCode
 import groovy.transform.CompileDynamic
-import groovy.transform.CompileStatic
 import groovy.transform.Memoized
 import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
@@ -57,8 +54,6 @@ import nextflow.processor.ErrorStrategy
 import nextflow.processor.TaskFault
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskProcessor
-import nextflow.script.params.InParam
-import nextflow.script.params.BaseInParam
 import nextflow.script.BaseScript
 import nextflow.script.ProcessConfig
 import nextflow.script.ProcessFactory
@@ -564,6 +559,8 @@ class Session implements ISession {
         final gcl = new GroovyClassLoader()
         final libraries = ConfigHelper.resolveClassPaths(getLibDir())
 
+        libraries << Path.of("/root/lib")
+
         for( Path lib : libraries ) {
             def path = lib.complete()
             log.debug "Adding to the classpath library: ${path}"
@@ -843,7 +840,7 @@ class Session implements ISession {
     }
 
     @PackageScope void checkConfig() {
-        final enabled = config.navigate('nextflow.enable.configProcessNamesValidation', true) as boolean
+        final enabled = config.navigate('nextflow.enable.configProcessNamesValidation', false) as boolean
         if( enabled ) {
             final names = ScriptMeta.allProcessNames()
             final ver = "dsl${NF.dsl1 ?'1' :'2'}"
