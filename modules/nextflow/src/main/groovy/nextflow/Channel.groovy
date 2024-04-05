@@ -16,6 +16,7 @@
 
 package nextflow
 
+import groovyx.gpars.dataflow.expression.DataflowExpression
 import nextflow.latch.LatchUtils
 import static nextflow.util.CheckHelper.*
 
@@ -139,26 +140,65 @@ class Channel  {
         return result
     }
 
-    private static Object[] injectLatchValues(Object... items) {
-        String serializedValues = System.getenv("LATCH_PARAM_VALS")
-        if (serializedValues == null) return items
+    private static Object[] flattenChannels(Object... items) {
+        List<Object> newItems = []
+        for (def item: items) {
+            if (!(item instanceof DataflowWriteChannel)) {
+                newItems << item
+                continue
+            }
 
-        List<List<Object>> deserialized = LatchUtils.deserializeParams(serializedValues) as List<List<Object>>
-
-        int j = 0
-        for (int i = 0; i < items.size(); i++) {
-            if (CH.isChannel(items[i])) {
-                // assume that there is only one value in the input channel
-                items[i] = deserialized[j][0]
-                j++
+            if (item instanceof DataflowExpression) {
+                newItems << item.val
+            } else if (item instanceof DataflowQueue) {
+                for (def x: item) {
+                    newItems << x
+                }
             }
         }
 
-        return items
+        return newItems.toArray()
+    }
+
+    static Queue<DataflowWriteChannel> deserializedParams
+
+    private static void loadDeserializedParamsFromEnv() {
+        if (deserializedParams != null) return
+
+        String serializedValues = System.getenv("LATCH_PARAM_VALS")
+        if (serializedValues == null) return
+
+        List<Object> deserialized = LatchUtils.deserializeParams(serializedValues) as List<Object>
+
+        deserializedParams = new LinkedList<DataflowWriteChannel>()
+        for (def ds: deserialized) {
+            DataflowWriteChannel val
+
+            if (ds instanceof List) {
+                val = CH.emitAndClose(CH.create(), ds)
+            } else if (ds instanceof DataflowVariable) {
+                val = CH.value(ds.val)
+            } else {
+                throw new Exception("malformed LATCH_PARAM_VALS: ${deserialized}")
+            }
+
+            deserializedParams.add(val)
+        }
+    }
+
+    private static DataflowWriteChannel getNextParamValFromEnv() {
+        loadDeserializedParamsFromEnv()
+
+        return deserializedParams.poll()
+    }
+
+    static DataflowWriteChannel placeholder() {
+        def result = getNextParamValFromEnv()
+        NodeMarker.addSourceNode('Channel.placeholder', result)
+        return result
     }
 
     static DataflowWriteChannel of(Object ... items) {
-        items = injectLatchValues(items)
         checkNoChannels('channel.of', items)
         final result = CH.create()
         final values = new ArrayList()
@@ -221,7 +261,6 @@ class Channel  {
      */
     @Deprecated
     static DataflowWriteChannel from( Object... items ) {
-        items = injectLatchValues(items)
         checkNoChannels('channel.from', items)
         for( Object it : items ) if(CH.isChannel(it))
             throw new IllegalArgumentException("channel.from argument is already a channel object")
@@ -232,7 +271,6 @@ class Channel  {
     }
 
     static DataflowVariable value( obj = null ) {
-//        obj = injectLatchValues([obj])[0]
         checkNoChannels('channel.value', obj)
         obj != null ? CH.value(obj) : CH.value()
     }
@@ -312,7 +350,6 @@ class Channel  {
      */
     static DataflowWriteChannel<Path> fromPath( Map opts = null, pattern ) {
         if( !pattern ) throw new AbortOperationException("Missing `fromPath` parameter")
-        pattern = injectLatchValues(pattern)[0]
         checkNoChannels('channel.fromPath', pattern)
 
         // verify that the 'type' parameter has a valid value
@@ -465,7 +502,6 @@ class Channel  {
      *      A channel emitting the file pairs matching the specified pattern(s)
      */
     static DataflowWriteChannel fromFilePairs(Map options = null, pattern) {
-        pattern = injectLatchValues(pattern)[0]
         checkNoChannels('channel.fromFilePairs', pattern)
         final allPatterns = pattern instanceof List ? pattern : [pattern]
         final allGrouping = new ArrayList(allPatterns.size())
@@ -499,7 +535,6 @@ class Channel  {
      *      A channel emitting the file pairs matching the specified pattern(s)
      */
     static DataflowWriteChannel fromFilePairs(Map options = null, pattern, Closure grouping) {
-        pattern = injectLatchValues(pattern)[0]
         checkNoChannels('channel.fromFilePairs', pattern)
         final allPatterns = pattern instanceof List ? pattern : [pattern]
         final allGrouping = new ArrayList(allPatterns.size())
@@ -656,13 +691,11 @@ class Channel  {
     }
 
     static DataflowWriteChannel fromSRA(query) {
-        query = injectLatchValues(query)[0]
         checkNoChannels('channel.fromSRA', query)
         fromSRA( Collections.emptyMap(), query )
     }
 
     static DataflowWriteChannel fromSRA(Map opts, query) {
-        query = injectLatchValues(query)[0]
         checkParams('fromSRA', opts, SraExplorer.PARAMS)
         checkNoChannels('channel.fromSRA', query)
 

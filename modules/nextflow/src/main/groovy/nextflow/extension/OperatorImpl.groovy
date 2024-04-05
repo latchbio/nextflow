@@ -1125,6 +1125,14 @@ class OperatorImpl {
         return new BinaryOp(left, right, op, swap).apply()
     }
 
+    DataflowWriteChannel toBoolean(final Object input) {
+        return toBoolean(getReadChannel(input))
+    }
+
+    DataflowWriteChannel toBoolean(final DataflowReadChannel input) {
+        return new BooleanOp(input).apply()
+    }
+
     DataflowWriteChannel randomSample(DataflowReadChannel source, int n, Long seed = null) {
         if( source instanceof DataflowExpression )
             throw new IllegalArgumentException("Operator `randomSample` cannot be applied to a value channel")

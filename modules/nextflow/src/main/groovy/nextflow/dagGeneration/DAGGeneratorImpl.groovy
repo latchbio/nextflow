@@ -3,6 +3,7 @@ package nextflow.dagGeneration
 import java.nio.file.Path
 
 import groovy.util.logging.Slf4j
+import nextflow.script.ScriptParser
 import org.codehaus.groovy.ast.ASTNode
 import org.codehaus.groovy.ast.ClassCodeVisitorSupport
 import org.codehaus.groovy.ast.ClassNode
@@ -36,7 +37,7 @@ class DAGGeneratorImpl implements ASTTransformation {
     class Visitor extends ClassCodeVisitorSupport {
         SourceUnit unit
         String currentImportPath
-        Map<String, NFEntity> scope = new LinkedHashMap()
+        Map<String, NFEntity> entities = new LinkedHashMap()
 
         Visitor(SourceUnit unit) {
             this.unit = unit
@@ -46,24 +47,26 @@ class DAGGeneratorImpl implements ASTTransformation {
             this.unit
         }
 
-        void addToScope(Expression expr) {
-            Map<String, NFEntity> definingScope = scopes[currentImportPath]
-            if (definingScope == null) {
+        List<MethodCallExpression> workflowDefs = new ArrayList<MethodCallExpression>()
+
+        void addToEntityMap(Expression expr) {
+            Map<String, NFEntity> importedEntities = entitiesByImportPath[currentImportPath]
+            if (importedEntities == null) {
                 log.error """\
                 Attempted to include module before it was parsed 
-                    keys: ${scopes.keySet()}
+                    keys: ${entitiesByImportPath.keySet()}
                     looking for: ${currentImportPath}
                 """.stripIndent()
                 return
             }
 
             if (expr instanceof ConstantExpression) {
-                scope[expr.text] = definingScope[expr.text]
+                entities[expr.text] = importedEntities[expr.text]
             } else if (expr instanceof VariableExpression) {
-                scope[expr.name] = definingScope[expr.name]
+                entities[expr.name] = importedEntities[expr.name]
             } else if (expr instanceof CastExpression && expr.expression instanceof VariableExpression) {
                 def v = expr.expression as VariableExpression
-                scope[v.name] = definingScope[expr.type.name]
+                entities[expr.type.name] = importedEntities[v.name]
             } else {
                 log.error "Malformed include statement"
             }
@@ -132,21 +135,17 @@ class DAGGeneratorImpl implements ASTTransformation {
 
             }
 
-            scope[processName] = new NFEntity(NFEntity.Type.Process, expr, outputNames, sourceUnit.name, processName)
+            entities[processName] = new NFEntity(NFEntity.Type.Process, expr, outputNames, sourceUnit.name, processName)
         }
 
         @Override
         void visitMethodCallExpression(MethodCallExpression expr) {
-
-            final preCondition = expr.objectExpression?.getText() == 'this'
-
-            if (expr.methodAsString == "process" && preCondition) {
+            if (expr.methodAsString == "process") {
                 visitProcessDef(expr)
             } else if (expr.methodAsString == "workflow") {
-                visitWorkflowDef(expr, scope, sourceUnit.name)
+                workflowDefs << expr
             } else if (expr.text.startsWith("this.include")) {
                 def args = (ArgumentListExpression) expr.arguments
-
                 if (args.size() != 1) {
                     log.error "Malformed include statement"
                     return
@@ -166,11 +165,9 @@ class DAGGeneratorImpl implements ASTTransformation {
 
                     def parent = Path.of(this.unit.name).parent
                     def fileName = c.text
-                    if (!fileName.endsWith(".nf")) {
-                        fileName = "${fileName}.nf".toString()
-                    }
+                    def importPath = ScriptParser.realModulePath(Path.of(parent.toString(), fileName).normalize())
 
-                    currentImportPath = Path.of(parent.toString(), fileName).normalize().toString()
+                    currentImportPath = importPath.toString()
                 } else if (arg instanceof ClosureExpression) {
                     def closure = arg as ClosureExpression
                     def code = closure.code as BlockStatement
@@ -181,49 +178,53 @@ class DAGGeneratorImpl implements ASTTransformation {
                             return
                         }
 
-                        addToScope(stmt.expression)
+                        addToEntityMap(stmt.expression)
                     }
                 } else {
-                    addToScope(arg)
+                    addToEntityMap(arg)
                 }
             }
 
             super.visitMethodCallExpression(expr)
         }
+
+        @Override
+        void visitClass(ClassNode node) {
+            super.visitClass(node)
+
+            for (def workflowDef: this.workflowDefs) {
+                visitWorkflowDef(workflowDef, entities, sourceUnit.name)
+            }
+        }
     }
 
     Set<String> workflowNames = new HashSet<String>()
-    int anonymousWorkflows = 0
     Map<String, WorkflowVisitor> visitors = new LinkedHashMap<String, WorkflowVisitor>()
 
-    Map<String, Map<String, NFEntity>> scopes = new LinkedHashMap();
+    Map<String, Map<String, NFEntity>> entitiesByImportPath = new LinkedHashMap();
 
-    // Errors in the script like typos, etc. are handled in other AST transforms
-    void visitWorkflowDef(MethodCallExpression expr, Map<String, NFEntity> currentScope, String module) {
+    // Outside of the Visitor body because this needs to modify global state
+    void visitWorkflowDef(MethodCallExpression expr, Map<String, NFEntity> currentEntityMap, String module) {
         assert expr.arguments instanceof ArgumentListExpression
-        def args = (ArgumentListExpression)expr.arguments
+        def args = (ArgumentListExpression) expr.arguments
 
         if (args.size() != 1) {
             log.debug "Malformed workflow definition at line: ${expr.lineNumber}"
             return
         }
 
-        // anonymous workflows
         String name = "mainWorkflow"
         ClosureExpression closure
         if( args[0] instanceof ClosureExpression ) {
-            if( anonymousWorkflows++ > 0 )
-                return
-
             closure = args[0] as ClosureExpression
         } else {
             // extract the first argument which has to be a method-call expression
-            // the name of this method represent the *workflow* name
+            // the name of this method represents the *workflow* name
             final nested = args[0] as MethodCallExpression
             name = nested.getMethodAsString()
 
-            def subargs = nested.arguments  as ArgumentListExpression
-            closure = subargs[0] as ClosureExpression
+            def subArgs = nested.arguments  as ArgumentListExpression
+            closure = subArgs[0] as ClosureExpression
         }
 
         def body = new ArrayList<Statement>()
@@ -248,10 +249,10 @@ class DAGGeneratorImpl implements ASTTransformation {
             }
         }
 
-        def dagBuilder = new WorkflowVisitor(name, currentScope, module, this)
+        def wfVisitor = new WorkflowVisitor(name, currentEntityMap, module, this)
 
-        for (def s: input) dagBuilder.addInputNode(s)
-        for (def s: body) dagBuilder.visit(s)
+        for (def s: input) wfVisitor.addInputNode(s)
+        for (def s: body) wfVisitor.visit(s)
 
         List<String> outputNames = []
         int outputIdx = 0
@@ -278,23 +279,21 @@ class DAGGeneratorImpl implements ASTTransformation {
                 )
             }
 
-            dagBuilder.visit(es)
+            wfVisitor.visit(es)
 
             outputIdx += 1
         }
 
-        visitors[name] = dagBuilder
-
-        currentScope[name] = new NFEntity(NFEntity.Type.Workflow, expr, outputNames, module, name)
+        visitors[name] = wfVisitor
+        currentEntityMap[name] = new NFEntity(NFEntity.Type.Workflow, expr, outputNames, module, name)
         workflowNames.add(name)
     }
-
 
     @Override
     void visit(ASTNode[] nodes, SourceUnit source) {
         def v = new Visitor(source)
         v.visitClass((ClassNode) nodes[1])
-        scopes[source.name] = v.scope
+        entitiesByImportPath[source.name] = v.entities
 
         workflowNames.forEach {name -> this.visitors[name].writeDAG()}
     }

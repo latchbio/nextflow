@@ -1,7 +1,6 @@
 package nextflow.extension
 
 import groovy.transform.CompileStatic
-import groovy.util.logging.Slf4j
 import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
 import groovyx.gpars.dataflow.operator.DataflowProcessor
@@ -11,10 +10,11 @@ import static nextflow.extension.DataflowHelper.stopErrorListener
 
 @CompileStatic
 class BinaryOpClosure extends Closure {
-    private String op
+    private String overrideOpName
+    private Closure operation
 
     // todo(ayush): this list is not exhaustive
-    private Map<String, String> opNames = [
+    private Map<String, String> overridableOps = [
         "+": "plus",
         "-": "minus",
         "*": "multiply",
@@ -27,11 +27,17 @@ class BinaryOpClosure extends Closure {
         // todo(ayush): boolean && and || don't seem to have intrinsic method names
     ]
 
+    private Map<String, Closure> operations = [
+        "||": {l, r -> l || r},
+        "&&": {l, r -> l && r},
+    ] as Map<String, Closure>
+
     BinaryOpClosure(String op) {
         super(null, null);
-        this.op = opNames.get(op)
+        this.overrideOpName = overridableOps.get(op)
+        this.operation = operations.get(op)
 
-        if (this.op == null) {
+        if (this.overrideOpName == null && this.operation == null) {
             throw new UnsupportedOperationException("unknown binary operator '$op'")
         }
     }
@@ -46,7 +52,12 @@ class BinaryOpClosure extends Closure {
         if (args.size() != 2)
             throw new UnsupportedOperationException("binary operation requires exactly two arguments")
 
-        final result = args[0].invokeMethod(this.op, args[1])
+        def result
+        if (this.overrideOpName != null) {
+            result = args[0].invokeMethod(this.overrideOpName, args[1])
+        } else {
+            result = this.operation.call(args[0], args[1])
+        }
 
         ((DataflowProcessor) getDelegate()).bindAllOutputsAtomically(result);
         return result;

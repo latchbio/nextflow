@@ -16,6 +16,7 @@
 
 package nextflow
 
+import groovyx.gpars.dataflow.DataflowVariable
 import static nextflow.file.FileHelper.*
 
 import java.nio.file.FileSystem
@@ -105,9 +106,12 @@ class Nextflow {
      * @return An instance of {@link Path} when a single file is matched or a list of {@link Path}s
      */
     static file( Map options = null, def filePattern ) {
-
         if( !filePattern )
             throw new IllegalArgumentException("Argument of `file` function cannot be ${filePattern==null?'null':'empty'}")
+
+        if (filePattern instanceof DataflowVariable) {
+            filePattern = filePattern.val
+        }
 
         final path = filePattern as Path
         final glob = options?.containsKey('glob') ? options.glob as boolean : isGlobAllowed(path)

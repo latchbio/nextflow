@@ -351,8 +351,6 @@ class NextflowDSLImpl implements ASTTransformation {
             def wrap = makeWorkflowDefWrapper(body,false)
             newArgs.addExpression( wrap )
 
-
-
             // set the new list as the new arguments
             methodCall.setArguments( newArgs )
         }

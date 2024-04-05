@@ -681,7 +681,7 @@ class CmdRun extends CmdBase implements HubOptions {
             result.putAll(json)
         }
         catch (NoSuchFileException | FileNotFoundException e) {
-            throw new AbortOperationException("Specified params file does not exists: ${file.toUriString()}")
+            throw new AbortOperationException("Specified params file does not exist: ${file.toUriString()}")
         }
         catch( Exception e ) {
             throw new AbortOperationException("Cannot parse params file: ${file.toUriString()} - Cause: ${e.message}", e)
@@ -695,7 +695,7 @@ class CmdRun extends CmdBase implements HubOptions {
             result.putAll(yaml)
         }
         catch (NoSuchFileException | FileNotFoundException e) {
-            throw new AbortOperationException("Specified params file does not exists: ${file.toUriString()}")
+            throw new AbortOperationException("Specified params file does not exist: ${file.toUriString()}")
         }
         catch( Exception e ) {
             throw new AbortOperationException("Cannot parse params file: ${file.toUriString()}", e)

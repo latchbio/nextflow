@@ -102,6 +102,12 @@ class IncludeDef {
      * @param ownerParams The params in the owner context
      */
     void load0(ScriptBinding.ParamsMap ownerParams) {
+        checkValidPath(path)
+        if( path.toString().startsWith(PLUGIN_PREFIX) ) {
+            loadPlugin0(path.toString().substring(PLUGIN_PREFIX.length()))
+            return
+        }
+
         String includeMeta = System.getenv("LATCH_INCLUDE_META")
         if (includeMeta != null && includeMeta != "") {
             def slurper = new JsonSlurper()
@@ -112,11 +118,6 @@ class IncludeDef {
             this.modules << new Module(includeJson["name"], includeJson["alias"])
         }
 
-        checkValidPath(path)
-        if( path.toString().startsWith(PLUGIN_PREFIX) ) {
-            loadPlugin0(path.toString().substring(PLUGIN_PREFIX.length()))
-            return
-        }
         // -- resolve the concrete against the current script
         final moduleFile = realModulePath(path)
         // -- load the module

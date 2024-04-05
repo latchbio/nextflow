@@ -2,25 +2,21 @@ package nextflow.dagGeneration
 
 import java.util.concurrent.atomic.AtomicLong
 
-import groovyjarjarantlr4.v4.misc.OrderedHashMap
 import org.codehaus.groovy.ast.stmt.Statement
 
-class Vertex {
+class Vertex implements VertexLike<Vertex> {
     static private AtomicLong nextID = new AtomicLong()
 
     static enum Type {
         Process,
         Operator,
         SubWorkflow,
-        Generator, // Channel.from, Channel.of, etc.
-        Literal,
+        Generator, // Channel.from, Channel.of, literal expressions, etc.
+        Conditional, // if statements, ternary expressions
 
         // Internal Plumbing
-        Conditional,
         Input, // rename
-        Output,
         Merge,
-        Tuple,
     }
 
     final long id = nextID.getAndIncrement()
@@ -30,6 +26,8 @@ class Vertex {
     public Statement call
     public List<Statement> ret
     public List<String> outputNames = []
+    public String subWorkflowName = null
+    public String subWorkflowPath = null
     public String module = ""
     public String unaliased = ""
 
@@ -40,25 +38,29 @@ class Vertex {
         this.ret = ret
     }
 
-    Vertex( Type type, String label, Statement call, List<Statement> ret, List<String> outputNames, String module, String unaliased) {
+    Vertex( Type type, String label, Statement call, List<Statement> ret, List<String> outputNames, String subWorkflowName, String subWorkflowPath, String module, String unaliased) {
         this.type = type
         this.label = label
         this.call = call
         this.ret = ret
         this.outputNames = outputNames
+        this.subWorkflowName = subWorkflowName
+        this.subWorkflowPath = subWorkflowPath
         this.module = module
         this.unaliased = unaliased
     }
 
-    static Vertex clone(Vertex other) {
+    Vertex make_clone() {
         return new Vertex(
-            other.type,
-            other.label,
-            other.call,
-            other.ret,
-            other.outputNames,
-            other.module,
-            other.unaliased
+            type,
+            label,
+            call,
+            ret,
+            outputNames,
+            subWorkflowName,
+            subWorkflowPath,
+            module,
+            unaliased
         )
     }
 
@@ -83,55 +85,8 @@ class ProcessVertex extends Vertex {
     }
 }
 
-class OutputVertex extends Vertex {
-    OutputVertex(String label, List<String> outputNames ) {
-        super(Type.Output, label, null, null)
-
-        this.outputNames = outputNames
-    }
-}
-
 class MergeVertex extends Vertex {
     MergeVertex(String label) {
         super(Type.Merge, label, null, null)
-    }
-}
-
-// TupleVertices will NEVER be added to the graph
-// they are strictly for internal plumbing
-class TupleVertex extends Vertex {
-    Map<String, Vertex> members = new OrderedHashMap<String, Vertex>()
-
-    TupleVertex(String label, Map<String, Vertex> members) {
-        super(Type.Tuple, label, null, null)
-
-        this.members = members
-    }
-
-    void unpack(String prefix, Map<String, Vertex> res) {
-        for (def entry: this.members) {
-            Vertex v = entry.value
-            String label = "${prefix}${entry.key}"
-
-            if (v instanceof TupleVertex) {
-                v.unpack("$label.", res)
-            } else {
-                res[label] = v
-            }
-        }
-    }
-
-    Map<String, Vertex> unpack() {
-        Map<String, Vertex> res = new OrderedHashMap<String, Vertex>()
-        this.unpack("", res)
-        return res
-    }
-
-    // since this uses unpack, this flattens all the layers, which is technically wrong bc Nextflow is weird only flattens
-    // one layer deep when doing tuple unpacking (ie [[[1], 2], [3, 4]] -> [[1], 2, 3, 4]), however
-    // i think this is esoteric enough that we shouldn't support it unless someone really wants it
-    TupleVertex remap(Map<Vertex, Vertex> mapping) {
-        def xs = this.unpack()
-        return new TupleVertex(this.label, xs.collectEntries { _, x -> mapping[x]})
     }
 }

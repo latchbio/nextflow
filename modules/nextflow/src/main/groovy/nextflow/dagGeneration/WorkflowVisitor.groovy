@@ -15,7 +15,9 @@ import org.codehaus.groovy.ast.expr.ListExpression
 import org.codehaus.groovy.ast.expr.MapEntryExpression
 import org.codehaus.groovy.ast.expr.MapExpression
 import org.codehaus.groovy.ast.expr.MethodCallExpression
+import org.codehaus.groovy.ast.expr.NotExpression
 import org.codehaus.groovy.ast.expr.PropertyExpression
+import org.codehaus.groovy.ast.expr.RangeExpression
 import org.codehaus.groovy.ast.expr.StaticMethodCallExpression
 import org.codehaus.groovy.ast.expr.TernaryExpression
 import org.codehaus.groovy.ast.expr.TupleExpression
@@ -99,6 +101,18 @@ class WorkflowVisitor {
 
     static final Set<String> specialOperatorNames = new HashSet(["branch", "multiMap"])
 
+    static final Set<String> implicitFunctionNames = new HashSet([
+        "branchCriteria",
+        "error",
+        "exit",
+        "file",
+        "files",
+        "groupKey",
+        "multiMapCriteria",
+        "sendMail",
+        "tuple"
+    ])
+
     String workflowName
     String module = ""
     // process / workflow names
@@ -114,8 +128,24 @@ class WorkflowVisitor {
         this.module = module
         this.generator = generator
         this.scope = new Scope()
-
         this.dag = new DAG()
+    }
+
+
+    WorkflowVisitor make_clone() {
+        Scope newScope = new Scope(scope)
+        DAG<Vertex, Edge> newDag = this.dag.make_clone()
+
+        def wv = new WorkflowVisitor(
+            workflowName,
+            entities,
+            module,
+            generator
+        )
+        wv.scope = newScope
+        wv.dag = newDag
+
+        return wv
     }
 
     List<Vertex> inputNodes = new ArrayList<>()
@@ -136,7 +166,6 @@ class WorkflowVisitor {
 
         switch (expr.operation.type) {
             case Types.EQUAL:
-                Vertex newV;
                 if (expr.leftExpression instanceof VariableExpression) {
                     def dep = visitExpressionWithLiteralCheck(expr.rightExpression)
                     def v = expr.leftExpression as VariableExpression
@@ -222,8 +251,16 @@ class WorkflowVisitor {
                 def left = visitExpression(expr.leftExpression)
                 if (expr.operation.type == Types.LEFT_SQUARE_BRACKET) {
                     def right = ASTHelpers.isConstX(expr.rightExpression)
-                    if (left instanceof ProcessVariable && right != null) {
-                        return left.properties["unnamed_output_${right.value}"]
+                    if (
+                        (left instanceof ProcessVariable || left instanceof SubWorkflowVariable)
+                            && right != null
+                    ) {
+                        def idx = right.value
+
+                        if (idx instanceof Integer) {
+                            // .properties is an ordered hashmap so this access is fine
+                            return left.properties.values()[idx]
+                        }
                     }
                 }
 
@@ -235,7 +272,7 @@ class WorkflowVisitor {
                     call = new MethodCallExpression(
                         new MethodCallExpression(
                             new VariableExpression("Channel"),
-                            "of",
+                            "placeholder",
                             new ArgumentListExpression([])
                         ),
                         "binaryOp",
@@ -250,14 +287,14 @@ class WorkflowVisitor {
                         ? expr.rightExpression
                         : new MethodCallExpression(
                             new VariableExpression("Channel"),
-                            "of",
+                            "placeholder",
                             new ArgumentListExpression([])
                         )
 
                     call = new MethodCallExpression(
                         new MethodCallExpression(
                             new VariableExpression("Channel"),
-                            "of",
+                            "placeholder",
                             new ArgumentListExpression([])
                         ),
                         "binaryOp",
@@ -298,7 +335,7 @@ class WorkflowVisitor {
         if (bool != null) {
             sub = new MethodCallExpression(
                 new VariableExpression("Channel"),
-                "of",
+                "placeholder",
                 new ArgumentListExpression([])
             )
         }
@@ -329,6 +366,9 @@ class WorkflowVisitor {
         this.activeConditionals.remove(cond)
 
         def v = new MergeVertex(expr.text)
+        addVertex(v)
+
+        // todo(ayush): this breaks with processes
         addDependency(left, v)
         addDependency(right, v)
 
@@ -361,6 +401,27 @@ class WorkflowVisitor {
                 throw new DAGGenerationException("Statement in closure argument to Channel.set() must be a variable: $b")
 
             return visitBinaryExpression(new BinaryExpression(ve, Token.newSymbol("=", -1, -1), expr.objectExpression))
+        } else if (
+            (expr.objectExpression.text == "Channel" && expr.methodAsString in channelFactories)
+            || (expr.objectExpression.text == "this" && expr.methodAsString in implicitFunctionNames)
+        ) {
+            // assume all calls of this form have literal arguments bc passing a Channel to them is an error in vanilla nextflow
+            Vertex v = new Vertex(
+                Vertex.Type.Generator,
+                expr.text,
+                new ExpressionStatement(
+                    new BinaryExpression(
+                        new VariableExpression("res"),
+                        Token.newSymbol("=", 0, 0),
+                        expr
+                    )
+                ),
+                [new ExpressionStatement(new VariableExpression("res"))]
+            )
+
+            addVertex(v)
+            ScopeVariable outVar = new ScopeVariable(v)
+            return outVar
         }
 
         Map<Integer, ScopeVariable> dependencies = new OrderedHashMap<Integer, ScopeVariable>()
@@ -379,7 +440,7 @@ class WorkflowVisitor {
                 def me = ASTHelpers.isMapEntryX(x)
                 if (me != null) {
                     // hack: this assumes that all keyword arguments are literals,
-                    // which seems to be the case but could be wrong
+                    // which seems to be the case in the examples ive seen but could be wrong
                     newArgs.add(x)
                     continue
                 }
@@ -400,7 +461,7 @@ class WorkflowVisitor {
                     producer.properties.collect {
                         newArgs << new MethodCallExpression(
                             new VariableExpression('Channel'),
-                            "of",
+                            "placeholder",
                             new ArgumentListExpression([])
                         )
                     }
@@ -408,7 +469,7 @@ class WorkflowVisitor {
                     newArgs.add(
                         new MethodCallExpression(
                             new VariableExpression('Channel'),
-                            "of",
+                            "placeholder",
                             new ArgumentListExpression([])
                         )
                     )
@@ -418,9 +479,6 @@ class WorkflowVisitor {
             }
         }
 
-
-
-        Vertex v = null
         if (entity?.type == NFEntity.Type.Process) {
             List<Statement> ret
             if (entity.outputs.size() > 0) {
@@ -458,7 +516,7 @@ class WorkflowVisitor {
                 ]
             }
 
-            v = new ProcessVertex(
+            Vertex v = new ProcessVertex(
                 expr.methodAsString,
                 new ExpressionStatement(
                     new MethodCallExpression(
@@ -494,7 +552,7 @@ class WorkflowVisitor {
 
             for (def _subV: subWorkflowDag.dag.vertices) {
                 // maintain distinct IDs (only a problem if a subworkflow is called more than once)
-                def subV = Vertex.clone(_subV)
+                def subV = _subV.make_clone()
                 idMapping[_subV] = subV
 
                 if (subV.type == Vertex.Type.Input) {
@@ -607,7 +665,7 @@ class WorkflowVisitor {
                 args = res
             }
 
-            v = new Vertex(
+            Vertex v = new Vertex(
                 Vertex.Type.Operator,
                 expr.methodAsString,
                 new ExpressionStatement(
@@ -617,7 +675,7 @@ class WorkflowVisitor {
                         new MethodCallExpression(
                             new MethodCallExpression(
                                 new VariableExpression('Channel'),
-                                "of",
+                                "placeholder",
                                 new ArgumentListExpression([])
                             ),
                             new ConstantExpression(expr.methodAsString),
@@ -647,8 +705,8 @@ class WorkflowVisitor {
             }
 
             return outVar
-        } else if (expr.objectExpression.text == "Channel" && expr.methodAsString in this.channelFactories) {
-            v = new Vertex(
+        } else {
+            Vertex v = new Vertex(
                 Vertex.Type.Generator,
                 expr.text,
                 new ExpressionStatement(
@@ -743,7 +801,7 @@ class WorkflowVisitor {
 
             return new MethodCallExpression(
                 new VariableExpression("Channel"),
-                "of",
+                "placeholder",
                 new ArgumentListExpression([])
             )
         }
@@ -783,7 +841,7 @@ class WorkflowVisitor {
                 dependencies << keyDep
                 keyExpr = new MethodCallExpression(
                     new VariableExpression("Channel"),
-                    "of",
+                    "placeholder",
                     new ArgumentListExpression([])
                 )
             }
@@ -794,7 +852,7 @@ class WorkflowVisitor {
                 dependencies << valDep
                 valExpr = new MethodCallExpression(
                     new VariableExpression("Channel"),
-                    "of",
+                    "placeholder",
                     new ArgumentListExpression([])
                 )
             }
@@ -840,7 +898,7 @@ class WorkflowVisitor {
 
             return new MethodCallExpression(
                 new VariableExpression("Channel"),
-                "of",
+                "placeholder",
                 new ArgumentListExpression([])
             )
         }
@@ -866,11 +924,45 @@ class WorkflowVisitor {
         return new ScopeVariable(v)
     }
 
+    ScopeVariable visitBooleanExpression(BooleanExpression expr) {
+        def resExpr = new NotExpression(new NotExpression(expr.expression))
+
+        def dep = visitExpression(expr.expression)
+        if (dep != null) {
+            resExpr = new MethodCallExpression(
+                new MethodCallExpression(
+                    new VariableExpression("Channel"),
+                    "placeholder",
+                    new ArgumentListExpression([])
+                ),
+                "toBoolean",
+                new ArgumentListExpression([])
+            )
+        }
+
+        def v = new Vertex(
+            Vertex.Type.Generator,
+            expr.text,
+            new ExpressionStatement(
+                new BinaryExpression(
+                    new VariableExpression("res"),
+                    Token.newSymbol("=", -1, -1),
+                    resExpr
+                )
+            ),
+            [new ExpressionStatement(new VariableExpression("res"))]
+        )
+
+        addVertex(v)
+        if (dep != null) {
+            addDependency(dep, v)
+        }
+
+        return new ScopeVariable(v)
+    }
 
     boolean isLiteralExpression(Expression expr) {
         switch (expr) {
-            case BinaryExpression:
-                return false
             case MethodCallExpression:
                 return false
             case ClosureExpression:
@@ -881,6 +973,14 @@ class WorkflowVisitor {
             case ConstantExpression:
                 return true
 
+            case BinaryExpression:
+                return isLiteralExpression(expr.leftExpression) && isLiteralExpression(expr.rightExpression)
+            case TernaryExpression:
+                return (
+                    isLiteralExpression(expr.booleanExpression)
+                    && isLiteralExpression(expr.trueExpression)
+                    && isLiteralExpression(expr.falseExpression)
+                )
             case StaticMethodCallExpression:
                 return isLiteralExpression(expr.arguments)
             case ArgumentListExpression:
@@ -902,17 +1002,26 @@ class WorkflowVisitor {
         }
     }
 
+    ScopeVariable visitRangeExpression(RangeExpression expr) {
+        // assume ranges are literal expressions for now
+        return null
+    }
+
     ScopeVariable visitExpressionWithLiteralCheck(Expression expr) {
         // should only be called from expressions that don't generate their own vertices, e.g. set, =
         if (isLiteralExpression(expr)) {
             def v = new Vertex(
-                Vertex.Type.Literal,
+                Vertex.Type.Generator,
                 expr.text,
                 new ExpressionStatement(
                     new BinaryExpression(
                         new VariableExpression("res"),
                         Token.newSymbol("=", -1, -1),
-                        expr
+                        new MethodCallExpression(
+                            new VariableExpression("Channel"),
+                            "value",
+                            new ArgumentListExpression([expr])
+                        )
                     )
                 ),
                 [new ExpressionStatement(new VariableExpression("res"))]
@@ -924,7 +1033,6 @@ class WorkflowVisitor {
 
         return visitExpression(expr)
     }
-
 
     ScopeVariable visitExpression(Expression expr) {
         ScopeVariable res
@@ -948,7 +1056,7 @@ class WorkflowVisitor {
                 res = visitPropertyExpression(expr)
                 break
             case BooleanExpression:
-                res = visitExpression(expr.expression)
+                res = visitBooleanExpression(expr)
                 break
             case ListExpression:
                 res = visitListExpression(expr)
@@ -962,6 +1070,9 @@ class WorkflowVisitor {
             case ConstantExpression:
                 res = null
                 break
+            case RangeExpression:
+                res = visitRangeExpression(expr)
+                break
             default:
                 throw new DAGGenerationException("Cannot process expression of type ${expr?.class}")
         }
@@ -970,6 +1081,11 @@ class WorkflowVisitor {
     }
 
     void addVertex(Vertex v) {
+        if (v.subWorkflowName == null) {
+            v.subWorkflowName = workflowName
+            v.subWorkflowPath = module
+        }
+
         this.dag.addVertex(v)
 
         this.activeConditionals.forEach {cond, branch ->
@@ -999,20 +1115,13 @@ class WorkflowVisitor {
 
     void addEdge(String label, Vertex src, Vertex dst) {
         if (src == null || dst == null) return
-
-        if (src instanceof TupleVertex) {
-            def xs = new OrderedHashMap<String, Vertex>()
-            src.unpack(label, xs)
-            xs.collect {k, v -> addEdge(k, v, dst)}
-        } else {
-            this.dag.addEdge(new Edge(label, src, dst))
-        }
+        this.dag.addEdge(new Edge(label, src, dst))
     }
 
     void visitStatement(Statement s) {
         switch (s) {
             case ExpressionStatement:
-                def res = visitExpression(s.expression)
+                visitExpression(s.expression)
                 break
             case IfStatement:
                 def stmt = s as IfStatement
@@ -1024,7 +1133,7 @@ class WorkflowVisitor {
                 if (condProducer != null) {
                     sub = new MethodCallExpression(
                         new VariableExpression("Channel"),
-                        "of",
+                        "placeholder",
                         new ArgumentListExpression([])
                     )
                 }
@@ -1051,7 +1160,12 @@ class WorkflowVisitor {
                 def elseScope = new Scope(parentScope)
 
                 this.scope = ifScope
-                def ifBlock = stmt.ifBlock as BlockStatement
+
+                def ifBlock = ASTHelpers.isBlockStmt(stmt.ifBlock)
+                if (ifBlock == null) {
+                    ifBlock = new BlockStatement([stmt.ifBlock], null)
+                }
+
                 this.activeConditionals[cond] = true
                 for (def x: ifBlock.statements) {
                     visitStatement(x)
@@ -1059,8 +1173,11 @@ class WorkflowVisitor {
 
                 this.scope = elseScope
                 // guard against ifs without else blocks
-                if (stmt.elseBlock instanceof BlockStatement) {
-                    def elseBlock = stmt.elseBlock as BlockStatement
+                if (stmt.elseBlock != null) {
+                    def elseBlock = ASTHelpers.isBlockStmt(stmt.elseBlock)
+                    if (elseBlock == null) {
+                        elseBlock = new BlockStatement([stmt.elseBlock], null)
+                    }
                     this.activeConditionals[cond] = false
                     for (def x: elseBlock.statements) {
                         visitStatement(x)
@@ -1070,6 +1187,7 @@ class WorkflowVisitor {
                 this.activeConditionals.remove(cond)
 
                 this.scope = parentScope
+                outer:
                 for (def name: ifScope.bindings.keySet() + elseScope.bindings.keySet()) {
                     def ifBinding = ifScope.get(name)
                     def elseBinding = elseScope.get(name)
@@ -1083,11 +1201,45 @@ class WorkflowVisitor {
                     } else if (ifBinding != elseBinding) {
                         def v = new MergeVertex("Merge $name")
 
+                        if (ifBinding instanceof ProcessVariable || ifBinding instanceof SubWorkflowVariable) {
+                            if (ifBinding.class != elseBinding.class) {
+                                log.warn "Warning: type error when merging ${name} - Variables of the same name must have the same type."
+                                continue
+                            }
+
+                            for (def entry: ifBinding.properties) {
+                                if (entry.key in elseBinding.properties)
+                                    continue
+
+                                log.warn "Warning: type error when merging ${name} - Variables of the same name must have the same type."
+                                continue outer
+                            }
+                            for (def entry: elseBinding.properties) {
+                                if (entry.key in ifBinding.properties)
+                                    continue
+
+                                log.warn "Warning: type error when merging ${name} - Variables of the same name must have the same type."
+                                continue outer
+                            }
+
+                            v.outputNames = ifBinding.properties.keySet().toList()
+                        }
+
                         addVertex(v)
                         addDependency(ifBinding, v)
                         addDependency(elseBinding, v)
 
-                        binding = new ScopeVariable(v)
+                        binding = ifBinding.makeClone()
+
+                        if (!(binding instanceof SubWorkflowVariable)) {
+                            binding.vertex = v
+                        }
+
+                        if (binding instanceof ProcessVariable || binding instanceof SubWorkflowVariable) {
+                            for (def prop: binding.properties.values()) {
+                                (prop as ScopeVariable).vertex = v
+                            }
+                        }
                     }
 
                     this.scope.set(name, binding)
@@ -1103,8 +1255,8 @@ class WorkflowVisitor {
             There was an error parsing your workflow body - please ensure you don't have any typos. 
             If the offending line below seems correct, please reach out to us at support@latch.bio.
             
-            Offending Line:
-            L$stmt.lineNumber: $stmt.text
+            ${module} - ${workflowName} - L${stmt.lineNumber}
+            $stmt.text
 
             Error:
             $e
@@ -1142,7 +1294,9 @@ class WorkflowVisitor {
                 ret: v.ret != null ? v.ret.collect {StatementJSONConverter.toJsonString(it)} : null,
                 outputNames: v.outputNames,
                 module: v.module,
-                unaliased: v.unaliased
+                unaliased: v.unaliased,
+                subWorkflowName: v.subWorkflowName,
+                subWorkflowPath: v.subWorkflowPath
             ])
 
             vbs.add(vb)
