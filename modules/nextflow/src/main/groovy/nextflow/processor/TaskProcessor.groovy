@@ -629,16 +629,16 @@ class TaskProcessor {
             task.config.attempt = attempt.toInteger()
         }
 
-        final preExec = System.getenv('FLYTE_PRE_EXECUTE')
+        final preExec = System.getenv('LATCH_PRE_EXECUTE')
         if (preExec != null) {
             log.info "Getting Resource requirements"
             final cpus = task.config.getCpus()
             final memory = task.config.getMemory()
             final disk = task.config.getDisk()
             final resources = [
-                cpus: cpus,
-                memory: memory != null ? memory.toBytes() : null,
-                disk: disk != null ? disk.toBytes(): null
+                cpu_cores: cpus,
+                memory_bytes: memory != null ? memory.toBytes() : null,
+                disk_bytes: disk != null ? disk.toBytes(): null
             ]
 
             final jsonString = new JsonBuilder(resources).toString()
