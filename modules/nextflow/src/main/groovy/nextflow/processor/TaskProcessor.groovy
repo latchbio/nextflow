@@ -626,7 +626,7 @@ class TaskProcessor {
 
         final attempt = System.getenv('FLYTE_ATTEMPT_NUMBER')
         if (attempt != null) {
-            task.config.attempt = attempt.toInteger()
+            task.config.attempt = attempt.toInteger() + 1
         }
 
         final preExec = System.getenv('LATCH_PRE_EXECUTE')
