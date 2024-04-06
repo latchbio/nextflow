@@ -319,11 +319,15 @@ class CmdRun extends CmdBase implements HubOptions {
         // -- specify the arguments
         final scriptFile = getScriptFile(pipeline)
 
+
         // create the config object
+        def configDirOverride = System.getenv("LATCH_CONFIG_DIR_OVERRIDE")
+        Path configBaseDir = configDirOverride != null ? Path.of(configDirOverride) : scriptFile.parent
+
         final builder = new ConfigBuilder()
                 .setOptions(launcher.options)
                 .setCmdRun(this)
-                .setBaseDir(scriptFile.parent)
+                .setBaseDir(configBaseDir)
         final config = builder .build()
 
         // check DSL syntax in the config

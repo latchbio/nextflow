@@ -1094,6 +1094,7 @@ class WorkflowVisitor {
     }
 
     void addDependency(ScopeVariable src, Vertex dst) {
+        if (src == null || dst == null) return
         switch (src) {
             case PropertyVariable:
                 addEdge(src.index.toString(), src.vertex, dst)
