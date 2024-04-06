@@ -16,6 +16,7 @@ import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowVariable
 import groovyx.gpars.dataflow.expression.DataflowExpression
 import nextflow.Channel
+import nextflow.Nextflow
 import nextflow.extension.CH
 import nextflow.file.http.XPath
 import nextflow.script.TokenBranchChoice
@@ -39,9 +40,12 @@ class LatchUtils {
             return json.get(k)
         }
 
-        if (json.containsKey("path")) {
-            String path = json.get("path")
-            return Paths.get(path)
+        if (json.containsKey("xpath")) {
+            URI uri = deserialize0(json.get("xpath")) as URI
+            return XPath.get(uri.toString())
+        } else if (json.containsKey("path")) {
+            String uriString = json.get("path")
+            return Nextflow.file(uriString)
         } else if (json.containsKey("value")) {
             def result = new DataflowVariable()
             result << deserialize0(json.get("value"))
@@ -126,21 +130,23 @@ class LatchUtils {
         if (value == null) {
             return ["null": null]
         } else if (value instanceof Boolean) {
-            return  ["boolean": value]
+            return ["boolean": value]
         } else if (value instanceof String) {
-            return  ["string": value]
+            return ["string": value]
         } else if (value instanceof GString) {
             return ["string": value.toString()]
         } else if (value instanceof Integer) {
-            return  ["integer": value]
+            return ["integer": value]
         } else if (value instanceof Float) {
-            return  ["float": value]
+            return ["float": value]
         } else if (value instanceof Double) {
-            return  ["double": value]
+            return ["double": value]
         } else if (value instanceof Number) {
-            return  ["number": value]
+            return ["number": value]
+        }else if (value instanceof XPath) {
+            return ["xpath": serialize(value.uri)]
         } else if (value instanceof Path) {
-            return  ["path": value.toString()]
+            return ["path": value.toUriString()]
         } else if (value instanceof List) {
             List<Object> res = value.collect { serialize(it) }
 
