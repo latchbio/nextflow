@@ -227,7 +227,10 @@ class WorkflowMetadata {
         this.repository = scriptFile?.repository
         this.commitId = scriptFile?.commitId
         this.revision = scriptFile?.revision
-        this.projectDir = scriptFile?.localPath
+
+        def configDirOverride = System.getenv("LATCH_CONFIG_DIR_OVERRIDE")
+
+        this.projectDir = configDirOverride != null ? Path.of(configDirOverride) : scriptFile?.localPath
         this.projectName = scriptFile?.projectName ?: scriptName
         this.start = OffsetDateTime.now()
         this.container = session.fetchContainers()

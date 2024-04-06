@@ -610,8 +610,10 @@ class Session implements ISession {
 
         libDir = []
         for( Path file : files ) {
-            if( !file.exists() )
-                throw new MissingLibraryException("Cannot find specified library: ${file.complete()}")
+            if( !file.exists() ) {
+                log.warn "Cannot find specified library: ${file.complete()}"
+                continue
+            }
 
             libDir << file
         }
