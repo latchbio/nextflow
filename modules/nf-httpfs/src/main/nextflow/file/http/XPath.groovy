@@ -35,7 +35,7 @@ import groovy.transform.CompileStatic
 @CompileStatic
 class XPath implements Path, Serializable {
 
-    static final public Set<String> ALL_SCHEMES = ['ftp','http','https'] as Set
+    static final public Set<String> ALL_SCHEMES = ['ftp','http','https','latch'] as Set
 
     private static final String[] EMPTY = []
 

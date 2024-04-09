@@ -70,7 +70,7 @@ class FileHelper {
 
     static final public char[] ALPHA = ('a'..'z') as char[]
 
-    private static List<String> UNSUPPORTED_GLOB_WILDCARDS = ['http','https','ftp','ftps']
+    private static List<String> UNSUPPORTED_GLOB_WILDCARDS = ['http','https','ftp','ftps','latch']
 
     private static LinkOption[] NO_FOLLOW_LINKS = [LinkOption.NOFOLLOW_LINKS] as LinkOption[]
 
@@ -1049,7 +1049,6 @@ class FileHelper {
     }
 
     static Path checkIfExists(Path path, Map opts) throws NoSuchFileException {
-
         final result = toCanonicalPath(path)
         final checkIfExists = opts?.checkIfExists as boolean
         final followLinks = opts?.followLinks == false ? [LinkOption.NOFOLLOW_LINKS] : Collections.emptyList()
