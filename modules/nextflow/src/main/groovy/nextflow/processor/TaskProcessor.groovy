@@ -631,7 +631,7 @@ class TaskProcessor {
 
         final preExec = System.getenv('LATCH_PRE_EXECUTE')
         if (preExec != null && preExec.toBoolean()) {
-            log.info "Getting Resource requirements"
+            log.debug "Retrieving resource requirements"
             final cpus = task.config.getCpus()
             final memory = task.config.getMemory()
             final disk = task.config.getDisk()
