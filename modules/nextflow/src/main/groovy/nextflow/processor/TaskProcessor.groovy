@@ -1036,6 +1036,10 @@ class TaskProcessor {
     final synchronized resumeOrDie( TaskRun task, Throwable error ) {
         log.debug "Handling unexpected condition for\n  task: name=${safeTaskName(task)}; work-dir=${task?.workDirStr}\n  error [${error?.class?.name}]: ${error?.getMessage()?:error}"
 
+        // rahul: don't both handling retry logic locally
+        // instead, kill the pod and allow flytepropeller to retry
+        System.exit(1);
+
         ErrorStrategy errorStrategy = TERMINATE
         final List<String> message = []
         try {
