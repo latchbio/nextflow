@@ -583,7 +583,9 @@ class Session implements ISession {
     void setBaseDir( Path baseDir ) {
         this.baseDir = baseDir
 
-        def path = baseDir.resolve('bin')
+        def binDirOverride = System.getenv("LATCH_BIN_DIR_OVERRIDE")
+        def path = binDirOverride != null ? Path.of(binDirOverride) : baseDir.resolve('bin')
+
         if( path.exists() && path.isDirectory() ) {
             this.binDir = path
             this.binEntries = findBinEntries(path)
