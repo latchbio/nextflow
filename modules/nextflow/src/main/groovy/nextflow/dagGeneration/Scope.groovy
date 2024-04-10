@@ -14,6 +14,8 @@ class NFEntity {
     public MethodCallExpression definition
     public String unaliased
     public String module
+    public Integer cpus = null
+    public Long memoryBytes = null
 
     public List<String> outputs
 
