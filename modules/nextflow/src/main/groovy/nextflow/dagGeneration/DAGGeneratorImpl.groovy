@@ -4,6 +4,7 @@ import java.nio.file.Path
 
 import groovy.util.logging.Slf4j
 import nextflow.script.ScriptParser
+import nextflow.util.MemoryUnit
 import org.codehaus.groovy.ast.ASTNode
 import org.codehaus.groovy.ast.ClassCodeVisitorSupport
 import org.codehaus.groovy.ast.ClassNode
@@ -24,9 +25,11 @@ import org.codehaus.groovy.control.SourceUnit
 import org.codehaus.groovy.syntax.Token
 import org.codehaus.groovy.transform.ASTTransformation
 import org.codehaus.groovy.transform.GroovyASTTransformation
+import static nextflow.ast.ASTHelpers.isArgsX
 import static nextflow.ast.ASTHelpers.isBinaryX
 import static nextflow.ast.ASTHelpers.isConstX
 import static nextflow.ast.ASTHelpers.isMapX
+import static nextflow.ast.ASTHelpers.isMethodCallX
 import static nextflow.ast.ASTHelpers.isStmtX
 import static nextflow.ast.ASTHelpers.isTupleX
 import static nextflow.ast.ASTHelpers.isVariableX
@@ -84,12 +87,49 @@ class DAGGeneratorImpl implements ASTTransformation {
 
             String context = null
             int j = 0
+            Integer cpus = null
+            Long memory = null
             for (Statement stmt: ((BlockStatement) closure.code).statements) {
-                context = stmt.statementLabel ?: context
-                if (context != "output")
+                if (!(stmt instanceof ExpressionStatement))
                     continue
 
-                if (!(stmt instanceof ExpressionStatement))
+                context = stmt.statementLabel ?: context
+
+                def m = isMethodCallX(stmt.expression)
+                ArgumentListExpression resourceArgs
+                if (m != null && ((resourceArgs = isArgsX(m.arguments)) != null)) {
+                    if (m.methodAsString == "cpus") {
+                        def cpuConst = isConstX(resourceArgs[0])
+                        if (cpuConst != null) {
+                            cpus = cpuConst.value as Integer
+                        }
+                    }
+
+                    if (m.methodAsString == "memory") {
+                        def memConst = isConstX(resourceArgs[0])
+                        if (memConst == null)
+                            continue
+
+                        def val = memConst.value
+                        MemoryUnit memUnit;
+                        switch (val) {
+                            // ayush: this is because the type checker is dumb
+                            case Long:
+                                memUnit = MemoryUnit.of(val)
+                                break
+                            case String:
+                                memUnit = MemoryUnit.of(val)
+                                break
+                            default:
+                                continue
+                        }
+
+                        memory = memUnit.bytes
+                    }
+                }
+
+
+                if (context != "output")
                     continue
 
                 VariableExpression var = isVariableX(stmt.expression)
@@ -135,7 +175,11 @@ class DAGGeneratorImpl implements ASTTransformation {
 
             }
 
-            entities[processName] = new NFEntity(NFEntity.Type.Process, expr, outputNames, sourceUnit.name, processName)
+            def entity = new NFEntity(NFEntity.Type.Process, expr, outputNames, sourceUnit.name, processName)
+            entity.cpus = cpus
+            entity.memoryBytes = memory
+
+            entities[processName] = entity
         }
 
         @Override

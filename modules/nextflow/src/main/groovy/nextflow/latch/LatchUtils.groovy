@@ -18,6 +18,7 @@ import groovyx.gpars.dataflow.expression.DataflowExpression
 import nextflow.Channel
 import nextflow.Nextflow
 import nextflow.extension.CH
+import nextflow.file.FileHelper
 import nextflow.file.http.XPath
 import nextflow.script.TokenBranchChoice
 import nextflow.script.TokenMultiMapDef
@@ -40,12 +41,9 @@ class LatchUtils {
             return json.get(k)
         }
 
-        if (json.containsKey("xpath")) {
-            URI uri = deserialize0(json.get("xpath")) as URI
-            return XPath.get(uri.toString())
-        } else if (json.containsKey("path")) {
+        if (json.containsKey("path")) {
             String uriString = json.get("path")
-            return Nextflow.file(uriString)
+            return FileHelper.asPath(uriString)
         } else if (json.containsKey("value")) {
             def result = new DataflowVariable()
             result << deserialize0(json.get("value"))
@@ -143,8 +141,6 @@ class LatchUtils {
             return ["double": value]
         } else if (value instanceof Number) {
             return ["number": value]
-        }else if (value instanceof XPath) {
-            return ["xpath": serialize(value.uri)]
         } else if (value instanceof Path) {
             return ["path": value.toUriString()]
         } else if (value instanceof List) {
