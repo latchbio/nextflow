@@ -349,6 +349,8 @@ class FileHelper {
      * @return A {@link Path} object
      */
     static Path asPath( URI uri ) {
+
+
         if( !uri.scheme || uri.scheme == 'file' ) {
             checkFileURI(uri)
             return FileSystems.getDefault().getPath(uri.path)
