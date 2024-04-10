@@ -624,7 +624,7 @@ class TaskProcessor {
         int count = makeTaskContextStage1(task, secondPass, values)
         makeTaskContextStage2(task, secondPass, count)
 
-        final attempt = System.getenv('FLYTE_ATTEMPT_NUMBER')
+        final attempt = System.getenv('FLYTE_ARRAY_RETRY_ATTEMPT')
         if (attempt != null) {
             task.config.attempt = attempt.toInteger() + 1
         }
