@@ -531,6 +531,9 @@ class WorkflowVisitor {
                 entity.unaliased
             )
 
+            v.cpus = entity.cpus
+            v.memoryBytes = entity.memoryBytes
+
             addVertex(v)
             for (def x: dependencies) {
                 addDependency(x.value, v)
@@ -1297,7 +1300,9 @@ class WorkflowVisitor {
                 module: v.module,
                 unaliased: v.unaliased,
                 subWorkflowName: v.subWorkflowName,
-                subWorkflowPath: v.subWorkflowPath
+                subWorkflowPath: v.subWorkflowPath,
+                cpu: v.cpus,
+                memoryBytes: v.memoryBytes,
             ])
 
             vbs.add(vb)

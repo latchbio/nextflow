@@ -30,6 +30,8 @@ class Vertex implements VertexLike<Vertex> {
     public String subWorkflowPath = null
     public String module = ""
     public String unaliased = ""
+    public Integer cpus = null
+    public Long memoryBytes = null
 
     Vertex( Type type, String label, Statement call, List<Statement> ret) {
         this.label = label
@@ -38,7 +40,7 @@ class Vertex implements VertexLike<Vertex> {
         this.ret = ret
     }
 
-    Vertex( Type type, String label, Statement call, List<Statement> ret, List<String> outputNames, String subWorkflowName, String subWorkflowPath, String module, String unaliased) {
+    Vertex( Type type, String label, Statement call, List<Statement> ret, List<String> outputNames, String subWorkflowName, String subWorkflowPath, String module, String unaliased, Integer cpus, Long memoryBytes) {
         this.type = type
         this.label = label
         this.call = call
@@ -48,6 +50,8 @@ class Vertex implements VertexLike<Vertex> {
         this.subWorkflowPath = subWorkflowPath
         this.module = module
         this.unaliased = unaliased
+        this.cpus = cpus
+        this.memoryBytes = memoryBytes
     }
 
     Vertex make_clone() {
@@ -60,7 +64,9 @@ class Vertex implements VertexLike<Vertex> {
             subWorkflowName,
             subWorkflowPath,
             module,
-            unaliased
+            unaliased,
+            cpus,
+            memoryBytes
         )
     }
 
@@ -76,6 +82,7 @@ class ConditionalVertex extends Vertex {
 }
 
 class ProcessVertex extends Vertex {
+
     ProcessVertex ( String label, Statement stmt, List<Statement> ret, List<String> outputNames, String module, String unaliased ) {
         super(Type.Process, label, stmt, ret)
 
