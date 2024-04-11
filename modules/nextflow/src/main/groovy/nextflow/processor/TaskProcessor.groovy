@@ -2125,8 +2125,11 @@ class TaskProcessor {
             throw new ProcessUnrecoverableException(message)
         }
 
-        // -- download foreign files
-        session.filePorter.transfer(batch)
+        final preExec = System.getenv('LATCH_PRE_EXECUTE')
+        if (preExec == null || !preExec.toBoolean()) {
+            // -- download foreign files
+            session.filePorter.transfer(batch)
+        }
     }
 
     final protected void makeTaskContextStage3( TaskRun task, HashCode hash, Path folder ) {
