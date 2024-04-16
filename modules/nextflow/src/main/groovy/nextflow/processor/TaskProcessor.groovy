@@ -1366,7 +1366,12 @@ class TaskProcessor {
             }
         }
 
-        publish.apply(files, task)
+        List<Path> published = publish.apply(files, task)
+
+        // dump published files
+        final jsonString = new JsonBuilder([files: published.collect {it.toString() }]).toString()
+        OutputStream stream = new FileOutputStream(".latch/published.json")
+        stream << jsonString
     }
 
     /**
