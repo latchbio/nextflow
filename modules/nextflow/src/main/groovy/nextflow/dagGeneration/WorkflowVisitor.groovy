@@ -110,7 +110,9 @@ class WorkflowVisitor {
         "groupKey",
         "multiMapCriteria",
         "sendMail",
-        "tuple"
+        "tuple",
+        "log",
+        "random"
     ])
 
     String workflowName
@@ -489,9 +491,15 @@ class WorkflowVisitor {
 
                 int idx = 0
                 ret = entity.outputs.collect {
+                    String name = it
+                    if (it in implicitFunctionNames) {
+                        // todo(ayush): this sucks
+                        name = "_latch_placeholder_$it"
+                    }
+
                     new ExpressionStatement(
                         new BinaryExpression(
-                            new VariableExpression(it),
+                            new VariableExpression(name),
                             Token.newSymbol("=", 0, 0),
                             new BinaryExpression(
                                 outExpr,
@@ -643,9 +651,15 @@ class WorkflowVisitor {
                 }
 
                 ret = outputNames.collect {
+                    String name = it
+                    if (it in implicitFunctionNames) {
+                        // todo(ayush): this sucks
+                        name = "_latch_placeholder_$it"
+                    }
+
                     new ExpressionStatement(
                         new BinaryExpression(
-                            new VariableExpression(it),
+                            new VariableExpression(name),
                             Token.newSymbol("=", 0, 0),
                             new PropertyExpression(
                                 new VariableExpression("res"),
