@@ -225,7 +225,9 @@ class ScriptParser {
         this.scriptPath = scriptPath
         final String className = scriptPath.toString()
         try {
-            parseLocalImports(scriptText, scriptPath, interpreter);
+            if (latchRegister) {
+                parseLocalImports(scriptText, scriptPath, interpreter);
+            }
 
             final parsed = scriptPath && session.debug
                     ? interpreter.parse(scriptPath.toFile())
