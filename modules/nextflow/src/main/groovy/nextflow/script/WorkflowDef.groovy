@@ -228,6 +228,10 @@ class WorkflowDef extends BindableDef implements ChainableDef, IterableDef, Exec
                 List<Map> res = []
 
                 def name = ch.key
+                if (name.startsWith("_latch_placeholder_")) {
+                    name = name.substring("_latch_placeholder_".length())
+                }
+
                 def channel = ch.value
 
                 boolean isValueChannel = channel instanceof DataflowExpression
@@ -238,10 +242,10 @@ class WorkflowDef extends BindableDef implements ChainableDef, IterableDef, Exec
                     if (isValueChannel) {
                         if (res.size() != 1) {
                             log.info "No output found for channel $name"
-                            return
+                            builder([])
+                        } else {
+                            builder(res[0])
                         }
-
-                        builder(res[0])
                     } else {
                         builder(res)
                     }
