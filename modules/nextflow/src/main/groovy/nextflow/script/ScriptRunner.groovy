@@ -237,6 +237,7 @@ class ScriptRunner {
     void parseScript( ScriptFile scriptFile, String entryName ) {
         scriptParser = new ScriptParser(session)
                             .setEntryName(entryName)
+                            .setLatchRegister(latchRegister)
                             .parse(scriptFile.main)
         session.script = scriptParser.script
     }
