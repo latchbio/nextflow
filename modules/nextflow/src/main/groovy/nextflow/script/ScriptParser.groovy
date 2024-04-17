@@ -67,6 +67,8 @@ class ScriptParser {
 
     private String entryName
 
+    private boolean latchRegister
+
     ScriptParser(Session session) {
         this.session = session
         this.classLoader = session.classLoader
@@ -94,6 +96,11 @@ class ScriptParser {
 
     ScriptParser setBinding(ScriptBinding binding) {
         this.binding = binding
+        return this
+    }
+
+    ScriptParser setLatchRegister(boolean latchRegister) {
+        this.latchRegister = latchRegister
         return this
     }
 
@@ -125,7 +132,11 @@ class ScriptParser {
         config = new CompilerConfiguration()
         config.addCompilationCustomizers( importCustomizer )
         config.scriptBaseClass = BaseScript.class.name
-        config.addCompilationCustomizers( new ASTTransformationCustomizer(DAGGenerator))
+
+        if (latchRegister) {
+            config.addCompilationCustomizers( new ASTTransformationCustomizer(DAGGenerator))
+        }
+
         config.addCompilationCustomizers( new ASTTransformationCustomizer(NextflowDSL))
         config.addCompilationCustomizers( new ASTTransformationCustomizer(NextflowXform))
         config.addCompilationCustomizers( new ASTTransformationCustomizer(OpXform))
