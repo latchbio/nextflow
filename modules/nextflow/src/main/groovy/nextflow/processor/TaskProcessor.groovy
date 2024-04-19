@@ -624,6 +624,30 @@ class TaskProcessor {
         int count = makeTaskContextStage1(task, secondPass, values)
         makeTaskContextStage2(task, secondPass, count)
 
+        final attempt = System.getenv('FLYTE_ARRAY_RETRY_ATTEMPT')
+        if (attempt != null) {
+            task.config.attempt = attempt.toInteger() + 1
+        }
+
+        final preExec = System.getenv('LATCH_PRE_EXECUTE')
+        if (preExec != null && preExec.toBoolean()) {
+            log.debug "Retrieving resource requirements"
+            final cpus = task.config.getCpus()
+            final memory = task.config.getMemory()
+            final disk = task.config.getDisk()
+            final resources = [
+                cpu_cores: cpus,
+                memory_bytes: memory != null ? memory.toBytes() : null,
+                disk_bytes: disk != null ? disk.toBytes(): null
+            ]
+
+            final jsonString = new JsonBuilder(resources).toString()
+            OutputStream stream = new FileOutputStream(".latch/resources.json")
+            stream << jsonString
+
+            System.exit(0)
+        }
+
         // verify that `when` guard, when specified, is satisfied
         if( !checkWhenGuard(task) )
             return
@@ -1011,6 +1035,10 @@ class TaskProcessor {
     @PackageScope
     final synchronized resumeOrDie( TaskRun task, Throwable error ) {
         log.debug "Handling unexpected condition for\n  task: name=${safeTaskName(task)}; work-dir=${task?.workDirStr}\n  error [${error?.class?.name}]: ${error?.getMessage()?:error}"
+
+        // rahul: don't both handling retry logic locally
+        // instead, kill the pod and allow flytepropeller to retry
+        System.exit(1);
 
         ErrorStrategy errorStrategy = TERMINATE
         final List<String> message = []
@@ -2097,8 +2125,11 @@ class TaskProcessor {
             throw new ProcessUnrecoverableException(message)
         }
 
-        // -- download foreign files
-        session.filePorter.transfer(batch)
+        final preExec = System.getenv('LATCH_PRE_EXECUTE')
+        if (preExec == null || !preExec.toBoolean()) {
+            // -- download foreign files
+            session.filePorter.transfer(batch)
+        }
     }
 
     final protected void makeTaskContextStage3( TaskRun task, HashCode hash, Path folder ) {
