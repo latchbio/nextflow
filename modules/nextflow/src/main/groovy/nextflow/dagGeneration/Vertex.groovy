@@ -34,6 +34,10 @@ class Vertex implements VertexLike<Vertex> {
     public Long memoryBytes = null
 
     Vertex( Type type, String label, Statement call, List<Statement> ret) {
+        if (label == "") {
+            label = "\"\""
+        }
+
         this.label = label
         this.type = type
         this.call = call

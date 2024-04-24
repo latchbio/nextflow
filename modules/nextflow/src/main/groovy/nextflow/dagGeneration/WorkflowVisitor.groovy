@@ -1258,6 +1258,15 @@ class WorkflowVisitor {
                                 (prop as ScopeVariable).vertex = v
                             }
                         }
+
+                        if (binding instanceof SubWorkflowVariable) {
+                            int propIdx = 0;
+                            OrderedHashMap<String, ScopeVariable> properties = new OrderedHashMap<String, ScopeVariable>();
+                            for (def k: binding.properties.keySet()) {
+                                properties[k] = new PropertyVariable(v, propIdx++)
+                            }
+                            binding.properties = properties
+                        }
                     }
 
                     this.scope.set(name, binding)
