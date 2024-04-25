@@ -1004,8 +1004,6 @@ class WorkflowVisitor {
                 return !expr.expressions.collect({ !isLiteralExpression(it) }).any()
             case PropertyExpression:
                 return isLiteralExpression(expr.objectExpression)
-            case NotExpression:
-                return isLiteralExpression(expr.expression)
             case BooleanExpression:
                 return isLiteralExpression(expr.expression)
             case ListExpression:
@@ -1147,9 +1145,7 @@ class WorkflowVisitor {
                 def stmt = s as IfStatement
 
                 def bool = stmt.booleanExpression
-
                 def condProducer = visitExpression(bool)
-                log.info "$bool.text -> ${condProducer?.vertex.call.text}"
 
                 def sub = bool
                 if (condProducer != null) {
