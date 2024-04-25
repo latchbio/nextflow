@@ -1368,13 +1368,18 @@ class TaskProcessor {
             return
         }
 
+        List<Path> published = []
         for( PublishDir pub : publishList ) {
-            publishOutputs0(task, pub)
+            published.addAll(publishOutputs0(task, pub))
         }
+
+        // dump published files
+        final jsonString = new JsonBuilder([files: published.collect {it.toString() }]).toString()
+        OutputStream stream = new FileOutputStream(".latch/published.json")
+        stream << jsonString
     }
 
-    private void publishOutputs0( TaskRun task, PublishDir publish ) {
-
+    private List<Path> publishOutputs0( TaskRun task, PublishDir publish ) {
         if( publish.overwrite == null ) {
             publish.overwrite = !task.cached
         }
@@ -1394,12 +1399,7 @@ class TaskProcessor {
             }
         }
 
-        List<Path> published = publish.apply(files, task)
-
-        // dump published files
-        final jsonString = new JsonBuilder([files: published.collect {it.toString() }]).toString()
-        OutputStream stream = new FileOutputStream(".latch/published.json")
-        stream << jsonString
+        return publish.apply(files, task)
     }
 
     /**
