@@ -289,7 +289,7 @@ class PublishDir {
     List<Path> apply( Set<Path> files, TaskRun task ) {
 
         if( !files || !enabled )
-            return
+            return []
 
         if( !path )
             throw new IllegalStateException("Target path for directive publishDir cannot be null")
