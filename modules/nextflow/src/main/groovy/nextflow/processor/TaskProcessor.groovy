@@ -1399,8 +1399,6 @@ class TaskProcessor {
             }
         }
 
-        log.info "$files"
-
         return publish.apply(files, task)
     }
 
