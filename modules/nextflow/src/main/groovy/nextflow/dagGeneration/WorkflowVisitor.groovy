@@ -942,7 +942,7 @@ class WorkflowVisitor {
     }
 
     ScopeVariable visitBooleanExpression(BooleanExpression expr) {
-        def resExpr = new NotExpression(new NotExpression(expr.expression))
+        def resExpr = new NotExpression(new NotExpression(expr))
 
         def dep = visitExpression(expr.expression)
         if (dep != null) {
