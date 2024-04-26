@@ -1037,11 +1037,35 @@ class TaskProcessor {
         log.debug "Handling unexpected condition for\n  task: name=${safeTaskName(task)}; work-dir=${task?.workDirStr}\n  error [${error?.class?.name}]: ${error?.getMessage()?:error}"
 
         // rahul: don't both handling retry logic locally
-        // instead, kill the pod and allow flytepropeller to retry
-        System.exit(1);
+        // instead, kill the pod and allow Propeller to retry
+        final List<String> message = []
+        def dumpStackTrace = log.isTraceEnabled()
+        message << "Error executing process > '${safeTaskName(task)}'"
+        switch( error ) {
+            case ProcessException:
+                formatTaskError( message, error, task )
+                break
+
+            case FailedGuardException:
+                formatGuardError( message, error as FailedGuardException, task )
+                break;
+
+            default:
+                message << formatErrorCause(error)
+                dumpStackTrace = true
+        }
+        if( dumpStackTrace )
+            log.error(message.join('\n'), error)
+        else
+            log.error(message.join('\n'))
+
+        if (task.config.getErrorStrategy() == IGNORE) {
+            System.exit(0)
+        } else {
+            System.exit(1)
+        }
 
         ErrorStrategy errorStrategy = TERMINATE
-        final List<String> message = []
         try {
             // -- do not recoverable error, just re-throw it
             if( error instanceof Error ) throw error
@@ -1106,27 +1130,6 @@ class TaskProcessor {
                 log.trace "Task errorShown=${errorShown.get()}; aborted=${session.aborted}"
                 return errorStrategy
             }
-
-            def dumpStackTrace = log.isTraceEnabled()
-            message << "Error executing process > '${safeTaskName(task)}'"
-            switch( error ) {
-                case ProcessException:
-                    formatTaskError( message, error, task )
-                    break
-
-                case FailedGuardException:
-                    formatGuardError( message, error as FailedGuardException, task )
-                    break;
-
-                default:
-                    message << formatErrorCause(error)
-                    dumpStackTrace = true
-            }
-
-            if( dumpStackTrace )
-                log.error(message.join('\n'), error)
-            else
-                log.error(message.join('\n'))
         }
         catch( Throwable e ) {
             // no recoverable error
