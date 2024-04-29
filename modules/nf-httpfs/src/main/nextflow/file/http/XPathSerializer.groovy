@@ -31,7 +31,7 @@ import nextflow.file.FileHelper
  */
 @Slf4j
 @CompileStatic
-class XPathSerializer extends Serializer<XPath> {
+class XPathSerializer extends Serializer<XPath> implements Serializable {
 
     @Override
     void write(Kryo kryo, Output output, XPath target) {

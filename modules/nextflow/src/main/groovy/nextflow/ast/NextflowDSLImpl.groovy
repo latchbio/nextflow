@@ -16,6 +16,8 @@
 
 package nextflow.ast
 
+import groovy.json.JsonSlurper
+import nextflow.dagGeneration.StatementJSONConverter
 import static nextflow.Const.*
 import static nextflow.ast.ASTHelpers.*
 import static org.codehaus.groovy.ast.tools.GeneralUtils.*
@@ -41,7 +43,6 @@ import org.codehaus.groovy.ast.ClassNode
 import org.codehaus.groovy.ast.MethodNode
 import org.codehaus.groovy.ast.Parameter
 import org.codehaus.groovy.ast.VariableScope
-import org.codehaus.groovy.ast.expr.ArgumentListExpression
 import org.codehaus.groovy.ast.expr.BinaryExpression
 import org.codehaus.groovy.ast.expr.CastExpression
 import org.codehaus.groovy.ast.expr.ClosureExpression
@@ -52,6 +53,7 @@ import org.codehaus.groovy.ast.expr.ListExpression
 import org.codehaus.groovy.ast.expr.MapEntryExpression
 import org.codehaus.groovy.ast.expr.MapExpression
 import org.codehaus.groovy.ast.expr.MethodCallExpression
+import org.codehaus.groovy.ast.expr.ArgumentListExpression
 import org.codehaus.groovy.ast.expr.PropertyExpression
 import org.codehaus.groovy.ast.expr.TupleExpression
 import org.codehaus.groovy.ast.expr.UnaryMinusExpression
@@ -134,9 +136,15 @@ class NextflowDSLImpl implements ASTTransformation {
 
         protected SourceUnit getSourceUnit() { unit }
 
+        private String targetExpression
+
+        private String returnStatements
+
 
         DslCodeVisitor(SourceUnit unit) {
             this.unit = unit
+            this.targetExpression = System.getenv("LATCH_EXPRESSION")
+            this.returnStatements = System.getenv("LATCH_RETURN")
         }
 
         @Override
@@ -145,6 +153,7 @@ class NextflowDSLImpl implements ASTTransformation {
                 if( !isIllegalName(node.name, node))
                     functionNames.add(node.name)
             }
+
             super.visitMethod(node)
         }
 
@@ -164,7 +173,8 @@ class NextflowDSLImpl implements ASTTransformation {
                 currentLabel = null
                 currentTaskName = methodName
                 try {
-                    convertProcessDef(methodCall,sourceUnit)
+                    convertProcessDef(methodCall, sourceUnit)
+
                     super.visitMethodCallExpression(methodCall)
                 }
                 finally {
@@ -192,6 +202,7 @@ class NextflowDSLImpl implements ASTTransformation {
                 final loadCall = new MethodCallExpression(methodCall, 'load0', new ArgumentListExpression(new VariableExpression('params')))
                 stm.setExpression(loadCall)
             }
+
             super.visitExpressionStatement(stm)
         }
 
@@ -337,7 +348,8 @@ class NextflowDSLImpl implements ASTTransformation {
 
             final body = (ClosureExpression)args[0]
             newArgs.addExpression( constX(name) )
-            newArgs.addExpression( makeWorkflowDefWrapper(body,false) )
+            def wrap = makeWorkflowDefWrapper(body,false)
+            newArgs.addExpression( wrap )
 
             // set the new list as the new arguments
             methodCall.setArguments( newArgs )
@@ -431,10 +443,11 @@ class NextflowDSLImpl implements ASTTransformation {
             final visited = new HashMap<String,Boolean>(5);
             final emitNames = new LinkedHashSet<String>(codeStms.size())
             final wrap = new ArrayList<Statement>(codeStms.size())
-            final body = new ArrayList<Statement>(codeStms.size())
+            def body = new ArrayList<Statement>(codeStms.size())
             final source = new StringBuilder()
             String context = null
-            String previous = null
+            String previous
+
             for( Statement stm : codeStms ) {
                 previous = context
                 context = stm.statementLabel ?: context
@@ -455,7 +468,7 @@ class NextflowDSLImpl implements ASTTransformation {
                             break
                         }
                         wrap.add(normWorkflowParam(stm as ExpressionStatement, context, emitNames, body))
-                    break
+                        break
 
                     case WORKFLOW_MAIN:
                         body.add(stm)
@@ -471,8 +484,36 @@ class NextflowDSLImpl implements ASTTransformation {
                         body.add(stm)
                 }
             }
+
             // read the closure source
             readSource(closure, source, unit, true)
+
+            if (targetExpression != null) {
+                body = [StatementJSONConverter.fromJsonString(targetExpression)] as List<Statement>
+
+                def ret = [new ExpressionStatement(new VariableExpression("res"))]
+
+                if (returnStatements != null) {
+                    def slurper = new JsonSlurper()
+                    List<String> statementStrings = slurper.parseText(returnStatements) as List<String>
+
+                    ret = statementStrings.collect {
+                        StatementJSONConverter.fromJsonString(it) as ExpressionStatement
+                    }
+                }
+
+                wrap.clear()
+                for (def r: ret) {
+                    wrap.add(
+                        normWorkflowParam(
+                            r,
+                            WORKFLOW_EMIT,
+                            emitNames,
+                            body
+                        )
+                    )
+                }
+            }
 
             final bodyClosure = closureX(null, block(scope, body))
             final invokeBody = makeScriptWrapper(bodyClosure, source.toString(), 'workflow', unit)
@@ -480,6 +521,7 @@ class NextflowDSLImpl implements ASTTransformation {
 
             closureX(null, block(scope, wrap))
         }
+
 
         protected void syntaxError(ASTNode node, String message) {
             int line = node.lineNumber
@@ -878,7 +920,6 @@ class NextflowDSLImpl implements ASTTransformation {
 
                     fixMethodCall(methodCall)
                 }
-
                 /*
                  * Handles a GString a file name, like this:
                  *
@@ -915,16 +956,15 @@ class NextflowDSLImpl implements ASTTransformation {
 
         /**
          * Transform a map entry `emit: something` into `emit: 'something'
-         * and `topic: something` into `topic: 'something'
          * (ie. as a constant) in a map expression passed as argument to
          * a method call. This allow the syntax
          *
          *   output:
-         *   path 'foo', emit: bar, topic: baz
+         *   path 'foo', emit: bar
          *
          * @param call
          */
-        protected void fixOutEmitAndTopicOptions(MethodCallExpression call) {
+        protected void fixOutEmitOption(MethodCallExpression call) {
             List<Expression> args = isTupleX(call.arguments)?.expressions
             if( !args ) return
             if( args.size()<2 && (args.size()!=1 || call.methodAsString!='_out_stdout')) return
@@ -935,9 +975,6 @@ class NextflowDSLImpl implements ASTTransformation {
                 final key = isConstX(entry.keyExpression)
                 final val = isVariableX(entry.valueExpression)
                 if( key?.text == 'emit' && val ) {
-                    map.mapEntryExpressions[i] = new MapEntryExpression(key, constX(val.text))
-                }
-                else if( key?.text == 'topic' && val ) {
                     map.mapEntryExpressions[i] = new MapEntryExpression(key, constX(val.text))
                 }
             }
@@ -959,7 +996,7 @@ class NextflowDSLImpl implements ASTTransformation {
                 // prefix the method name with the string '_out_'
                 methodCall.setMethod( new ConstantExpression('_out_' + methodName) )
                 fixMethodCall(methodCall)
-                fixOutEmitAndTopicOptions(methodCall)
+                fixOutEmitOption(methodCall)
             }
 
             else if( methodName in ['into','mode'] ) {

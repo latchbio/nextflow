@@ -16,6 +16,8 @@
 
 package nextflow
 
+import groovyx.gpars.dataflow.expression.DataflowExpression
+import nextflow.latch.LatchUtils
 import static nextflow.util.CheckHelper.*
 
 import java.nio.file.FileSystem
@@ -94,6 +96,7 @@ class Channel  {
         if( value==null )
             return
         Object[] items = array0(value)
+
         if( items.size()==1 && CH.isChannel(items[0]))
             throw new IllegalArgumentException("Argument of '$name' method cannot be a channel object — Likely you can replace the use of '$name' with the channel object itself")
         for( int i=0; i<items.size(); i++ ) {
@@ -134,6 +137,64 @@ class Channel  {
     static DataflowWriteChannel empty() {
         final result = CH.emit(CH.queue(), STOP)
         NodeMarker.addSourceNode('Channel.empty', result)
+        return result
+    }
+
+    private static Object[] flattenChannels(Object... items) {
+        List<Object> newItems = []
+        for (def item: items) {
+            if (!(item instanceof DataflowWriteChannel)) {
+                newItems << item
+                continue
+            }
+
+            if (item instanceof DataflowExpression) {
+                newItems << item.val
+            } else if (item instanceof DataflowQueue) {
+                for (def x: item) {
+                    newItems << x
+                }
+            }
+        }
+
+        return newItems.toArray()
+    }
+
+    static Queue<DataflowWriteChannel> deserializedParams
+
+    private static void loadDeserializedParamsFromEnv() {
+        if (deserializedParams != null) return
+
+        String serializedValues = System.getenv("LATCH_PARAM_VALS")
+        if (serializedValues == null) return
+
+        List<Object> deserialized = LatchUtils.deserializeParams(serializedValues) as List<Object>
+
+        deserializedParams = new LinkedList<DataflowWriteChannel>()
+        for (def ds: deserialized) {
+            DataflowWriteChannel val
+
+            if (ds instanceof List) {
+                val = CH.emitAndClose(CH.create(), ds)
+            } else if (ds instanceof DataflowVariable) {
+                val = CH.value(ds.val)
+            } else {
+                throw new Exception("malformed LATCH_PARAM_VALS: ${deserialized}")
+            }
+
+            deserializedParams.add(val)
+        }
+    }
+
+    private static DataflowWriteChannel getNextParamValFromEnv() {
+        loadDeserializedParamsFromEnv()
+
+        return deserializedParams.poll()
+    }
+
+    static DataflowWriteChannel placeholder() {
+        def result = getNextParamValFromEnv()
+        NodeMarker.addSourceNode('Channel.placeholder', result)
         return result
     }
 

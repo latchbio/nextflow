@@ -24,8 +24,8 @@ import java.nio.file.ProviderMismatchException
 import java.nio.file.WatchEvent
 import java.nio.file.WatchKey
 import java.nio.file.WatchService
-
 import groovy.transform.CompileStatic
+
 /**
  * Implements a {@link Path} for http/ftp protocols
  *
@@ -33,9 +33,9 @@ import groovy.transform.CompileStatic
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @CompileStatic
-class XPath implements Path {
+class XPath implements Path, Serializable {
 
-    static final public Set<String> ALL_SCHEMES = ['ftp','http','https'] as Set
+    static final public Set<String> ALL_SCHEMES = ['ftp','http','https','latch'] as Set
 
     private static final String[] EMPTY = []
 
@@ -57,7 +57,7 @@ class XPath implements Path {
 
     private XPath(XFileSystem fs, Path path, String query=null) {
         this.fs = fs
-        this.path = path
+        this.path = Paths.get(path.toString())
         this.query = query
     }
 

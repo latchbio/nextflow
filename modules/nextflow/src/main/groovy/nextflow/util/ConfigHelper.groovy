@@ -18,10 +18,14 @@ package nextflow.util
 
 import java.nio.file.Path
 
+import groovy.json.JsonBuilder
+
 import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
+
 import nextflow.secret.SecretHolder
+
 import org.codehaus.groovy.runtime.InvokerHelper
 /**
  * Helper method to handle configuration object
@@ -302,6 +306,21 @@ class ConfigHelper {
 
     static String toFlattenString(Map map, boolean sort=false) {
         flattenFormat(map.toConfigObject(), sort)
+    }
+
+    private static Map<Object, Object> toMap(ConfigObject config) {
+        config.collectEntries { key, value ->
+            if (value instanceof ConfigObject)
+                return [key, toMap(value)]
+            else if ( value instanceof GString )
+                return [key, value.toString()]
+            else
+                return [key, value]
+        }
+    }
+
+    static String toJsonString(ConfigObject config) {
+        return new JsonBuilder(toMap(config)).toString()
     }
 
     static boolean isValidIdentifier(String s) {

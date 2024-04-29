@@ -217,7 +217,7 @@ class PublishDir {
         return result
     }
 
-    protected void apply0(Set<Path> files) {
+    protected List<Path> apply0(Set<Path> files) {
         assert path
 
         createPublishDir()
@@ -237,9 +237,15 @@ class PublishDir {
         /*
          * iterate over the file parameter and publish each single file
          */
+        List<Path> published = [];
         for( Path value : dedupPaths(files) ) {
-            apply1(value, inProcess)
+            Path dst = apply1(value, inProcess)
+            if (dst != null) {
+                published.add(dst)
+            }
         }
+
+        return published
     }
 
     /**
@@ -280,10 +286,10 @@ class PublishDir {
      * @param files Set of output files
      * @param task The task whose output need to be published
      */
-    void apply( Set<Path> files, TaskRun task ) {
+    List<Path> apply( Set<Path> files, TaskRun task ) {
 
         if( !files || !enabled )
-            return
+            return []
 
         if( !path )
             throw new IllegalStateException("Target path for directive publishDir cannot be null")
@@ -295,20 +301,20 @@ class PublishDir {
         this.sourceFileSystem = sourceDir.fileSystem
         this.stageInMode = task.config.stageInMode
 
-        apply0(files)
+        return apply0(files)
     }
 
-    protected void apply1(Path source, boolean inProcess ) {
+    protected Path apply1(Path source, boolean inProcess ) {
 
         def target = sourceDir ? sourceDir.relativize(source) : source.getFileName()
         if( matcher && !matcher.matches(target) ) {
             // skip not matching file
-            return
+            return null
         }
 
         if( saveAs && !(target=saveAs.call(target.toString()))) {
             // skip this file
-            return
+            return null
         }
 
         final destination = resolveDestination(target)
@@ -335,7 +341,7 @@ class PublishDir {
         else {
             threadPool.submit({ safeProcessFile(source, destination) } as Runnable)
         }
-
+        return destination
     }
 
     protected Path resolveDestination(target) {

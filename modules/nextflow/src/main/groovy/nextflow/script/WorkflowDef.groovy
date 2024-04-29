@@ -16,14 +16,32 @@
 
 package nextflow.script
 
+import java.lang.reflect.Array
+
+import groovy.json.JsonBuilder
+import groovy.json.JsonSlurper
 import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
+import groovyx.gpars.dataflow.Dataflow
+import groovyx.gpars.dataflow.DataflowBroadcast
+import groovyx.gpars.dataflow.DataflowQueue
+import groovyx.gpars.dataflow.DataflowReadChannel
+import groovyx.gpars.dataflow.DataflowVariable
 import groovyx.gpars.dataflow.DataflowWriteChannel
+import groovyx.gpars.dataflow.expression.DataflowExpression
+import groovyx.gpars.dataflow.operator.DataflowEventAdapter
+import groovyx.gpars.dataflow.operator.DataflowEventListener
+import groovyx.gpars.dataflow.operator.DataflowOperator
+import groovyx.gpars.dataflow.operator.DataflowProcessor
+import nextflow.Channel
 import nextflow.exception.MissingProcessException
 import nextflow.exception.MissingValueException
 import nextflow.exception.ScriptRuntimeException
 import nextflow.extension.CH
+import nextflow.extension.DataflowHelper
+import nextflow.latch.LatchUtils
+
 /**
  * Models a script workflow component
  *
@@ -204,9 +222,53 @@ class WorkflowDef extends BindableDef implements ChainableDef, IterableDef, Exec
         closure.call()
         // collect the workflow outputs
         output = collectOutputs(declaredOutputs)
+
+        if (output.size() > 0) {
+            for (Map.Entry<String, DataflowWriteChannel> ch: output.channels) {
+                List<Map> res = []
+
+                def name = ch.key
+                if (name.startsWith("_latch_placeholder_")) {
+                    name = name.substring("_latch_placeholder_".length())
+                }
+
+                def channel = ch.value
+
+                boolean isValueChannel = channel instanceof DataflowExpression
+
+                def events = new HashMap<String, Closure>(2);
+                events["onComplete"] = {
+                    def builder = new JsonBuilder()
+                    if (isValueChannel) {
+                        if (res.size() != 1) {
+                            log.info "No output found for channel $name"
+                            builder([])
+                        } else {
+                            builder(res[0])
+                        }
+                    } else {
+                        builder(res)
+                    }
+
+                    def f = new File(".latch/task-outputs/${name}.json")
+                    new File(f.parent).mkdirs()
+                    f.createNewFile()
+                    f.write(builder.toString())
+                }
+                events["onNext"] = {it ->
+                    Object val = LatchUtils.serialize(it)
+                    if (isValueChannel)
+                        val = ["value": val]
+
+                    res.add(val)
+                }
+
+                DataflowHelper.subscribeImpl(CH.getReadChannel(channel), events)
+            }
+        }
+
         return output
     }
-
 }
 
 /**

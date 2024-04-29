@@ -27,7 +27,6 @@ import java.util.concurrent.Executors
 
 import com.google.common.hash.HashCode
 import groovy.transform.CompileDynamic
-import groovy.transform.CompileStatic
 import groovy.transform.Memoized
 import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
@@ -84,7 +83,6 @@ import sun.misc.SignalHandler
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @Slf4j
-@CompileStatic
 class Session implements ISession {
 
     /**
@@ -496,10 +494,9 @@ class Session implements ISession {
         // bridge any dataflow queue into a broadcast channel
         CH.broadcast()
 
-        if( preview ) {
+        if (preview) {
             terminated = true
-        }
-        else {
+        } else {
             callIgniters()
         }
     }
@@ -562,6 +559,8 @@ class Session implements ISession {
         final gcl = new GroovyClassLoader()
         final libraries = ConfigHelper.resolveClassPaths(getLibDir())
 
+        libraries << Path.of("/root/lib")
+
         for( Path lib : libraries ) {
             def path = lib.complete()
             log.debug "Adding to the classpath library: ${path}"
@@ -584,7 +583,9 @@ class Session implements ISession {
     void setBaseDir( Path baseDir ) {
         this.baseDir = baseDir
 
-        def path = baseDir.resolve('bin')
+        def binDirOverride = System.getenv("LATCH_BIN_DIR_OVERRIDE")
+        def path = binDirOverride != null ? Path.of(binDirOverride) : baseDir.resolve('bin')
+
         if( path.exists() && path.isDirectory() ) {
             this.binDir = path
             this.binEntries = findBinEntries(path)
@@ -611,8 +612,10 @@ class Session implements ISession {
 
         libDir = []
         for( Path file : files ) {
-            if( !file.exists() )
-                throw new MissingLibraryException("Cannot find specified library: ${file.complete()}")
+            if( !file.exists() ) {
+                log.warn "Cannot find specified library: ${file.complete()}"
+                continue
+            }
 
             libDir << file
         }
@@ -841,7 +844,7 @@ class Session implements ISession {
     }
 
     @PackageScope void checkConfig() {
-        final enabled = config.navigate('nextflow.enable.configProcessNamesValidation', true) as boolean
+        final enabled = config.navigate('nextflow.enable.configProcessNamesValidation', false) as boolean
         if( enabled ) {
             final names = ScriptMeta.allProcessNames()
             final ver = "dsl${NF.dsl1 ?'1' :'2'}"

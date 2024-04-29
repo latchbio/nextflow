@@ -15,6 +15,9 @@
  */
 package nextflow.processor
 
+import groovy.json.JsonBuilder
+import groovy.json.JsonSlurper
+import nextflow.file.http.XPath
 import static nextflow.processor.ErrorStrategy.*
 
 import java.lang.reflect.InvocationTargetException
@@ -42,6 +45,7 @@ import groovyx.gpars.dataflow.Dataflow
 import groovyx.gpars.dataflow.DataflowQueue
 import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
+import groovyx.gpars.dataflow.DataflowVariable
 import groovyx.gpars.dataflow.expression.DataflowExpression
 import groovyx.gpars.dataflow.operator.DataflowEventAdapter
 import groovyx.gpars.dataflow.operator.DataflowOperator
@@ -51,6 +55,7 @@ import groovyx.gpars.dataflow.stream.DataflowStreamWriteAdapter
 import groovyx.gpars.group.PGroup
 import nextflow.NF
 import nextflow.Nextflow
+import nextflow.Channel
 import nextflow.Session
 import nextflow.ast.NextflowDSLImpl
 import nextflow.ast.TaskCmdXform
@@ -107,6 +112,7 @@ import nextflow.util.Escape
 import nextflow.util.LockManager
 import nextflow.util.LoggerHelper
 import nextflow.util.TestOnly
+import nextflow.latch.LatchUtils
 import org.codehaus.groovy.control.CompilerConfiguration
 import org.codehaus.groovy.control.customizers.ASTTransformationCustomizer
 /**
@@ -418,15 +424,15 @@ class TaskProcessor {
         if ( !taskBody )
             throw new IllegalStateException("Missing task body for process `$name`")
 
-        // -- check that input tuple defines at least two elements
-        def invalidInputTuple = config.getInputs().find { it instanceof TupleInParam && it.inner.size()<2 }
-        if( invalidInputTuple )
-            checkWarn "Input `tuple` must define at least two elements -- Check process `$name`"
+        // -- check that input set defines at least two elements
+        def invalidInputSet = config.getInputs().find { it instanceof TupleInParam && it.inner.size()<2 }
+        if( invalidInputSet )
+            checkWarn "Input `tuple` must define at least two component -- Check process `$name`"
 
-        // -- check that output tuple defines at least two elements
-        def invalidOutputTuple = config.getOutputs().find { it instanceof TupleOutParam && it.inner.size()<2 }
-        if( invalidOutputTuple )
-            checkWarn "Output `tuple` must define at least two elements -- Check process `$name`"
+        // -- check that output set defines at least two elements
+        def invalidOutputSet = config.getOutputs().find { it instanceof TupleOutParam && it.inner.size()<2 }
+        if( invalidOutputSet )
+            checkWarn "Output `tuple` must define at least two component -- Check process `$name`"
 
         /**
          * Verify if this process run only one time
@@ -561,6 +567,7 @@ class TaskProcessor {
         def interceptor = new TaskProcessorInterceptor(opInputs, singleton)
         def params = [inputs: opInputs, maxForks: session.poolSize, listeners: [interceptor] ]
         def invoke = new InvokeTaskAdapter(this, opInputs.size())
+
         session.allOperators << (operator = new DataflowOperator(group, params, invoke))
 
         // notify the creation of a new vertex the execution DAG
@@ -610,12 +617,36 @@ class TaskProcessor {
         currentTask.set(task)
 
         // -- validate input lengths
-        validateInputTuples(values)
+        validateInputSets(values)
 
         // -- map the inputs to a map and use to delegate closure values interpolation
         final secondPass = [:]
         int count = makeTaskContextStage1(task, secondPass, values)
         makeTaskContextStage2(task, secondPass, count)
+
+        final attempt = System.getenv('FLYTE_ARRAY_RETRY_ATTEMPT')
+        if (attempt != null) {
+            task.config.attempt = attempt.toInteger() + 1
+        }
+
+        final preExec = System.getenv('LATCH_PRE_EXECUTE')
+        if (preExec != null && preExec.toBoolean()) {
+            log.debug "Retrieving resource requirements"
+            final cpus = task.config.getCpus()
+            final memory = task.config.getMemory()
+            final disk = task.config.getDisk()
+            final resources = [
+                cpu_cores: cpus,
+                memory_bytes: memory != null ? memory.toBytes() : null,
+                disk_bytes: disk != null ? disk.toBytes(): null
+            ]
+
+            final jsonString = new JsonBuilder(resources).toString()
+            OutputStream stream = new FileOutputStream(".latch/resources.json")
+            stream << jsonString
+
+            System.exit(0)
+        }
 
         // verify that `when` guard, when specified, is satisfied
         if( !checkWhenGuard(task) )
@@ -640,13 +671,13 @@ class TaskProcessor {
     }
 
     @Memoized
-    private List<TupleInParam> getDeclaredInputTuple() {
+    private List<TupleInParam> getDeclaredInputSet() {
         getConfig().getInputs().ofType(TupleInParam)
     }
 
-    protected void validateInputTuples( List values ) {
+    protected void validateInputSets( List values ) {
 
-        def declaredSets = getDeclaredInputTuple()
+        def declaredSets = getDeclaredInputSet()
         for( int i=0; i<declaredSets.size(); i++ ) {
             final param = declaredSets[i]
             final entry = values[param.index]
@@ -654,7 +685,7 @@ class TaskProcessor {
             final actual = entry instanceof Collection ? entry.size() : (entry instanceof Map ? entry.size() : 1)
 
             if( actual != expected ) {
-                final msg = "Input tuple does not match tuple declaration in process `$name` -- offending value: $entry"
+                final msg = "Input tuple does not match input set cardinality declared by process `$name` -- offending value: $entry"
                 checkWarn(msg, [firstOnly: true, cacheKey: this])
             }
         }
@@ -857,7 +888,7 @@ class TaskProcessor {
         }
 
         if( !task.config.getStoreDir().exists() ) {
-            log.trace "[${safeTaskName(task)}] Store dir does not exist > ${task.config.storeDir} -- return false"
+            log.trace "[${safeTaskName(task)}] Store dir does not exists > ${task.config.storeDir} -- return false"
             // no folder -> no cached result
             return false
         }
@@ -1005,8 +1036,36 @@ class TaskProcessor {
     final synchronized resumeOrDie( TaskRun task, Throwable error ) {
         log.debug "Handling unexpected condition for\n  task: name=${safeTaskName(task)}; work-dir=${task?.workDirStr}\n  error [${error?.class?.name}]: ${error?.getMessage()?:error}"
 
-        ErrorStrategy errorStrategy = TERMINATE
+        // rahul: don't both handling retry logic locally
+        // instead, kill the pod and allow Propeller to retry
         final List<String> message = []
+        def dumpStackTrace = log.isTraceEnabled()
+        message << "Error executing process > '${safeTaskName(task)}'"
+        switch( error ) {
+            case ProcessException:
+                formatTaskError( message, error, task )
+                break
+
+            case FailedGuardException:
+                formatGuardError( message, error as FailedGuardException, task )
+                break;
+
+            default:
+                message << formatErrorCause(error)
+                dumpStackTrace = true
+        }
+        if( dumpStackTrace )
+            log.error(message.join('\n'), error)
+        else
+            log.error(message.join('\n'))
+
+        if (task.config.getErrorStrategy() == IGNORE) {
+            System.exit(0)
+        } else {
+            System.exit(1)
+        }
+
+        ErrorStrategy errorStrategy = TERMINATE
         try {
             // -- do not recoverable error, just re-throw it
             if( error instanceof Error ) throw error
@@ -1071,27 +1130,6 @@ class TaskProcessor {
                 log.trace "Task errorShown=${errorShown.get()}; aborted=${session.aborted}"
                 return errorStrategy
             }
-
-            def dumpStackTrace = log.isTraceEnabled()
-            message << "Error executing process > '${safeTaskName(task)}'"
-            switch( error ) {
-                case ProcessException:
-                    formatTaskError( message, error, task )
-                    break
-
-                case FailedGuardException:
-                    formatGuardError( message, error as FailedGuardException, task )
-                    break;
-
-                default:
-                    message << formatErrorCause(error)
-                    dumpStackTrace = true
-            }
-
-            if( dumpStackTrace )
-                log.error(message.join('\n'), error)
-            else
-                log.error(message.join('\n'))
         }
         catch( Throwable e ) {
             // no recoverable error
@@ -1333,13 +1371,18 @@ class TaskProcessor {
             return
         }
 
+        List<Path> published = []
         for( PublishDir pub : publishList ) {
-            publishOutputs0(task, pub)
+            published.addAll(publishOutputs0(task, pub))
         }
+
+        // dump published files
+        final jsonString = new JsonBuilder([files: published.collect {it.toString() }]).toString()
+        OutputStream stream = new FileOutputStream(".latch/published.json")
+        stream << jsonString
     }
 
-    private void publishOutputs0( TaskRun task, PublishDir publish ) {
-
+    private List<Path> publishOutputs0( TaskRun task, PublishDir publish ) {
         if( publish.overwrite == null ) {
             publish.overwrite = !task.cached
         }
@@ -1359,7 +1402,7 @@ class TaskProcessor {
             }
         }
 
-        publish.apply(files, task)
+        return publish.apply(files, task)
     }
 
     /**
@@ -1369,12 +1412,11 @@ class TaskProcessor {
     synchronized protected void bindOutputs( TaskRun task ) {
 
         // -- creates the map of all tuple values to bind
-        Map<Short,List> tuples = [:]
+        Map<Short, List> tuples = [:]
         for( OutParam param : config.getOutputs() ) {
             tuples.put(param.index, [])
         }
 
-        // -- collects the values to bind
         for( OutParam param: task.outputs.keySet() ){
             def value = task.outputs.get(param)
 
@@ -1405,8 +1447,7 @@ class TaskProcessor {
         // bind the output
         if( isFair0 ) {
             fairBindOutputs0(tuples, task)
-        }
-        else {
+        } else {
             bindOutputs0(tuples)
         }
 
@@ -2087,8 +2128,11 @@ class TaskProcessor {
             throw new ProcessUnrecoverableException(message)
         }
 
-        // -- download foreign files
-        session.filePorter.transfer(batch)
+        final preExec = System.getenv('LATCH_PRE_EXECUTE')
+        if (preExec == null || !preExec.toBoolean()) {
+            // -- download foreign files
+            session.filePorter.transfer(batch)
+        }
     }
 
     final protected void makeTaskContextStage3( TaskRun task, HashCode hash, Path folder ) {

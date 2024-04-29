@@ -27,6 +27,8 @@ import org.codehaus.groovy.ast.expr.ConstantExpression
 import org.codehaus.groovy.ast.expr.ConstructorCallExpression
 import org.codehaus.groovy.ast.expr.DeclarationExpression
 import org.codehaus.groovy.ast.expr.Expression
+import org.codehaus.groovy.ast.expr.ListExpression
+import org.codehaus.groovy.ast.expr.MapEntryExpression
 import org.codehaus.groovy.ast.expr.MapExpression
 import org.codehaus.groovy.ast.expr.MethodCallExpression
 import org.codehaus.groovy.ast.expr.TupleExpression
@@ -121,8 +123,16 @@ class ASTHelpers {
         expr instanceof TupleExpression ? expr : null
     }
 
+    static MapEntryExpression isMapEntryX(Expression expr) {
+        expr instanceof MapEntryExpression ? expr : null
+    }
+
     static MapExpression isMapX(Expression exp) {
         exp instanceof MapExpression ? exp : null
+    }
+
+    static ListExpression isListX(Expression exp) {
+        exp instanceof ListExpression ? exp : null
     }
 
     static ConstantExpression isConstX(Expression exp) {

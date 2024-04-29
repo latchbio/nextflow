@@ -2,18 +2,28 @@ package nextflow.extension
 
 import java.lang.reflect.Method
 import java.lang.reflect.ParameterizedType
+import java.nio.file.Path
 import java.util.concurrent.Callable
 
+import groovy.json.JsonSlurper
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import groovyx.gpars.dataflow.DataflowBroadcast
+import groovyx.gpars.dataflow.DataflowChannel
 import groovyx.gpars.dataflow.DataflowQueue
 import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
+import groovyx.gpars.dataflow.DataflowVariable
+import groovyx.gpars.dataflow.Dataflow
+import groovyx.gpars.dataflow.stream.DataflowStream
+import nextflow.Channel
 import nextflow.NF
 import nextflow.dag.NodeMarker
+import nextflow.extension.DataflowHelper
 import nextflow.exception.ScriptRuntimeException
+import nextflow.file.http.XPath
 import nextflow.script.ChannelOut
+import nextflow.latch.LatchUtils
 import org.codehaus.groovy.runtime.InvokerHelper
 /**
  * Represents an nextflow operation invocation
@@ -151,7 +161,6 @@ class OpCall implements Callable {
         return params
     }
 
-
     protected Object invoke() {
         if( methodName==SET_OP_hack ) {
             // well this is ugly, the problem is that `set` is not a real operator
@@ -161,8 +170,9 @@ class OpCall implements Callable {
 
         final DataflowReadChannel source = read0(source)
         final result = invoke0(source, read1(args))
-        if( !ignoreDagNode )
-            addGraphNode(result)
+
+        if (!ignoreDagNode) addGraphNode(result)
+
         return result
     }
 

@@ -20,12 +20,15 @@ import java.nio.file.Path
 
 import com.google.common.hash.Hashing
 import groovy.transform.CompileStatic
+import groovy.transform.Field
+import groovy.util.logging.Slf4j
 import nextflow.Channel
 import nextflow.Nextflow
 import nextflow.Session
 import nextflow.ast.NextflowDSL
 import nextflow.ast.NextflowXform
 import nextflow.ast.OpXform
+import nextflow.dagGeneration.DAGGenerator
 import nextflow.exception.ScriptCompilationException
 import nextflow.extension.FilesEx
 import nextflow.file.FileHelper
@@ -43,6 +46,7 @@ import org.codehaus.groovy.control.customizers.ImportCustomizer
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @CompileStatic
+@Slf4j
 class ScriptParser {
 
     private ClassLoader classLoader
@@ -62,6 +66,8 @@ class ScriptParser {
     private CompilerConfiguration config
 
     private String entryName
+
+    private boolean latchRegister
 
     ScriptParser(Session session) {
         this.session = session
@@ -93,6 +99,11 @@ class ScriptParser {
         return this
     }
 
+    ScriptParser setLatchRegister(boolean latchRegister) {
+        this.latchRegister = latchRegister
+        return this
+    }
+
     protected ClassLoader getClassLoader() { classLoader }
 
     protected Session getSession() { session }
@@ -109,7 +120,7 @@ class ScriptParser {
 
         // define the imports
         def importCustomizer = new ImportCustomizer()
-        importCustomizer.addImports( StringUtils.name, groovy.transform.Field.name )
+        importCustomizer.addImports( StringUtils.name, Field.name )
         importCustomizer.addImports( Path.name )
         importCustomizer.addImports( Channel.name )
         importCustomizer.addImports( Duration.name )
@@ -121,6 +132,11 @@ class ScriptParser {
         config = new CompilerConfiguration()
         config.addCompilationCustomizers( importCustomizer )
         config.scriptBaseClass = BaseScript.class.name
+
+        if (latchRegister) {
+            config.addCompilationCustomizers( new ASTTransformationCustomizer(DAGGenerator))
+        }
+
         config.addCompilationCustomizers( new ASTTransformationCustomizer(NextflowDSL))
         config.addCompilationCustomizers( new ASTTransformationCustomizer(NextflowXform))
         config.addCompilationCustomizers( new ASTTransformationCustomizer(OpXform))
@@ -166,18 +182,74 @@ class ScriptParser {
         return new GroovyShell(classLoader, binding, getConfig())
     }
 
+    private static Map<String, Map<String, String>> getLocalImports(String scriptText) {
+        def import_expr = /include(\s+)\{(?<aliases>.*)\}(\s+)from(\s+)['|"](?<path>.*)['|"]/
+        def alias_expr = /(?<module>[^\s]+)(\s+as\s+(?<local>[^\s]+))?/
+
+        Map<String, Map<String, String>> res = [:]
+        scriptText.tokenize("\n").forEach {
+            it = it.strip()
+
+            def matcher = (it =~ import_expr)
+            if (!matcher.matches()) return;
+
+            def aliases = matcher.group("aliases")
+            def path = matcher.group("path")
+
+            if (path.startsWith("plugin")) return; // only parse local imports
+
+            Map<String, String> subRes = [:]
+            aliases.strip().tokenize(";").forEach {
+                def subMatcher = (it.strip()) =~ alias_expr;
+                if (!subMatcher.matches()) return;
+
+                def moduleBinding = subMatcher.group("module")
+                def localBinding = subMatcher.group("local") ?: moduleBinding
+
+                subRes[moduleBinding] = localBinding
+            }
+
+            res[path] = subRes;
+        }
+
+        return res
+    }
+
+    static Path realModulePath(Path p) {
+        return (new IncludeDef()).realModulePath(p)
+    }
+
+    private ScriptParser parseLocalImports(String scriptText, Path scriptPath, GroovyShell interpreter) {
+        def imports = getLocalImports(scriptText)
+
+        imports.each( {
+            def fileName = it.key
+            def importPath = realModulePath(Path.of(scriptPath.parent.toString(), fileName).normalize())
+
+            parse0(importPath.text, importPath, interpreter)
+        })
+
+        return this
+    }
+
     private ScriptParser parse0(String scriptText, Path scriptPath, GroovyShell interpreter) {
         this.scriptPath = scriptPath
-        final String className = computeClassName(scriptText)
+        final String className = scriptPath.toString()
         try {
+            if (latchRegister) {
+                parseLocalImports(scriptText, scriptPath, interpreter);
+            }
+
             final parsed = scriptPath && session.debug
                     ? interpreter.parse(scriptPath.toFile())
                     : interpreter.parse(scriptText, className)
+
             if( parsed !instanceof BaseScript ){
                throw new CompilationFailedException(0, null)
             }
             script = (BaseScript)parsed
             final meta = ScriptMeta.get(script)
+
             meta.setScriptPath(scriptPath)
             meta.setModule(module)
             meta.validate()

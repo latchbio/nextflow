@@ -36,7 +36,7 @@ import groovy.transform.PackageScope
  */
 @PackageScope
 @CompileStatic
-class XFileSystem extends FileSystem {
+class XFileSystem extends FileSystem implements Serializable {
 
     static private String PATH_SEPARATOR = '/'
 

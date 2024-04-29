@@ -35,7 +35,7 @@ class ChannelOut implements List<DataflowWriteChannel> {
 
     private @Delegate List<DataflowWriteChannel> target
 
-    private Map<String,DataflowWriteChannel> channels
+    public Map<String,DataflowWriteChannel> channels
 
     ChannelOut() {
         this.target = Collections.<DataflowWriteChannel>unmodifiableList(Collections.<DataflowWriteChannel>emptyList())

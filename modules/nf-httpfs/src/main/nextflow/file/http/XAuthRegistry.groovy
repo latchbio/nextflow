@@ -26,7 +26,7 @@ import groovy.transform.CompileStatic
  */
 @Singleton(strict = false)
 @CompileStatic
-class XAuthRegistry {
+class XAuthRegistry implements Serializable {
 
     private List<XAuthProvider> providers = new ArrayList<>()
 

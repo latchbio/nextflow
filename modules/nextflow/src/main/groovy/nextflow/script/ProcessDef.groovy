@@ -18,6 +18,11 @@ package nextflow.script
 
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
+import groovyx.gpars.dataflow.DataflowBroadcast
+import groovyx.gpars.dataflow.DataflowQueue
+import groovyx.gpars.dataflow.DataflowVariable
+import groovyx.gpars.dataflow.DataflowWriteChannel
+import nextflow.Channel
 import nextflow.Const
 import nextflow.Global
 import nextflow.Session
@@ -28,6 +33,7 @@ import nextflow.script.params.BaseOutParam
 import nextflow.script.params.EachInParam
 import nextflow.script.params.InputsList
 import nextflow.script.params.OutputsList
+import nextflow.latch.LatchUtils
 
 /**
  * Models a nextflow process definition
@@ -107,10 +113,14 @@ class ProcessDef extends BindableDef implements IterableDef, ChainableDef {
         final copy = (Closure)rawBody.clone()
         copy.setResolveStrategy(Closure.DELEGATE_FIRST)
         copy.setDelegate(processConfig)
+
+
         taskBody = copy.call() as BodyDef
+
         processConfig.throwExceptionOnMissingProperty(false)
         if ( !taskBody )
             throw new ScriptRuntimeException("Missing script in the specified process block -- make sure it terminates with the script string to be executed")
+
 
         // apply config settings to the process
         processConfig.applyConfig((Map)session.config.process, baseName, simpleName, processName)
@@ -167,8 +177,8 @@ class ProcessDef extends BindableDef implements IterableDef, ChainableDef {
         // initialise process config
         initialize()
 
-        // get params 
-        final params = ChannelOut.spread(args)
+        List params = ChannelOut.spread(args)
+
         // sanity check
         if( params.size() != declaredInputs.size() )
             throw new ScriptRuntimeException(missMatchErrMessage(processName, declaredInputs.size(), params.size()))
@@ -194,14 +204,8 @@ class ProcessDef extends BindableDef implements IterableDef, ChainableDef {
                 throw new ScriptRuntimeException("Process `$processName` inputs and outputs do not have the same cardinality - Feedback loop is not supported"  )
 
             for(int i=0; i<declaredOutputs.size(); i++ ) {
-                final param = (declaredOutputs[i] as BaseOutParam)
-                final topicName = param.channelTopicName
-                if( topicName && feedbackChannels )
-                    throw new IllegalArgumentException("Output topic conflicts with recursion feature - process `$processName` should not declare any output topic" )
-                final ch = feedbackChannels
-                        ? feedbackChannels[i]
-                        : ( topicName ? CH.createTopicSource(topicName) : CH.create(singleton) )
-                param.setInto(ch)
+                final ch = feedbackChannels ? feedbackChannels[i] : CH.create(singleton)
+                (declaredOutputs[i] as BaseOutParam).setInto(ch)
             }
         }
 

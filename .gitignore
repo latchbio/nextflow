@@ -39,3 +39,5 @@ temp
 plugins-prod
 sandbox
 wave-tests
+
+.*sw*

@@ -24,7 +24,7 @@ import groovy.transform.CompileStatic
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @CompileStatic
-class HttpFileSystemProvider extends XFileSystemProvider {
+class HttpFileSystemProvider extends XFileSystemProvider implements Serializable {
 
     private static final String SCHEME = 'http'
 

@@ -258,6 +258,9 @@ class CmdRun extends CmdBase implements HubOptions {
     @Parameter(names=['-preview'], description = "Run the workflow script skipping the execution of all processes")
     boolean preview
 
+    @Parameter(names=['-latchRegister'], description = "Generate workflow metadata for a latch execution.")
+    boolean latchRegister
+
     @Parameter(names=['-plugins'], description = 'Specify the plugins to be applied for this run e.g. nf-amazon,nf-tower')
     String plugins
 
@@ -316,11 +319,15 @@ class CmdRun extends CmdBase implements HubOptions {
         // -- specify the arguments
         final scriptFile = getScriptFile(pipeline)
 
+
         // create the config object
+        def configDirOverride = System.getenv("LATCH_CONFIG_DIR_OVERRIDE")
+        Path configBaseDir = configDirOverride != null ? Path.of(configDirOverride) : scriptFile.parent
+
         final builder = new ConfigBuilder()
                 .setOptions(launcher.options)
                 .setCmdRun(this)
-                .setBaseDir(scriptFile.parent)
+                .setBaseDir(configBaseDir)
         final config = builder .build()
 
         // check DSL syntax in the config
@@ -343,6 +350,7 @@ class CmdRun extends CmdBase implements HubOptions {
         final runner = new ScriptRunner(config)
         runner.setScript(scriptFile)
         runner.setPreview(this.preview, previewAction)
+        runner.setLatchRegister(this.latchRegister)
         runner.session.profile = profile
         runner.session.commandLine = launcher.cliString
         runner.session.ansiLog = launcher.options.ansiLog

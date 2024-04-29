@@ -17,6 +17,7 @@
 package nextflow.script
 
 import java.lang.reflect.InvocationTargetException
+import java.nio.file.Path
 import java.nio.file.Paths
 
 import groovy.util.logging.Slf4j
@@ -80,7 +81,9 @@ abstract class BaseScript extends Script implements ExecutionContext {
         processFactory = session.newProcessFactory(this)
 
         binding.setVariable( 'baseDir', session.baseDir )
-        binding.setVariable( 'projectDir', session.baseDir )
+
+        def configDirOverride = System.getenv("LATCH_CONFIG_DIR_OVERRIDE")
+        binding.setVariable( 'projectDir', configDirOverride != null ? Path.of(configDirOverride) : session.baseDir )
         binding.setVariable( 'workDir', session.workDir )
         binding.setVariable( 'workflow', session.workflowMetadata )
         binding.setVariable( 'nextflow', NextflowMeta.instance )

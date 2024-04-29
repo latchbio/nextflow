@@ -63,6 +63,11 @@ class ScriptRunner {
     private boolean preview
 
     /**
+     * Parse NF script and generate a DAG for latch workflow registration
+     */
+    private boolean latchRegister
+
+    /**
      * Optional callback to perform a custom action on a preview event
      */
     private Closure previewAction
@@ -95,6 +100,10 @@ class ScriptRunner {
         this.preview = value
         this.previewAction = action
         return this
+    }
+
+    void setLatchRegister(boolean value) {
+        this.latchRegister = value
     }
 
     Session getSession() { session }
@@ -133,6 +142,9 @@ class ScriptRunner {
             // parse the script
             try {
                 parseScript(scriptFile, entryName)
+
+                if (latchRegister) return
+
                 // run the code
                 run()
             }
@@ -222,9 +234,10 @@ class ScriptRunner {
         return output
     }
 
-    protected void parseScript( ScriptFile scriptFile, String entryName ) {
+    void parseScript( ScriptFile scriptFile, String entryName ) {
         scriptParser = new ScriptParser(session)
                             .setEntryName(entryName)
+                            .setLatchRegister(latchRegister)
                             .parse(scriptFile.main)
         session.script = scriptParser.script
     }
@@ -241,7 +254,8 @@ class ScriptRunner {
         // -- launch the script execution
         scriptParser.runScript()
         // -- normalise output
-        result = normalizeOutput(scriptParser.getResult())
+        def res = scriptParser.getResult()
+        result = normalizeOutput(res)
         // -- ignite dataflow network
         session.fireDataflowNetwork(preview)
     }
