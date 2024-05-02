@@ -6,14 +6,14 @@ import groovy.util.logging.Slf4j
 
 @Slf4j
 class LatchFileSystem extends XFileSystem {
-    XFileSystemProvider provider
+    LatchFileSystemProvider provider
     String domain
 
-    LatchFileSystem(XFileSystemProvider provider, URI base) {
-        super(provider, base)
+    LatchFileSystem(LatchFileSystemProvider provider, String domain) {
+        super(provider, new URI("latch", domain, "/", null, null))
 
         this.provider = provider
-        this.domain = base.authority ?: ""
+        this.domain = domain
     }
 
     @Override

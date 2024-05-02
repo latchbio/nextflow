@@ -157,7 +157,6 @@ class XPath implements Path, Serializable {
         else {
             return this
         }
-
     }
 
     @Override
