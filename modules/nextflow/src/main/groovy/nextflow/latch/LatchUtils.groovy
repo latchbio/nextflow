@@ -142,7 +142,13 @@ class LatchUtils {
         } else if (value instanceof Number) {
             return ["number": value]
         } else if (value instanceof Path) {
-            return ["path": value.toUriString()]
+            def uri = value.toUri()
+            if (uri.scheme == "file")
+                return ["path": value.toString()]
+
+            return [
+                "path": "${uri.scheme}://${uri.authority ?: ""}${uri.path}"
+            ]
         } else if (value instanceof List) {
             List<Object> res = value.collect { serialize(it) }
 

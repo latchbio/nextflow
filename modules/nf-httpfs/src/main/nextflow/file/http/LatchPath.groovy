@@ -23,6 +23,6 @@ class LatchPath extends XPath {
 
     @Override
     URI toUri() {
-        return new URI("latch://${fs.domain}${path}")
+        return new URI("latch", fs.domain, path.toString(), null)
     }
 }
