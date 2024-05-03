@@ -324,7 +324,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
         conn.setDoOutput(true)
         conn.outputStream.withWriter { writer ->
-            writer << JsonOutput.toJson(req)
+            writer << JsonOutput.toJson({
+                pod: JsonOutput.toJson(req)
+            })
         }
 
         def resp = conn.getResponseCode()
@@ -346,6 +348,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
         final req = newSubmitRequest(task)
         this.podName = dispatch(req)
+
+        log.info "Submitted Pod ${this.podName}"
+
         this.status = TaskStatus.SUBMITTED
     }
 
