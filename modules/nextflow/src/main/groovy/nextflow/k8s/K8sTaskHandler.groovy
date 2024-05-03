@@ -67,7 +67,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     } ()
 
-    private static final DISPATCHER_DOMAIN = 'nf-dispatcher-service.1326-development.svc.cluster.local'
+    private static final DISPATCHER_DOMAIN = 'nf-dispatcher-service.flyte.svc.cluster.local'
 
     private ResourceType resourceType = ResourceType.Pod
 
@@ -310,13 +310,13 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         if (token == null) {
             throw new RuntimeException("failed to get latch execution token")
         }
-        conn.setRequestProperty('Latch-Execution-Token', token)
+        conn.setRequestProperty('Authorization', "Latch-Execution-Token ${token}")
 
         conn.setDoOutput(true)
         conn.outputStream.withWriter { writer ->
-            writer << JsonOutput.toJson({
+            writer << JsonOutput.toJson([
                 pod: JsonOutput.toJson(req)
-            })
+            ])
         }
 
         def resp = conn.getResponseCode()
