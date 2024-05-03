@@ -24,6 +24,8 @@ import java.time.format.DateTimeFormatter
 import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
+import groovy.json.JsonOutput
+
 import nextflow.SysEnv
 import nextflow.container.DockerBuilder
 import nextflow.exception.NodeTerminationException
@@ -64,6 +66,8 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         }
 
     } ()
+
+    private static final DISPATCHER_DOMAIN = 'nf-dispatcher-service.1326-development.svc.cluster.local'
 
     private ResourceType resourceType = ResourceType.Pod
 
@@ -297,6 +301,30 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         k8sConfig.getAnnotations()
     }
 
+    static private String dispatch(Map req) {
+        def conn = (HttpURLConnection) new URL("http://${DISPATCHER_DOMAIN}/submit").openConnection();
+        conn.setRequestMethod('POST')
+        conn.setRequestProperty('Content-Type', 'application/json');
+
+        def token = System.getenv('FLYTE_INTERNAL_EXECUTION_ID')
+        if (token == null) {
+            throw new RuntimeException("failed to get latch execution token")
+        }
+        conn.setRequestProperty('Latch-Execution-Token', token)
+
+        conn.setDoOutput(true)
+        conn.outputStream.withWriter { writer ->
+            writer << JsonOutput.toJson(req)
+        }
+
+        def resp = conn.getResponseCode()
+        if (resp != 200) {
+            throw new RuntimeException("failed to launch pod: status_code=${resp} error=${conn.errorStream.getText()}")
+        }
+
+        return conn.inputStream.getText()
+    }
+
     /**
      * Creates a new K8s pod executing the associated task
      */
@@ -307,13 +335,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         builder.build()
 
         final req = newSubmitRequest(task)
-        final resp = useJobResource()
-                ? client.jobCreate(req, yamlDebugPath())
-                : client.podCreate(req, yamlDebugPath())
-
-        if( !resp.metadata?.name )
-            throw new K8sResponseException("Missing created ${resourceType.lower()} name", resp)
-        this.podName = resp.metadata.name
+        this.podName = dispatch(req)
         this.status = TaskStatus.SUBMITTED
     }
 
