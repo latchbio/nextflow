@@ -16,6 +16,8 @@
 
 package nextflow.k8s
 
+import groovy.json.JsonSlurper
+
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -324,7 +326,8 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             throw new RuntimeException("failed to launch pod: status_code=${resp} error=${conn.errorStream.getText()}")
         }
 
-        return conn.inputStream.getText()
+        def data = (Map) new JsonSlurper().parse(conn.inputStream)
+        return data.name
     }
 
     /**

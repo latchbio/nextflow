@@ -110,13 +110,11 @@ class K8sConfig implements Map<String,Object> {
     }
 
     static String getStorageClaimName() {
-        def token = System.getenv('FLYTE_INTERNAL_EXECUTION_ID')
-        if (token == null) {
-            throw new RuntimeException("failed to get latch execution token")
+        def name = System.getenv('K8_STORAGE_CLAIM_NAME')
+        if (name == null) {
+            throw new RuntimeException("failed to get storage claim name")
         }
-
-        //return "nf-claim-${token}"
-        return "nf-wf-claim"
+        return name
     }
 
     static String getStorageMountPath() {
