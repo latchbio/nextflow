@@ -17,6 +17,8 @@
 package nextflow.k8s
 
 import java.nio.file.FileAlreadyExistsException
+import groovy.json.JsonSlurper
+
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -233,7 +235,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
         if( SysEnv.containsKey('NXF_DEBUG') )
             builder.withEnv(PodEnv.value('NXF_DEBUG', SysEnv.get('NXF_DEBUG')))
-        
+
         // add computing resources
         final cpus = taskCfg.getCpus()
         final mem = taskCfg.getMemory()
@@ -334,7 +336,8 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             throw new RuntimeException("failed to launch pod: status_code=${resp} error=${conn.errorStream.getText()}")
         }
 
-        return conn.inputStream.getText()
+        def data = (Map) new JsonSlurper().parse(conn.inputStream)
+        return data.name
     }
 
     /**
@@ -378,7 +381,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 }
             }
             return state
-        } 
+        }
         catch (NodeTerminationException | PodUnschedulableException e) {
             // create a synthetic `state` object adding an extra `nodeTermination`
             // attribute to return the error to the caller method
@@ -516,7 +519,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
     protected void killTask() {
         if( cleanupDisabled() )
             return
-        
+
         if( podName ) {
             log.trace "[K8s] deleting ${resourceType.lower()} name=$podName"
             if ( useJobResource() )
