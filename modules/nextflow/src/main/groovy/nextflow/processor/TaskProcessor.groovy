@@ -590,36 +590,6 @@ class TaskProcessor {
         return result
     }
 
-    private void createGraphNode(TaskRun task) {
-        def url = new URL("http://nf-dispatcher-service.flyte.svc.cluster.local/create-node")
-        def conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod('POST')
-        conn.setRequestProperty('Content-Type', 'application/json');
-
-        def token = System.getenv('FLYTE_INTERNAL_EXECUTION_ID')
-        if (token == null) {
-            throw new RuntimeException("failed to get latch execution token")
-        }
-        conn.setRequestProperty('Authorization', "Latch-Execution-Token ${token}")
-
-        conn.setDoOutput(true)
-        conn.outputStream.withWriter { writer ->
-            writer << JsonOutput.toJson([
-                name: task.processor.name,
-                index: task.index
-            ])
-        }
-
-        def resp = conn.getResponseCode()
-        if (resp != 200) {
-            // TODO(rahul): we definitely want to add retries here
-            throw new RuntimeException("failed to create graph node: status_code=${resp} error=${conn.errorStream.getText()}")
-        }
-
-        def data = (Map) new JsonSlurper().parse(conn.inputStream)
-        task.graphNodeId = (int) data.id
-    }
-
     /**
      * The processor execution body
      *
@@ -638,9 +608,7 @@ class TaskProcessor {
 
         // -- create the task run instance
         final task = createTaskRun(params)
-
-        // TODO: notify dispatcher that a new process node has been created
-        createGraphNode(task)
+        task.createGraphNode()
 
         // -- set the task instance as the current in this thread
         currentTask.set(task)

@@ -75,6 +75,8 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     private String podName
 
+    private int attemptIdx
+
     private BashWrapperBuilder builder
 
     private Path outputFile
@@ -93,6 +95,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     K8sTaskHandler( TaskRun task, K8sExecutor executor ) {
         super(task)
+        this.attemptIdx = task.config.getAttempt() - 1
         this.executor = executor
         this.client = executor.client
         this.outputFile = task.workDir.resolve(TaskRun.CMD_OUTFILE)
@@ -301,36 +304,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         k8sConfig.getAnnotations()
     }
 
-    static private String dispatch(TaskRun task, Map req) {
-        def url = new URL("http://nf-dispatcher-service.flyte.svc.cluster.local/submit")
-        def conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod('POST')
-        conn.setRequestProperty('Content-Type', 'application/json');
-
-        def token = System.getenv('FLYTE_INTERNAL_EXECUTION_ID')
-        if (token == null) {
-            throw new RuntimeException("failed to get latch execution token")
-        }
-        conn.setRequestProperty('Authorization', "Latch-Execution-Token ${token}")
-
-        conn.setDoOutput(true)
-        conn.outputStream.withWriter { writer ->
-            writer << JsonOutput.toJson([
-                pod: JsonOutput.toJson(req),
-                graph_node_id: task.graphNodeId,
-                attempt: task.config.getAttempt(),
-            ])
-        }
-
-        def resp = conn.getResponseCode()
-        if (resp != 200) {
-            throw new RuntimeException("failed to launch pod: status_code=${resp} error=${conn.errorStream.getText()}")
-        }
-
-        def data = (Map) new JsonSlurper().parse(conn.inputStream)
-        return data.name
-    }
-
     /**
      * Creates a new K8s pod executing the associated task
      */
@@ -341,7 +314,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         builder.build()
 
         final req = newSubmitRequest(task)
-        this.podName = dispatch(task, req)
+        this.podName = task.dispatchPod(req, attemptIdx)
 
         log.info "Submitted Pod ${this.podName}"
 
@@ -365,6 +338,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 def newState = useJobResource()
                         ? client.jobState(podName)
                         : client.podState(podName)
+                log.info "${newState}"
                 if( newState ) {
                    log.trace "[K8s] Get ${resourceType.lower()}=$podName state=$newState"
                    state = newState
@@ -393,6 +367,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             def state = getState()
             // include `terminated` state to allow the handler status to progress
             if (state && (state.running != null || state.terminated)) {
+                if (status != TaskStatus.RUNNING) {
+                    task.updateRemoteStatus('RUNNING', attemptIdx)
+                }
                 status = TaskStatus.RUNNING
                 determineNode()
                 return true
@@ -440,7 +417,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 state.nodeTermination instanceof PodUnschedulableException ) {
                 // keep track of the node termination error
                 task.error = (Throwable) state.nodeTermination
-                // mark the task as ABORTED since thr failure is caused by a node failure
+                // mark the task as ABORTED since the failure is caused by a node failure
                 task.aborted = true
             }
             else {
@@ -448,6 +425,14 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 task.exitStatus = readExitFile()
                 task.stdout = outputFile
                 task.stderr = errorFile
+            }
+
+            if (status != TaskStatus.COMPLETED) {
+                if (task.isSuccess()) {
+                    task.updateRemoteStatus('SUCCEEDED', attemptIdx)
+                } else {
+                    task.updateRemoteStatus('FAILED', attemptIdx)
+                }
             }
             status = TaskStatus.COMPLETED
             savePodLogOnError(task)

@@ -16,6 +16,9 @@
 
 package nextflow.processor
 
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+
 import java.nio.file.FileSystems
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
@@ -890,6 +893,86 @@ class TaskRun implements Cloneable {
 
     TaskBean toTaskBean() {
         return new TaskBean(this)
+    }
+
+    private static String DISPATCH_DOMAIN = 'nf-dispatcher-service.flyte.svc.cluster.local'
+
+    // TODO(rahul): should probably add retries here
+    private static HttpURLConnection request(String method, String path, Map body) {
+        def url = new URL("http://${DISPATCH_DOMAIN}/${path}")
+        def conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod(method)
+        conn.setRequestProperty('Content-Type', 'application/json');
+
+        def token = System.getenv('FLYTE_INTERNAL_EXECUTION_ID')
+        if (token == null) {
+            throw new RuntimeException("failed to get latch execution token")
+        }
+        conn.setRequestProperty('Authorization', "Latch-Execution-Token ${token}")
+
+        conn.setDoOutput(true)
+        conn.outputStream.withWriter { writer ->
+            writer << JsonOutput.toJson(body)
+        }
+
+        return conn
+    }
+
+    String dispatchPod(Map req, int attemptIdx) {
+        def conn = request(
+            'POST',
+            'submit',
+            [
+                pod: JsonOutput.toJson(req),
+                graph_node_id: this.graphNodeId,
+                attempt_idx: attemptIdx,
+            ]
+        )
+
+        def resp = conn.getResponseCode()
+        if (resp != 200) {
+            throw new RuntimeException("failed to launch pod: status_code=${resp} error=${conn.errorStream.getText()}")
+        }
+
+        def data = (Map) new JsonSlurper().parse(conn.inputStream)
+        return data.name
+    }
+
+    void createGraphNode() {
+        def conn = request(
+            'POST',
+            'create-node',
+            [
+                name: this.processor.name,
+                index: this.index
+            ]
+        )
+
+        def resp = conn.getResponseCode()
+        if (resp != 200) {
+            throw new RuntimeException("failed to create graph node: status_code=${resp} error=${conn.errorStream.getText()}")
+        }
+
+        def data = (Map) new JsonSlurper().parse(conn.inputStream)
+        this.graphNodeId = (int) data.id
+    }
+
+    void updateRemoteStatus(String status, int attemptIdx) {
+        def conn = request(
+            'POST',
+            'status',
+            [
+                graph_node_id: this.graphNodeId,
+                attempt_idx: attemptIdx,
+                status: status,
+            ]
+        )
+
+        def resp = conn.getResponseCode()
+        if (resp != 200) {
+            throw new RuntimeException("failed to update task status: status_code=${resp} error=${conn.errorStream.getText()}")
+        }
+
     }
 }
 
