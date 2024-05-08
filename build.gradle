@@ -227,7 +227,7 @@ task buildInfo { doLast {
     // -- create plugins-info file
     def plugins = []
     new File(rootProject.rootDir, 'plugins')
-            .eachDir { if(it.name.startsWith('nf-')) plugins << project(":plugins:${it.name}") }
+            .eachDir { if(it.name.startsWith('nf-') && !(it.name == "nf-azure")) plugins << project(":plugins:${it.name}") }
 
     def meta = plugins .collect { "$it.name@$it.version" }
     file('modules/nextflow/src/main/resources/META-INF/plugins-info.txt').text = meta.toSorted().join('\n')

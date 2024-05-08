@@ -1,6 +1,7 @@
 package nextflow.file.http
 
 import java.nio.ByteBuffer
+import java.nio.channels.Channels
 import java.nio.channels.SeekableByteChannel
 import java.nio.file.AccessDeniedException
 import java.nio.file.AccessMode
@@ -20,15 +21,17 @@ import java.nio.file.NoSuchFileException
 import java.nio.file.NotDirectoryException
 import java.nio.file.OpenOption
 import java.nio.file.Path
+import java.nio.file.Paths
 import java.nio.file.ProviderMismatchException
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.FileAttribute
 import java.nio.file.attribute.FileAttributeView
 import groovy.transform.CompileStatic
-
+import groovy.util.logging.Slf4j
 
 @CompileStatic
+@Slf4j
 class LatchFileSystemProvider extends XFileSystemProvider {
 
     /**
@@ -220,38 +223,46 @@ class LatchFileSystemProvider extends XFileSystemProvider {
         if (options.size() > 0) {
             for (OpenOption opt: options) {
                 // All OpenOption values except for APPEND and WRITE are allowed
-                if (opt == StandardOpenOption.APPEND || opt == StandardOpenOption.WRITE)
+                if (opt == StandardOpenOption.APPEND) {
                     throw new UnsupportedOperationException("'$opt' not allowed");
+                } else if (opt == StandardOpenOption.WRITE) {
+                    return getWriteChannel(path)
+                }
             }
         }
 
-        final conn = toConnection0(lp.getSignedURL(), 0)
-        final stream = new BufferedInputStream(conn.getInputStream())
+        Path url = Paths.get(lp.getSignedURL().toURI())
+        return url.fileSystem.provider().newByteChannel(url, options, attrs)
+    }
+
+    SeekableByteChannel getWriteChannel(Path path) {
+        if (!(path instanceof LatchPath))
+            throw new ProviderMismatchException()
+
+        def lp = (LatchPath) path
+        def temp = File.createTempFile("latch", ".tmp")
+        def writer = temp.newOutputStream()
 
         return new SeekableByteChannel() {
 
-            private long _position
+            private long position = 0
 
             @Override
             int read(ByteBuffer buffer) throws IOException {
-                def data=0
-                int len=0
-                while( len<buffer.capacity() && (data=stream.read())!=-1 ) {
-                    buffer.put((byte)data)
-                    len++
-                }
-                _position += len
-                return len ?: -1
+                throw new UnsupportedOperationException("Read operation not supported")
             }
 
             @Override
             int write(ByteBuffer src) throws IOException {
-                throw new UnsupportedOperationException("Write operation not supported")
+                while (src.hasRemaining()) {
+                    writer.write(src.get())
+                }
+                return src.limit()
             }
 
             @Override
             long position() throws IOException {
-                return _position
+                return position
             }
 
             @Override
@@ -261,9 +272,7 @@ class LatchFileSystemProvider extends XFileSystemProvider {
 
             @Override
             long size() throws IOException {
-                // this value is going to be used as the buffer size
-                // file related operation. See for example {@link Files#readAllBytes}
-                return 8192
+                return temp.size()
             }
 
             @Override
@@ -278,13 +287,21 @@ class LatchFileSystemProvider extends XFileSystemProvider {
 
             @Override
             void close() throws IOException {
-                stream.close()
+                writer.close()
+                lp.upload(Paths.get(temp.getPath()))
             }
         }
     }
 
-    SeekableByteChannel getWriteChannel(Path path) {
+    @Override
+    OutputStream newOutputStream(Path path, OpenOption... options) throws IOException {
+        Set<OpenOption> opts = new HashSet<OpenOption>()
+        for (OpenOption opt: options) {
+            opts.add(opt)
+        }
 
+        def chan = newByteChannel(path, opts)
+        return Channels.newOutputStream(chan)
     }
 
     /**
@@ -562,6 +579,10 @@ class LatchFileSystemProvider extends XFileSystemProvider {
      */
     @Override
     void checkAccess(Path path, AccessMode... modes) throws IOException {
+        for( AccessMode m : modes ) {
+            if( m == AccessMode.EXECUTE )
+                throw new AccessDeniedException("Execute mode not supported")
+        }
 
     }
 

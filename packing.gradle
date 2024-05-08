@@ -25,7 +25,6 @@ dependencies {
     ga4gh   project(':plugins:nf-ga4gh')
     google  project(':plugins:nf-google')
     amazon  project(':plugins:nf-amazon')
-    azure   project(':plugins:nf-azure')
     tower   project(':plugins:nf-tower')
     wave    project(':plugins:nf-wave')
 }

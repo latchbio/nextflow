@@ -18,18 +18,9 @@ package nextflow.file;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.CopyOption;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.FileVisitOption;
-import java.nio.file.FileVisitResult;
-import java.nio.file.FileVisitor;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Arrays;
 import java.util.EnumSet;
 
 import org.slf4j.Logger;
@@ -87,7 +78,7 @@ public class CopyMoveHelper {
         }
 
         try (InputStream in = Files.newInputStream(source)) {
-            Files.copy(in, target);
+            Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
@@ -155,13 +146,13 @@ public class CopyMoveHelper {
         BasicFileAttributes attrs = Files.readAttributes(source, BasicFileAttributes.class, linkOptions);
         if (attrs.isSymbolicLink())
             throw new IOException("Copying of symbolic links not supported");
-
-        // delete target if it exists and REPLACE_EXISTING is specified
-        if (opts.replaceExisting()) {
-            FileHelper.deletePath(target);
-        }
-        else if (Files.exists(target))
-            throw new FileAlreadyExistsException(target.toString());
+//
+//        // delete target if it exists and REPLACE_EXISTING is specified
+//        if (opts.replaceExisting()) {
+//            FileHelper.deletePath(target);
+//        }
+//        else if (Files.exists(target))
+//            throw new FileAlreadyExistsException(target.toString());
 
         // create directory or copy file
         if (attrs.isDirectory()) {
