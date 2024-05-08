@@ -92,7 +92,7 @@ public class CopyMoveHelper {
 
         IN_FOREIGN_COPY.set(true);
         try (InputStream in = Files.newInputStream(source)) {
-            Files.copy(in, target);
+            Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
         } finally {
             IN_FOREIGN_COPY.set(false);
         }
@@ -164,11 +164,13 @@ public class CopyMoveHelper {
             throw new IOException("Copying of symbolic links not supported");
 
         // delete target if it exists and REPLACE_EXISTING is specified
-        if (opts.replaceExisting()) {
-            FileHelper.deletePath(target);
+        if (!target.getFileSystem().provider().getScheme().equals("latch")) {
+            if (opts.replaceExisting()) {
+                FileHelper.deletePath(target);
+            } else if (Files.exists(target)) {
+                throw new FileAlreadyExistsException(target.toString());
+            }
         }
-        else if (Files.exists(target))
-            throw new FileAlreadyExistsException(target.toString());
 
         // create directory or copy file
         if (attrs.isDirectory()) {
