@@ -591,7 +591,7 @@ class TaskProcessor {
     }
 
     private void createGraphNode(TaskRun task) {
-        def url = new URL("http://nf-dispatcher-service.flyte.svc.cluster.local/create")
+        def url = new URL("http://nf-dispatcher-service.flyte.svc.cluster.local/create-node")
         def conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod('POST')
         conn.setRequestProperty('Content-Type', 'application/json');
