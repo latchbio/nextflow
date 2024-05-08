@@ -74,6 +74,11 @@ class TaskRun implements Cloneable {
     String name
 
     /**
+     * Holds the id of the graph node in Vacuole
+     */
+    int graphNodeId
+
+    /**
      * The unique hash code associated to this task
      */
     HashCode hash

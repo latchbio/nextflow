@@ -69,8 +69,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     } ()
 
-    private static final DISPATCHER_DOMAIN = 'nf-dispatcher-service.flyte.svc.cluster.local'
-
     private ResourceType resourceType = ResourceType.Pod
 
     private K8sClient client
@@ -303,8 +301,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         k8sConfig.getAnnotations()
     }
 
-    static private String dispatch(Map req) {
-        def conn = (HttpURLConnection) new URL("http://${DISPATCHER_DOMAIN}/submit").openConnection();
+    static private String dispatch(TaskRun task, Map req) {
+        def url = new URL("http://nf-dispatcher-service.flyte.svc.cluster.local/submit")
+        def conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod('POST')
         conn.setRequestProperty('Content-Type', 'application/json');
 
@@ -317,7 +316,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         conn.setDoOutput(true)
         conn.outputStream.withWriter { writer ->
             writer << JsonOutput.toJson([
-                pod: JsonOutput.toJson(req)
+                pod: JsonOutput.toJson(req),
+                graph_node_id: task.graphNodeId,
+                attempt: task.config.getAttempt(),
             ])
         }
 
@@ -340,7 +341,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         builder.build()
 
         final req = newSubmitRequest(task)
-        this.podName = dispatch(req)
+        this.podName = dispatch(task, req)
 
         log.info "Submitted Pod ${this.podName}"
 
