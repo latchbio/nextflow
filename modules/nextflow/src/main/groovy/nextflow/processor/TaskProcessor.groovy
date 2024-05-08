@@ -605,7 +605,7 @@ class TaskProcessor {
         conn.setDoOutput(true)
         conn.outputStream.withWriter { writer ->
             writer << JsonOutput.toJson([
-                name: task.name,
+                name: task.processor.name,
                 index: task.index
             ])
         }
