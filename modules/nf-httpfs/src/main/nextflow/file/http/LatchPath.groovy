@@ -58,6 +58,46 @@ class LatchPath extends XPath {
     }
 
     @Override
+    Path relativize(Path other) {
+        if (this.class != other.class) {
+            def newPath = path.relativize(other)
+            return new LatchPath(fs, newPath.toString())
+        }
+
+        def that = (LatchPath) other
+
+        if (this.fs.domain != that.fs.domain) {
+            throw new UnsupportedOperationException("Cannot relativize two files in different account roots: ${this.toUriString()}, ${that.toUriString()}")
+        }
+
+        def thisParts = this.path.iterator().toList()
+        def thatParts = that.path.iterator().toList()
+
+        int start = 0
+        for (Path part: thisParts) {
+            if (part != thatParts[start]) {
+                break
+            }
+
+            start++
+        }
+
+        Path res = null
+        for (int i = start; i < thatParts.size(); i++) {
+            if (res == null) {
+                res = Paths.get("")
+            }
+            res = res.resolve(thatParts[i].name)
+        }
+
+        if (res == null) {
+            return null
+        }
+
+        return new LatchPath(this.fs, res.toString())
+    }
+
+    @Override
     Path resolve(Path other) {
         if (this.class != other.class) {
             def newPath = path.resolve(other.toString())
@@ -91,6 +131,11 @@ class LatchPath extends XPath {
         } else {
             return this
         }
+    }
+
+    boolean exists() {
+        LatchFileAttributes fileAttrs = this.fileSystem.provider().readAttributes(this, LatchFileAttributes)
+        return fileAttrs.exists
     }
 
     private final long chunk_size = 256 * 1024 * 1024

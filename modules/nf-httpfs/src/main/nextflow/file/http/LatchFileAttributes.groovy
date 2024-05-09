@@ -24,8 +24,8 @@ class LatchFileAttributes implements BasicFileAttributes {
         }
     }
 
-    private boolean exists = false
-    private LDataNodeType type = null
+    boolean exists = false
+    LDataNodeType type = null
 
     LatchFileAttributes() {}
 
