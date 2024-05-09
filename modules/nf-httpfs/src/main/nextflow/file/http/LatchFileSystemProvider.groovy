@@ -86,9 +86,13 @@ class LatchFileSystemProvider extends XFileSystemProvider {
 
         def lp = (LatchPath) path
 
+        LatchFileAttributes fileAttrs = readAttributes(lp, LatchFileAttributes)
+        if (lp.exists() && !fileAttrs.isRegularFile()) {
+            throw new Exception("Cannot create input byte channel because ${lp.toUriString()} is a directory.")
+        }
+
         if (options.size() > 0) {
             for (OpenOption opt: options) {
-                // All OpenOption values except for APPEND and WRITE are allowed
                 if (opt == StandardOpenOption.APPEND) {
                     throw new UnsupportedOperationException("'$opt' not allowed");
                 } else if (opt == StandardOpenOption.WRITE) {
@@ -160,6 +164,17 @@ class LatchFileSystemProvider extends XFileSystemProvider {
     }
 
     @Override
+    InputStream newInputStream(Path path, OpenOption... options) throws IOException {
+        Set<OpenOption> opts = new HashSet<OpenOption>()
+        for (OpenOption opt: options) {
+            opts.add(opt)
+        }
+
+        def chan = newByteChannel(path, opts)
+        return Channels.newInputStream(chan)
+    }
+
+    @Override
     OutputStream newOutputStream(Path path, OpenOption... options) throws IOException {
         Set<OpenOption> opts = new HashSet<OpenOption>()
         for (OpenOption opt: options) {
@@ -172,7 +187,44 @@ class LatchFileSystemProvider extends XFileSystemProvider {
 
     @Override
     DirectoryStream<Path> newDirectoryStream(Path dir, DirectoryStream.Filter<? super Path> filter) throws IOException {
-        return null
+        if (!(dir instanceof LatchPath))
+            throw new ProviderMismatchException()
+
+        def lp = (LatchPath) dir
+        def res = client.execute("""
+            query LDataChildren(\$argPath: String!) {
+                ldataResolvePathData(argPath: \$argPath) {
+                    finalLinkTarget {
+                        childLdataTreeEdges(filter: { child: { removed: { equalTo: false } } }) {
+                            nodes {
+                                child {
+                                    name
+                                    type
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        """, ["argPath": lp.toUriString()])["ldataResolvePathData"]
+
+        if (res == null) {
+            throw new Exception("Cannot iterate over children: ${lp.toUriString()} does not exist")
+        }
+
+
+        return new DirectoryStream<Path>() {
+            @Override
+            Iterator<Path> iterator() {
+                List<Path> paths = (res["finalLinkTarget"]["childLdataTreeEdges"]["nodes"] as List<Map>)
+                    .collect({it -> return dir.resolve(it["child"]["name"] as String)})
+
+                return paths.iterator()
+            }
+
+            @Override
+            void close() throws IOException {}
+        }
     }
 
     @Override

@@ -102,7 +102,6 @@ public class CopyMoveHelper {
     static void copyDirectory( final Path source, final Path target, final CopyOption... options )
             throws IOException
     {
-
         final boolean foreign = source.getFileSystem().provider() != target.getFileSystem().provider();
 
         FileVisitor<Path> visitor = new SimpleFileVisitor<Path>() {
