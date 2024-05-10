@@ -16,6 +16,7 @@
 
 package nextflow.processor
 
+import groovy.json.JsonException
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 
@@ -897,29 +898,54 @@ class TaskRun implements Cloneable {
 
     private static String DISPATCH_DOMAIN = 'nf-dispatcher-service.flyte.svc.cluster.local'
 
-    // TODO(rahul): should probably add retries here
-    private static HttpURLConnection request(String method, String path, Map body) {
-        def url = new URL("http://${DISPATCH_DOMAIN}/${path}")
-        def conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod(method)
-        conn.setRequestProperty('Content-Type', 'application/json');
-
+    private static String requestWithRetry(String method, String path, Map body, int retries = 3) {
         def token = System.getenv('FLYTE_INTERNAL_EXECUTION_ID')
-        if (token == null) {
+        if (token == null)
             throw new RuntimeException("failed to get latch execution token")
-        }
-        conn.setRequestProperty('Authorization', "Latch-Execution-Token ${token}")
 
-        conn.setDoOutput(true)
-        conn.outputStream.withWriter { writer ->
-            writer << JsonOutput.toJson(body)
+        def statusCode = -1
+        def error = ""
+        for (int i = 0; i < retries; i++) {
+            if (i != 0) {
+                log.warn "${path} request failed ${i}/${retries}, retrying: status_code=${statusCode} error=${error}"
+                sleep(5000)
+            }
+
+            def url = new URL("http://${DISPATCH_DOMAIN}/${path}")
+            def conn = (HttpURLConnection) url.openConnection()
+            conn.setRequestMethod(method)
+            conn.setRequestProperty('Content-Type', 'application/json')
+            conn.setRequestProperty('Authorization', "Latch-Execution-Token ${token}")
+
+            try {
+                conn.setDoOutput(true)
+                conn.outputStream.withWriter { writer ->
+                    writer << JsonOutput.toJson(body)
+                }
+
+                statusCode = conn.getResponseCode()
+                if (conn.errorStream != null)
+                    error = conn.errorStream.getText()
+
+                if (statusCode != 200) {
+                    if (statusCode >= 500)
+                        continue
+                    break
+                }
+
+                return conn.getInputStream().getText()
+            } catch (ConnectException  e) {
+                error = e.toString()
+            } finally {
+                conn.disconnect()
+            }
         }
 
-        return conn
+        throw new RuntimeException("${path} request failed after ${retries} attempts: status_code=${statusCode} error=${error}")
     }
 
     String dispatchPod(Map req, int attemptIdx) {
-        def conn = request(
+        def resp = requestWithRetry(
             'POST',
             'submit',
             [
@@ -929,17 +955,12 @@ class TaskRun implements Cloneable {
             ]
         )
 
-        def resp = conn.getResponseCode()
-        if (resp != 200) {
-            throw new RuntimeException("failed to launch pod: status_code=${resp} error=${conn.errorStream.getText()}")
-        }
-
-        def data = (Map) new JsonSlurper().parse(conn.inputStream)
+        def data = (Map) new JsonSlurper().parseText(resp)
         return data.name
     }
 
     void createGraphNode() {
-        def conn = request(
+        def resp = requestWithRetry(
             'POST',
             'create-node',
             [
@@ -948,31 +969,24 @@ class TaskRun implements Cloneable {
             ]
         )
 
-        def resp = conn.getResponseCode()
-        if (resp != 200) {
-            throw new RuntimeException("failed to create graph node: status_code=${resp} error=${conn.errorStream.getText()}")
-        }
-
-        def data = (Map) new JsonSlurper().parse(conn.inputStream)
+        def data = (Map) new JsonSlurper().parseText(resp)
         this.graphNodeId = (int) data.id
     }
 
     void updateRemoteStatus(String status, int attemptIdx) {
-        def conn = request(
-            'POST',
-            'status',
-            [
-                graph_node_id: this.graphNodeId,
-                attempt_idx: attemptIdx,
-                status: status,
-            ]
-        )
-
-        def resp = conn.getResponseCode()
-        if (resp != 200) {
-            throw new RuntimeException("failed to update task status: status_code=${resp} error=${conn.errorStream.getText()}")
+        try {
+            requestWithRetry(
+                'POST',
+                'status',
+                [
+                    graph_node_id: this.graphNodeId,
+                    attempt_idx: attemptIdx,
+                    status: status,
+                ]
+            )
+        } catch (Throwable e) {
+            log.warn "Failed to update runtime status for ${this.name}: ${e.toString()}"
         }
-
     }
 }
 

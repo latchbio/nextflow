@@ -1740,6 +1740,11 @@ class TaskProcessor {
         // then add project bin dir
         if( executor.binDir )
             result.add(executor.binDir)
+
+        final sharedBinDir = System.getenv("LATCH_SHARED_BIN_DIR");
+        if ( sharedBinDir != null ) {
+            result.add(Path.of(sharedBinDir))
+        }
         return result
     }
 
