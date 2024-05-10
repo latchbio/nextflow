@@ -256,10 +256,18 @@ class LatchFileSystemProvider extends XFileSystemProvider {
 
     @Override
     void checkAccess(Path path, AccessMode... modes) throws IOException {
-        for( AccessMode m : modes ) {
-            if( m == AccessMode.EXECUTE )
+        if (!(path instanceof LatchPath))
+            throw new ProviderMismatchException()
+
+        for (AccessMode m : modes) {
+            if (m == AccessMode.EXECUTE)
                 throw new AccessDeniedException("Execute mode not supported")
         }
+
+        def lp = (LatchPath) path
+        LatchFileAttributes fileAttrs = readAttributes(lp, LatchFileAttributes)
+        if (!fileAttrs.exists)
+            throw new NoSuchFileException("Path ${lp.toUriString()} does not exist")
     }
 
     @Override
