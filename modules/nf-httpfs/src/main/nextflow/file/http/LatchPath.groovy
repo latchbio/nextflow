@@ -138,7 +138,7 @@ class LatchPath extends XPath {
         return fileAttrs.exists
     }
 
-    private final long defaultChunkSize = 256 * 1024 * 1024
+    private final long defaultChunkSize = 5 * 1024 * 1024
     private final long max_parts = 10000
     private final long max_upload_size = 5497558138880 // 5 * 1024 * 1024 * 1024 * 1024, cant put this though bc groovy is quirky and integer overflows
 
