@@ -97,20 +97,28 @@ class K8sConfig implements Map<String,Object> {
         new K8sDebug( (Map<String,Object>)get('debug') )
     }
 
-    boolean getCleanup(boolean defValue=true) {
-        target.cleanup == null ? defValue : Boolean.valueOf( target.cleanup as String )
+    static boolean getCleanup(boolean defValue=true) {
+        return false
+    }
+
+    static String getContext() {
+        return 'arn:aws:eks:us-west-2:812206152185:cluster/prion-dev'
     }
 
     String getUserName() {
         target.userName ?: System.properties.get('user.name')
     }
 
-    String getStorageClaimName() {
-        target.storageClaimName as String
+    static String getStorageClaimName() {
+        def name = System.getenv('K8_STORAGE_CLAIM_NAME')
+        if (name == null) {
+            throw new RuntimeException("failed to get storage claim name")
+        }
+        return name
     }
 
-    String getStorageMountPath() {
-        target.storageMountPath ?: '/workspace' as String
+    static String getStorageMountPath() {
+        return '/nf-workdir'
     }
 
     String getStorageSubPath() {
@@ -159,11 +167,18 @@ class K8sConfig implements Map<String,Object> {
         target.projectDir ?: "${getStorageMountPath()}/projects" as String
     }
 
-    String getNamespace() { target.namespace }
+    static String getNamespace() {
+        def wsId = System.getenv('FLYTE_INTERNAL_TASK_PROJECT')
+        if (wsId == null) {
+            throw new RuntimeException("failed to get workspaceId")
+        }
+
+        return "${wsId}-development"
+    }
 
     boolean useJobResource() { ResourceType.Job.name() == target.computeResourceType?.toString() }
 
-    String getServiceAccount() { target.serviceAccount }
+    static String getServiceAccount() { return 'default' }
 
     String getNextflowImageName() {
         final defImage = "nextflow/nextflow:${Const.APP_VER}"
@@ -209,8 +224,8 @@ class K8sConfig implements Map<String,Object> {
     ClientConfig getClient() {
 
         final result = ( target.client instanceof Map
-                ? clientFromNextflow(target.client as Map, target.namespace as String, target.serviceAccount as String)
-                : clientDiscovery(target.context as String, target.namespace as String, target.serviceAccount as String)
+                ? clientFromNextflow(target.client as Map, getNamespace() as String, getServiceAccount() as String)
+                : clientDiscovery(getContext() as String, getNamespace() as String, getServiceAccount() as String)
         )
 
         if( target.httpConnectTimeout )

@@ -15,6 +15,8 @@
  */
 package nextflow.processor
 
+import groovy.json.JsonSlurper
+
 import static nextflow.processor.ErrorStrategy.*
 
 import java.lang.reflect.InvocationTargetException
@@ -606,6 +608,8 @@ class TaskProcessor {
 
         // -- create the task run instance
         final task = createTaskRun(params)
+        task.createGraphNode()
+
         // -- set the task instance as the current in this thread
         currentTask.set(task)
 
@@ -1736,6 +1740,11 @@ class TaskProcessor {
         // then add project bin dir
         if( executor.binDir )
             result.add(executor.binDir)
+
+        final sharedBinDir = System.getenv("LATCH_SHARED_BIN_DIR");
+        if ( sharedBinDir != null ) {
+            result.add(Path.of(sharedBinDir))
+        }
         return result
     }
 

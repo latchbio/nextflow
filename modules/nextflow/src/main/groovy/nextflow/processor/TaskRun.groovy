@@ -16,6 +16,10 @@
 
 package nextflow.processor
 
+import groovy.json.JsonException
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+
 import java.nio.file.FileSystems
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
@@ -72,6 +76,11 @@ class TaskRun implements Cloneable {
      * Task name
      */
     String name
+
+    /**
+     * Holds the id of the graph node in Vacuole
+     */
+    int graphNodeId
 
     /**
      * The unique hash code associated to this task
@@ -885,6 +894,99 @@ class TaskRun implements Cloneable {
 
     TaskBean toTaskBean() {
         return new TaskBean(this)
+    }
+
+    private static String DISPATCH_DOMAIN = 'nf-dispatcher-service.flyte.svc.cluster.local'
+
+    private static String requestWithRetry(String method, String path, Map body, int retries = 3) {
+        def token = System.getenv('FLYTE_INTERNAL_EXECUTION_ID')
+        if (token == null)
+            throw new RuntimeException("failed to get latch execution token")
+
+        def statusCode = -1
+        def error = ""
+        for (int i = 0; i < retries; i++) {
+            if (i != 0) {
+                log.warn "${path} request failed ${i}/${retries}, retrying: status_code=${statusCode} error=${error}"
+                sleep(5000)
+            }
+
+            def url = new URL("http://${DISPATCH_DOMAIN}/${path}")
+            def conn = (HttpURLConnection) url.openConnection()
+            conn.setRequestMethod(method)
+            conn.setRequestProperty('Content-Type', 'application/json')
+            conn.setRequestProperty('Authorization', "Latch-Execution-Token ${token}")
+
+            try {
+                conn.setDoOutput(true)
+                conn.outputStream.withWriter { writer ->
+                    writer << JsonOutput.toJson(body)
+                }
+
+                statusCode = conn.getResponseCode()
+                if (conn.errorStream != null)
+                    error = conn.errorStream.getText()
+
+                if (statusCode != 200) {
+                    if (statusCode >= 500)
+                        continue
+                    break
+                }
+
+                return conn.getInputStream().getText()
+            } catch (ConnectException  e) {
+                error = e.toString()
+            } finally {
+                conn.disconnect()
+            }
+        }
+
+        throw new RuntimeException("${path} request failed after ${retries} attempts: status_code=${statusCode} error=${error}")
+    }
+
+    String dispatchPod(Map req, int attemptIdx) {
+        def resp = requestWithRetry(
+            'POST',
+            'submit',
+            [
+                pod: JsonOutput.toJson(req),
+                graph_node_id: this.graphNodeId,
+                attempt_idx: attemptIdx,
+            ]
+        )
+
+        def data = (Map) new JsonSlurper().parseText(resp)
+        return data.name
+    }
+
+    void createGraphNode() {
+        def resp = requestWithRetry(
+            'POST',
+            'create-node',
+            [
+                name: this.processor.name,
+                index: this.index
+            ]
+        )
+
+        def data = (Map) new JsonSlurper().parseText(resp)
+        this.graphNodeId = (int) data.id
+    }
+
+    void updateRemoteStatus(String status, int attemptIdx) {
+        try {
+            requestWithRetry(
+                'POST',
+                'status',
+                [
+                    graph_node_id: this.graphNodeId,
+                    attempt_idx: attemptIdx,
+                    status: status,
+                ]
+            )
+        } catch (Throwable e) {
+            log.warn "Failed to update runtime status for ${this.name}: ${e.toString()}"
+        }
     }
 }
 

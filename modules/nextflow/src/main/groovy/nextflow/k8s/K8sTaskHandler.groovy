@@ -16,6 +16,8 @@
 
 package nextflow.k8s
 
+import groovy.json.JsonSlurper
+
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -24,6 +26,8 @@ import java.time.format.DateTimeFormatter
 import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
+import groovy.json.JsonOutput
+
 import nextflow.SysEnv
 import nextflow.container.DockerBuilder
 import nextflow.exception.NodeTerminationException
@@ -71,6 +75,8 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     private String podName
 
+    private int attemptIdx
+
     private BashWrapperBuilder builder
 
     private Path outputFile
@@ -89,6 +95,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     K8sTaskHandler( TaskRun task, K8sExecutor executor ) {
         super(task)
+        this.attemptIdx = task.config.getAttempt() - 1
         this.executor = executor
         this.client = executor.client
         this.outputFile = task.workDir.resolve(TaskRun.CMD_OUTFILE)
@@ -307,13 +314,10 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         builder.build()
 
         final req = newSubmitRequest(task)
-        final resp = useJobResource()
-                ? client.jobCreate(req, yamlDebugPath())
-                : client.podCreate(req, yamlDebugPath())
+        this.podName = task.dispatchPod(req, attemptIdx)
 
-        if( !resp.metadata?.name )
-            throw new K8sResponseException("Missing created ${resourceType.lower()} name", resp)
-        this.podName = resp.metadata.name
+        log.info "Submitted Pod ${this.podName}"
+
         this.status = TaskStatus.SUBMITTED
     }
 
@@ -334,6 +338,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 def newState = useJobResource()
                         ? client.jobState(podName)
                         : client.podState(podName)
+                log.info "${newState}"
                 if( newState ) {
                    log.trace "[K8s] Get ${resourceType.lower()}=$podName state=$newState"
                    state = newState
@@ -362,6 +367,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             def state = getState()
             // include `terminated` state to allow the handler status to progress
             if (state && (state.running != null || state.terminated)) {
+                if (status != TaskStatus.RUNNING) {
+                    task.updateRemoteStatus('RUNNING', attemptIdx)
+                }
                 status = TaskStatus.RUNNING
                 determineNode()
                 return true
@@ -409,7 +417,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 state.nodeTermination instanceof PodUnschedulableException ) {
                 // keep track of the node termination error
                 task.error = (Throwable) state.nodeTermination
-                // mark the task as ABORTED since thr failure is caused by a node failure
+                // mark the task as ABORTED since the failure is caused by a node failure
                 task.aborted = true
             }
             else {
@@ -417,6 +425,14 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 task.exitStatus = readExitFile()
                 task.stdout = outputFile
                 task.stderr = errorFile
+            }
+
+            if (status != TaskStatus.COMPLETED) {
+                if (task.isSuccess()) {
+                    task.updateRemoteStatus('SUCCEEDED', attemptIdx)
+                } else {
+                    task.updateRemoteStatus('FAILED', attemptIdx)
+                }
             }
             status = TaskStatus.COMPLETED
             savePodLogOnError(task)
