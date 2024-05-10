@@ -138,7 +138,7 @@ class LatchPath extends XPath {
         return fileAttrs.exists
     }
 
-    private final long chunk_size = 256 * 1024 * 1024
+    private final long defaultChunkSize = 256 * 1024 * 1024
     private final long max_parts = 10000
     private final long max_upload_size = 5497558138880 // 5 * 1024 * 1024 * 1024 * 1024, cant put this though bc groovy is quirky and integer overflows
 
@@ -169,12 +169,19 @@ class LatchPath extends XPath {
 
         def mimeType = Files.probeContentType(local) ?: "application/octet-stream"
 
-        long cur_chunk_size = chunk_size
-        long numParts = Math.ceilDiv(size, cur_chunk_size)
+        long chunkSize = defaultChunkSize
+
+        long numParts = size.intdiv(chunkSize)
+        if (size % chunkSize != 0) {
+            numParts = numParts + 1
+        }
 
         if (numParts > max_parts) {
             numParts = max_parts
-            cur_chunk_size = Math.ceilDiv(size, numParts)
+            chunkSize = size.intdiv(numParts)
+            if (size % numParts != 0) {
+                chunkSize = chunkSize + 1
+            }
         }
 
         String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
@@ -211,7 +218,7 @@ class LatchPath extends XPath {
         def file = FileChannel.open(local)
         // casting cur_chunk_size to int is fine here as cur_chunk_size will never
         // be > 2^31 - 1 (this would require a file larger than the max size of 5 TiB)
-        def buf = ByteBuffer.allocate(cur_chunk_size as int)
+        def buf = ByteBuffer.allocate(chunkSize as int)
 
 
         ForkJoinPool fjp = new ForkJoinPool(
@@ -232,7 +239,7 @@ class LatchPath extends XPath {
             def bytes_read = file.read(buf)
 
             byte[] arr = buf.array()
-            if (bytes_read < cur_chunk_size) {
+            if (bytes_read < chunkSize) {
                 arr = Arrays.copyOfRange(arr, 0, bytes_read)
             }
 
