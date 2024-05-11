@@ -59,21 +59,6 @@ class DispatcherClient {
         throw new RuntimeException("${path} request failed after ${retries} attempts: status_code=${statusCode} error=${error}")
     }
 
-    String dispatchPod(int taskId, int attemptIdx, Map pod) {
-        def resp = requestWithRetry(
-            'POST',
-            'submit',
-            [
-                pod: JsonOutput.toJson(pod),
-                task_id: taskId,
-                attempt_idx: attemptIdx,
-            ]
-        )
-
-        def data = (Map) new JsonSlurper().parseText(resp)
-        return data.name
-    }
-
     int createProcessNode(String processName) {
         def resp = requestWithRetry(
             'POST',
@@ -92,8 +77,8 @@ class DispatcherClient {
             'POST',
             'create-edge',
             [
-                from: from,
-                to: to
+                start_node_id: from,
+                end_node_id: to
             ]
         )
     }
@@ -110,6 +95,21 @@ class DispatcherClient {
 
         def data = (Map) new JsonSlurper().parseText(resp)
         return (int) data.id
+    }
+
+    String dispatchPod(int taskId, int attemptIdx, Map pod) {
+        def resp = requestWithRetry(
+            'POST',
+            'submit',
+            [
+                task_id: taskId,
+                attempt_idx: attemptIdx,
+                pod: JsonOutput.toJson(pod),
+            ]
+        )
+
+        def data = (Map) new JsonSlurper().parseText(resp)
+        return data.name
     }
 
     void updateTaskStatus(int taskId, int attemptIdx, String status) {
