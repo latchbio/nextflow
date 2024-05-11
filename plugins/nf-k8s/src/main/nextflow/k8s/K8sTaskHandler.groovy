@@ -324,7 +324,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         builder.build()
 
         final req = newSubmitRequest(task)
-        this.podName = task.dispatchPod(req, attemptIdx)
+        this.podName = task.getDispatcher().dispatchPod(task.taskId, attemptIdx, req)
 
         log.info "Submitted Pod ${this.podName}"
 
@@ -378,7 +378,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             // include `terminated` state to allow the handler status to progress
             if (state && (state.running != null || state.terminated)) {
                 if (status != TaskStatus.RUNNING) {
-                    task.updateRemoteStatus('RUNNING', attemptIdx)
+                    task.getDispatcher().updateTaskStatus(task.taskId, attemptIdx, 'RUNNING')
                 }
                 status = TaskStatus.RUNNING
                 determineNode()
@@ -447,9 +447,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
             if (status != TaskStatus.COMPLETED) {
                 if (task.isSuccess()) {
-                    task.updateRemoteStatus('SUCCEEDED', attemptIdx)
+                    task.getDispatcher().updateTaskStatus(task.taskId, attemptIdx, 'SUCCEEDED')
                 } else {
-                    task.updateRemoteStatus('FAILED', attemptIdx)
+                    task.getDispatcher().updateTaskStatus(task.taskId, attemptIdx, 'FAILED')
                 }
             }
             status = TaskStatus.COMPLETED

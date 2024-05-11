@@ -115,6 +115,7 @@ import nextflow.util.HashBuilder
 import nextflow.util.LockManager
 import nextflow.util.LoggerHelper
 import nextflow.util.TestOnly
+import nextflow.util.DispatcherClient
 import org.codehaus.groovy.control.CompilerConfiguration
 import org.codehaus.groovy.control.customizers.ASTTransformationCustomizer
 /**
@@ -170,6 +171,11 @@ class TaskProcessor {
     protected String name
 
     /**
+     * The id of the nf_process_node created in Vacuole
+     */
+    protected int nodeId
+
+    /**
      * The piece of code to be execute provided by the user
      */
     protected BodyDef taskBody
@@ -197,6 +203,11 @@ class TaskProcessor {
      * Count the number of time an error occurred
      */
     private volatile int errorCount
+
+    /**
+     * HTTP Client for making requests to Latch Dispatcher
+     */
+    protected DispatcherClient client
 
 
     /**
@@ -317,13 +328,14 @@ class TaskProcessor {
         final arraySize = config.getArray()
         this.arrayCollector = arraySize > 0 ? new TaskArrayCollector(this, executor, arraySize) : null
         log.debug "Creating process '$name': maxForks=${maxForks}; fair=${isFair0}; array=${arraySize}"
+        this.client = new DispatcherClient()
     }
 
     /**
      * @return The processor unique id
      */
     int getId() { id }
-  
+
     /**
      * @return The {@code TaskConfig} object holding the task configuration properties
      */
@@ -629,7 +641,6 @@ class TaskProcessor {
 
         // -- create the task run instance
         final task = createTaskRun(params)
-        task.createGraphNode()
 
         // -- set the task instance as the current in this thread
         currentTask.set(task)
@@ -1493,7 +1504,7 @@ class TaskProcessor {
                     fairBuffers.remove(0)
                     // increase the index of the next emission
                     currentEmission++
-                    // take the next emissions 
+                    // take the next emissions
                     emissions = fairBuffers[0]
                 }
             }
@@ -1922,7 +1933,7 @@ class TaskProcessor {
 
         if( obj == null )
             throw new ProcessUnrecoverableException("Path value cannot be null")
-        
+
         if( !(obj instanceof CharSequence) )
             throw new ProcessUnrecoverableException("Not a valid path value type: ${obj.getClass().getName()} ($obj)")
 
@@ -1935,7 +1946,7 @@ class TaskProcessor {
             return FileHelper.asPath(str)
         if( !str )
             throw new ProcessUnrecoverableException("Path value cannot be empty")
-        
+
         throw new ProcessUnrecoverableException("Not a valid path value: '$str'")
     }
 
@@ -2233,7 +2244,7 @@ class TaskProcessor {
         if( modules ) {
             keys.addAll(modules)
         }
-        
+
         final conda = task.getCondaEnv()
         if( conda ) {
             keys.add(conda)

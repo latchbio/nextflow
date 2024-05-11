@@ -16,9 +16,7 @@
 
 package nextflow.processor
 
-import groovy.json.JsonException
-import groovy.json.JsonOutput
-import groovy.json.JsonSlurper
+import nextflow.util.DispatcherClient
 
 import java.nio.file.FileSystems
 import java.nio.file.NoSuchFileException
@@ -56,6 +54,7 @@ import nextflow.script.params.OutParam
 import nextflow.script.params.StdInParam
 import nextflow.script.params.ValueOutParam
 import nextflow.spack.SpackCache
+
 /**
  * Models a task instance
  *
@@ -83,9 +82,9 @@ class TaskRun implements Cloneable {
     String name
 
     /**
-     * Holds the id of the graph node in Vacuole
+     * Holds the id of the nf_task_info in Vacuole
      */
-    int graphNodeId
+    int taskId
 
     /**
      * The unique hash code associated to this task
@@ -414,6 +413,10 @@ class TaskRun implements Cloneable {
         return template!=null && body?.source
             ? body.source
             : getScript()
+    }
+
+    DispatcherClient getDispatcher() {
+        return processor.client
     }
 
 
