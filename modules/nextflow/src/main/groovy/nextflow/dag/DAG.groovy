@@ -281,6 +281,38 @@ class DAG {
         }
     }
 
+    void findInputSource0(Vertex v, Set<TaskProcessor> processors) {
+        if (v == null)
+            return
+
+        if (v.type == Type.PROCESS) {
+            processors.add(v.process)
+            return
+        }
+
+        // todo(rahul): inefficient, update DAG to store the graph as (vertex -> [edge])
+        for (Edge e: edges) {
+            if (e != null && e.to == v) {
+                findInputSource0(e.from, processors)
+            }
+        }
+
+    }
+
+    HashSet<TaskProcessor> findInputSource(InParam input) {
+        if (input instanceof DefaultInParam)
+            return new HashSet<>()
+
+        def entering = new ChannelHandler(channel: input.rawChannel, label: inputName0(input))
+        Edge e = findEdge(entering.channel)
+        if (e == null)
+            return new HashSet<>()
+
+        HashSet<TaskProcessor> processors = new HashSet<>();
+        findInputSource0(e.from, processors)
+        return processors
+    }
+
     @PackageScope
     Edge findEdge( channel ) {
         edges.find { edge -> edge.channel.is(channel) }

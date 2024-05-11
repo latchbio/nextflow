@@ -580,6 +580,11 @@ class TaskProcessor {
         // notify the creation of a new vertex the execution DAG
         NodeMarker.addProcessNode(this, config.getInputs(), config.getOutputs())
         this.nodeId = this.client.createProcessNode(this.name)
+        config.getInputs().each { it ->
+            Set<TaskProcessor> processors = NodeMarker.findInputSource(it)
+            for (TaskProcessor src: processors)
+                this.client.addProcessEdge(src.nodeId, this.nodeId)
+        }
 
         // fix issue #41
         start(operator)

@@ -21,6 +21,7 @@ import groovyx.gpars.dataflow.operator.DataflowProcessor
 import nextflow.Global
 import nextflow.Session
 import nextflow.processor.TaskProcessor
+import nextflow.script.params.InParam
 import nextflow.script.params.InputsList
 import nextflow.script.params.OutputsList
 /**
@@ -85,6 +86,12 @@ class NodeMarker {
     static void addDataflowBroadcastPair(readChannel, broadcastChannel)  {
         if( session && session.dag && !session.aborted )
             session.dag.addDataflowBroadcastPair(readChannel, broadcastChannel)
+    }
+
+    static Set<TaskProcessor> findInputSource(InParam input)  {
+        if( session && session.dag && !session.aborted )
+            return session.dag.findInputSource(input)
+        return new HashSet<TaskProcessor>()
     }
 
 }
