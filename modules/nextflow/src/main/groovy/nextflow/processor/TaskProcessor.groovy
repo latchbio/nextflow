@@ -579,6 +579,7 @@ class TaskProcessor {
 
         // notify the creation of a new vertex the execution DAG
         NodeMarker.addProcessNode(this, config.getInputs(), config.getOutputs())
+        this.nodeId = this.client.createProcessNode(this.name)
 
         // fix issue #41
         start(operator)
@@ -620,6 +621,7 @@ class TaskProcessor {
 
         // -- create the task run instance
         final task = createTaskRun(params)
+        task.taskId = this.client.createProcessTask(this.nodeId, task.index)
 
         // -- set the task instance as the current in this thread
         currentTask.set(task)
