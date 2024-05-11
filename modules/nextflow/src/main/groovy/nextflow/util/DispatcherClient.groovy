@@ -87,6 +87,20 @@ class DispatcherClient {
         return (int) data.id
     }
 
+    void addProcessEdge(int from, int to) {
+        log.info "Creating process EDGE from ${from} to ${to}"
+        return
+
+        requestWithRetry(
+            'POST',
+            'create-edge',
+            [
+                from: from,
+                to: to
+            ]
+        )
+    }
+
     int createProcessTask(int processNodeId, int index) {
         def resp = requestWithRetry(
             'POST',
@@ -102,18 +116,14 @@ class DispatcherClient {
     }
 
     void updateTaskStatus(int taskId, int attemptIdx, String status) {
-        try {
-            requestWithRetry(
-                'POST',
-                'status',
-                [
-                    task_id: taskId,
-                    attempt_idx: attemptIdx,
-                    status: status,
-                ]
-            )
-        } catch (Throwable e) {
-            log.warn "Failed to update runtime status for task ${taskId}: ${e.toString()}"
-        }
+        requestWithRetry(
+            'POST',
+            'status',
+            [
+                task_id: taskId,
+                attempt_idx: attemptIdx,
+                status: status,
+            ]
+        )
     }
 }
