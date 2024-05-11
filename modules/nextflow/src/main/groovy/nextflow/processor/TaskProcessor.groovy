@@ -109,6 +109,7 @@ import nextflow.util.Escape
 import nextflow.util.LockManager
 import nextflow.util.LoggerHelper
 import nextflow.util.TestOnly
+import nextflow.util.DispatcherClient
 import org.codehaus.groovy.control.CompilerConfiguration
 import org.codehaus.groovy.control.customizers.ASTTransformationCustomizer
 /**
@@ -164,6 +165,11 @@ class TaskProcessor {
     protected String name
 
     /**
+     * The id of the nf_process_node created in Vacuole
+     */
+    protected int nodeId
+
+    /**
      * The piece of code to be execute provided by the user
      */
     protected BodyDef taskBody
@@ -191,6 +197,11 @@ class TaskProcessor {
      * Count the number of time an error occurred
      */
     private volatile int errorCount
+
+    /**
+     * HTTP Client for making requests to Latch Dispatcher
+     */
+    protected DispatcherClient client
 
 
     /**
@@ -306,6 +317,7 @@ class TaskProcessor {
         this.maxForks = config.maxForks ? config.maxForks as int : 0
         this.forksCount = maxForks ? new LongAdder() : null
         this.isFair0 = config.getFair()
+        this.client = new DispatcherClient()
     }
 
     /**
@@ -608,7 +620,6 @@ class TaskProcessor {
 
         // -- create the task run instance
         final task = createTaskRun(params)
-        task.createGraphNode()
 
         // -- set the task instance as the current in this thread
         currentTask.set(task)
