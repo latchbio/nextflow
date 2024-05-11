@@ -69,6 +69,11 @@ class DAG {
     private List<Vertex> vertices = new ArrayList<>(50)
 
     /**
+     * Mapping of vertex to inbound edges
+     */
+    private Map<Vertex, List<Edge>> inboundEdges = new HashMap<>(50)
+
+    /**
      * Contains mappings of ReadChannel nodes to DataflowBroadcast nodes.
      * This is needed for DataflowBroadcast operators that get added to the
      * DAG as ReadChannels - we need to get back to the DataflowBroadcast
@@ -141,6 +146,8 @@ class DAG {
 
         final vertex = createVertex( type, label, extra )
 
+        inboundEdges.put(vertex, new ArrayList<Edge>(10))
+
         for( ChannelHandler channel : inbounds ) {
             inbound( vertex, channel )
         }
@@ -181,11 +188,14 @@ class DAG {
 
         // if does not exist just create it
         if( !edge ) {
-            edges << new Edge(channel: entering.channel, to: vertex, label: entering.label)
+            def e = new Edge(channel: entering.channel, to: vertex, label: entering.label)
+            inboundEdges[vertex].add(e)
+            edges << e
         }
         // link the edge to given `edge`
         else if( edge.to == null ) {
             edge.to = vertex
+            inboundEdges[vertex].add(edge)
         }
         // handle the special case for dataflow variable
         // this kind of channel can be used more than one time as an input
@@ -197,6 +207,7 @@ class DAG {
                 else vertices.add(edge.from)
             }
             def fork = new Edge(channel: entering.channel, from: edge.from, to: vertex, label: entering.label)
+            inboundEdges[vertex].add(fork)
             edges << fork
         }
         // the same channel - apart the above case - cannot be used multiple times as an input
@@ -290,8 +301,7 @@ class DAG {
             return
         }
 
-        // todo(rahul): inefficient, update DAG to store the graph as (vertex -> [edge])
-        for (Edge e: edges) {
+        for (Edge e: inboundEdges[v]) {
             if (e != null && e.to == v) {
                 findInputSource0(e.from, processors)
             }

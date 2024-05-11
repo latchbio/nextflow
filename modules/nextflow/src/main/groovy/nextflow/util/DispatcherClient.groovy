@@ -88,9 +88,6 @@ class DispatcherClient {
     }
 
     void addProcessEdge(int from, int to) {
-        log.info "Creating process EDGE from ${from} to ${to}"
-        return
-
         requestWithRetry(
             'POST',
             'create-edge',
