@@ -501,7 +501,7 @@ class TaskProcessor {
 
         // create process node
         Map res = client.execute("""
-            mutation CreateNode(\$executionId: String!, \$name: String!) {
+            mutation CreateNode(\$executionId: BigInt!, \$name: String!) {
                 createNfProcessNode(
                     input: {
                         nfProcessNode: {
@@ -520,9 +520,9 @@ class TaskProcessor {
                 executionId: executionId,
                 name: this.name,
             ]
-        )["nfProcessNode"] as Map
+        )["createNfProcessNode"] as Map
 
-        this.nodeId = (int) res.id
+        this.nodeId = (int) (res.nfProcessNode as Map).id
 
         // create process edges
         config.getInputs().each { it ->
@@ -679,9 +679,9 @@ class TaskProcessor {
                 processNodeId: this.nodeId,
                 index: task.index,
             ]
-        )["nfTaskInfo"] as Map
+        )["createNfTaskInfo"] as Map
 
-        task.taskId = (int) res.id
+        task.taskId = (int) (res.nfTaskInfo as Map).id
     }
 
     /**
