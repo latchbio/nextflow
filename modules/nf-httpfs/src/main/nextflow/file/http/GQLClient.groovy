@@ -39,7 +39,7 @@ class GQLClient {
     }
 
     // todo(ayush): add validation
-    Map execute(String query, Map<String, String> variables) {
+    Map execute(String query, Map<Object, Object> variables) {
         JsonBuilder builder = new JsonBuilder()
         builder(["query": query, "variables": variables])
 

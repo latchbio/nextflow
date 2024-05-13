@@ -18,6 +18,7 @@ package nextflow.k8s
 
 import java.nio.file.FileAlreadyExistsException
 import groovy.json.JsonSlurper
+import nextflow.util.DispatcherClient
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -75,6 +76,8 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     private K8sClient client
 
+    private DispatcherClient dispatcher
+
     private String podName
 
     private int attemptIdx
@@ -100,6 +103,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         this.attemptIdx = task.config.getAttempt() - 1
         this.executor = executor
         this.client = executor.client
+        this.dispatcher = executor.dispatcher
         this.outputFile = task.workDir.resolve(TaskRun.CMD_OUTFILE)
         this.errorFile = task.workDir.resolve(TaskRun.CMD_ERRFILE)
         this.exitFile = task.workDir.resolve(TaskRun.CMD_EXIT)
@@ -324,7 +328,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         builder.build()
 
         final req = newSubmitRequest(task)
-        this.podName = task.getDispatcher().dispatchPod(task.taskId, attemptIdx, req)
+        this.podName = this.dispatcher.dispatchPod(task.taskId, attemptIdx, req)
 
         log.info "Submitted Pod ${this.podName}"
 
@@ -378,7 +382,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             // include `terminated` state to allow the handler status to progress
             if (state && (state.running != null || state.terminated)) {
                 if (status != TaskStatus.RUNNING) {
-                    task.getDispatcher().updateTaskStatus(task.taskId, attemptIdx, 'RUNNING')
+                    task.updateTaskStatus(attemptIdx, 'RUNNING')
                 }
                 status = TaskStatus.RUNNING
                 determineNode()
@@ -447,9 +451,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
             if (status != TaskStatus.COMPLETED) {
                 if (task.isSuccess()) {
-                    task.getDispatcher().updateTaskStatus(task.taskId, attemptIdx, 'SUCCEEDED')
+                    task.updateTaskStatus(attemptIdx, 'SUCCEEDED')
                 } else {
-                    task.getDispatcher().updateTaskStatus(task.taskId, attemptIdx, 'FAILED')
+                    task.updateTaskStatus(attemptIdx, 'FAILED')
                 }
             }
             status = TaskStatus.COMPLETED
