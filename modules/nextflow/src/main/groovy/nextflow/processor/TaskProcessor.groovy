@@ -16,6 +16,7 @@
 package nextflow.processor
 
 import groovy.json.JsonSlurper
+import nextflow.file.http.GQLClient
 
 import static nextflow.processor.ErrorStrategy.*
 
@@ -109,7 +110,6 @@ import nextflow.util.Escape
 import nextflow.util.LockManager
 import nextflow.util.LoggerHelper
 import nextflow.util.TestOnly
-import nextflow.util.DispatcherClient
 import org.codehaus.groovy.control.CompilerConfiguration
 import org.codehaus.groovy.control.customizers.ASTTransformationCustomizer
 /**
@@ -199,9 +199,9 @@ class TaskProcessor {
     private volatile int errorCount
 
     /**
-     * HTTP Client for making requests to Latch Dispatcher
+     * Client for making GQL requests to vacuole
      */
-    protected DispatcherClient client
+    protected GQLClient client
 
 
     /**
@@ -317,7 +317,7 @@ class TaskProcessor {
         this.maxForks = config.maxForks ? config.maxForks as int : 0
         this.forksCount = maxForks ? new LongAdder() : null
         this.isFair0 = config.getFair()
-        this.client = new DispatcherClient()
+        this.client = new GQLClient()
     }
 
     /**
@@ -494,6 +494,61 @@ class TaskProcessor {
         return result.size() == 1 ? result[0] : result
     }
 
+    void createRemoteProcessNode() {
+        def executionId = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
+        if (executionId == null)
+            throw new RuntimeException("failed to fetch execution token")
+
+        // create process node
+        Map res = client.execute("""
+            mutation CreateNode(\$executionId: String!, \$name: String!) {
+                createNfProcessNode(
+                    input: {
+                        nfProcessNode: {
+                            executionId: \$executionId,
+                            name: \$name
+                        }
+                    }
+                ) {
+                    nfProcessNode {
+                        id
+                    }
+                }
+            }
+            """,
+            [
+                executionId: executionId,
+                name: this.name,
+            ]
+        )["nfProcessNode"] as Map
+
+        this.nodeId = (int) res.id
+
+        // create process edges
+        config.getInputs().each { it ->
+            Set<TaskProcessor> processors = NodeMarker.findInputSource(it)
+            for (TaskProcessor src: processors) {
+                client.execute("""
+                    mutation CreateEdge(\$startNode BigInt!, \$endNode BigInt!) {
+                        createNfProcessEdge(
+                            input: {
+                                nfProcessEdge: {
+                                    startNode: \$startNode,
+                                    endNode: \$endNode
+                                }
+                            }
+                        )
+                    }
+                    """,
+                    [
+                        startNode: src.nodeId,
+                        endNode: this.nodeId,
+                    ]
+                )
+            }
+        }
+    }
+
     /**
      * Template method which extending classes have to override in order to
      * create the underlying *dataflow* operator associated with this processor
@@ -579,12 +634,7 @@ class TaskProcessor {
 
         // notify the creation of a new vertex the execution DAG
         NodeMarker.addProcessNode(this, config.getInputs(), config.getOutputs())
-        this.nodeId = this.client.createProcessNode(this.name)
-        config.getInputs().each { it ->
-            Set<TaskProcessor> processors = NodeMarker.findInputSource(it)
-            for (TaskProcessor src: processors)
-                this.client.addProcessEdge(src.nodeId, this.nodeId)
-        }
+        createRemoteProcessNode()
 
         // fix issue #41
         start(operator)
@@ -608,6 +658,32 @@ class TaskProcessor {
         return result
     }
 
+    void createRemoteProcessTask(TaskRun task) {
+        Map res = client.execute("""
+            mutation CreateTaskInfo(\$processNodeId: BigInt!, \$index: BigInt!) {
+                createNfTaskInfo(
+                    input: {
+                        nfTaskInfo: {
+                            processNodeId: \$processNodeId,
+                            index: \$index
+                        }
+                    }
+                ) {
+                    nfTaskInfo {
+                        id
+                    }
+                }
+            }
+            """,
+            [
+                processNodeId: this.nodeId,
+                index: task.index,
+            ]
+        )["nfTaskInfo"] as Map
+
+        task.taskId = (int) res.id
+    }
+
     /**
      * The processor execution body
      *
@@ -626,7 +702,7 @@ class TaskProcessor {
 
         // -- create the task run instance
         final task = createTaskRun(params)
-        task.taskId = this.client.createProcessTask(this.nodeId, task.index)
+        createRemoteProcessTask(task)
 
         // -- set the task instance as the current in this thread
         currentTask.set(task)

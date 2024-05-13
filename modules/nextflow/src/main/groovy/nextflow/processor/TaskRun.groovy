@@ -16,8 +16,6 @@
 
 package nextflow.processor
 
-import nextflow.util.DispatcherClient
-
 import java.nio.file.FileSystems
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
@@ -403,10 +401,6 @@ class TaskRun implements Cloneable {
         return template!=null && body.source
             ? body.source
             : getScript()
-    }
-
-    DispatcherClient getDispatcher() {
-        return processor.client
     }
 
 
@@ -898,5 +892,28 @@ class TaskRun implements Cloneable {
     TaskBean toTaskBean() {
         return new TaskBean(this)
     }
+
+    void updateTaskStatus(int attemptIdx, String status) {
+        this.processor.client.execute("""
+            mutation UpdateTaskStatus(\$processNodeId: BigInt!, \$index: BigInt!) {
+                updateNfTaskExecutionInfoByTaskIdAndAttemptIdx(
+                    input: {
+                        patch: {
+                            status: \$status
+                        },
+                        taskId: \$taskId,
+                        attemptIdx: \$attemptIdx
+                    }
+                )
+            }
+            """,
+            [
+                taskId: this.taskId,
+                attemptIdx: attemptIdx,
+                status: status
+            ]
+        )
+    }
+
 }
 
