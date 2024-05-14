@@ -39,7 +39,7 @@ class GQLClient {
     }
 
     // todo(ayush): add validation
-    Map execute(String query, Map<Object, Object> variables) {
+    Map execute(String query, Map variables) {
         JsonBuilder builder = new JsonBuilder()
         builder(["query": query, "variables": variables])
 
@@ -49,8 +49,8 @@ class GQLClient {
         JsonSlurper slurper = new JsonSlurper()
         Map<String, Map> responseObj = slurper.parseText(response.body()) as Map<String, Map>
 
-        if (responseObj.containsKey("error")) {
-            throw new GQLQueryException(responseObj["error"].toString())
+        if (responseObj.containsKey("errors")) {
+            throw new GQLQueryException(responseObj["errors"].toString())
         }
 
         return responseObj["data"]
