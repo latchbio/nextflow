@@ -1003,7 +1003,7 @@ class TaskRun implements Cloneable {
 
     void updateTaskStatus(int attemptIdx, String status) {
         this.processor.client.execute("""
-            mutation UpdateTaskStatus(\$processNodeId: BigInt!, \$index: BigInt!) {
+            mutation UpdateTaskStatus(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$status: TaskExecutionStatus!) {
                 updateNfTaskExecutionInfoByTaskIdAndAttemptIdx(
                     input: {
                         patch: {
