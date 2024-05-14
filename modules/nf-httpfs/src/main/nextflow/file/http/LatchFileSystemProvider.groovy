@@ -102,6 +102,7 @@ class LatchFileSystemProvider extends XFileSystemProvider {
         }
 
         Path url = Paths.get(lp.getSignedURL().toURI())
+        log.info "Downloading ${lp.toUriString()}"
         return url.fileSystem.provider().newByteChannel(url, options, attrs)
     }
 
@@ -283,6 +284,9 @@ class LatchFileSystemProvider extends XFileSystemProvider {
                     ldataNode {
                         finalLinkTarget {
                             type
+                            ldataObjectMeta {
+                                contentSize
+                            }
                         }
                     }
                 }
@@ -293,7 +297,14 @@ class LatchFileSystemProvider extends XFileSystemProvider {
             return (A) new LatchFileAttributes()
         }
 
-        return (A) new LatchFileAttributes((String) res["ldataNode"]["finalLinkTarget"]["type"])
+        Map flt = res["ldataNode"]["finalLinkTarget"] as Map
+
+        long size = 0
+        if (flt["ldataObjectMeta"] != null) {
+            size = Long.parseLong(flt["ldataObjectMeta"]["contentSize"] as String)
+        }
+
+        return (A) new LatchFileAttributes((String) flt["type"], size)
     }
 
     @Override

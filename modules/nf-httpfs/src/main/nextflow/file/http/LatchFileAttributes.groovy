@@ -26,12 +26,14 @@ class LatchFileAttributes implements BasicFileAttributes {
 
     boolean exists = false
     LDataNodeType type = null
+    Long size
 
     LatchFileAttributes() {}
 
-    LatchFileAttributes(String type) {
+    LatchFileAttributes(String type, Long size) {
         exists = true
         this.type = LDataNodeType.fromString(type)
+        this.size = size
     }
 
     @Override
@@ -71,7 +73,7 @@ class LatchFileAttributes implements BasicFileAttributes {
 
     @Override
     long size() {
-        return 0
+        return size
     }
 
     @Override
