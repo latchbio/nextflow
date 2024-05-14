@@ -529,7 +529,7 @@ class TaskProcessor {
             Set<TaskProcessor> processors = NodeMarker.findInputSource(it)
             for (TaskProcessor src: processors) {
                 client.execute("""
-                    mutation CreateEdge(\$startNode BigInt!, \$endNode BigInt!) {
+                    mutation CreateEdge(\$startNode: BigInt!, \$endNode: BigInt!) {
                         createNfProcessEdge(
                             input: {
                                 nfProcessEdge: {
