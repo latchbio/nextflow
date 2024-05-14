@@ -495,34 +495,28 @@ class TaskProcessor {
     }
 
     void createRemoteProcessNode() {
-        def executionId = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
-        if (executionId == null)
+        def executionToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
+        if (executionToken == null)
             throw new RuntimeException("failed to fetch execution token")
 
         // create process node
         Map res = client.execute("""
-            mutation CreateNode(\$executionId: BigInt!, \$name: String!) {
-                createNfProcessNode(
-                    input: {
-                        nfProcessNode: {
-                            executionId: \$executionId,
-                            name: \$name
-                        }
-                    }
-                ) {
-                    nfProcessNode {
-                        id
-                    }
+            mutation CreateNode(\$executionToken: String!, \$name: String!) {
+                createNfProcessNodeByExecutionToken(input: {argExecutionToken: \$executionToken, argName: \$name}) {
+                    bigInt
                 }
             }
             """,
             [
-                executionId: executionId,
+                executionToken: executionToken,
                 name: this.name,
             ]
-        )["createNfProcessNode"] as Map
+        )["createNfProcessNodeByExecutionToken"] as Map
 
-        this.nodeId = (int) (res.nfProcessNode as Map).id
+        if (res == null)
+            throw new RuntimeException("failed to create remote process node")
+
+        this.nodeId = (int) res.bigInt
 
         // create process edges
         config.getInputs().each { it ->
@@ -680,6 +674,9 @@ class TaskProcessor {
                 index: task.index,
             ]
         )["createNfTaskInfo"] as Map
+
+        if (res == null)
+            throw new RuntimeException("failed to create remote process task")
 
         task.taskId = (int) (res.nfTaskInfo as Map).id
     }
