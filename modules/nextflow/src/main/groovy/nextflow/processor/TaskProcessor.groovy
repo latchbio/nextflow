@@ -537,7 +537,7 @@ class TaskProcessor {
         if (res == null)
             throw new RuntimeException("failed to create remote process node")
 
-        this.nodeId = (int) res.bigInt
+        this.nodeId = (res.bigInt as String).toInteger()
 
         // create process edges
         config.getInputs().each { it ->
@@ -552,7 +552,9 @@ class TaskProcessor {
                                     endNode: \$endNode
                                 }
                             }
-                        )
+                        ) {
+                            clientMutationId
+                        }
                     }
                     """,
                     [
@@ -699,7 +701,7 @@ class TaskProcessor {
         if (res == null)
             throw new RuntimeException("failed to create remote process task")
 
-        task.taskId = (int) (res.nfTaskInfo as Map).id
+        task.taskId = ((res.nfTaskInfo as Map).id as String).toInteger()
     }
 
     /**
