@@ -28,10 +28,6 @@ class GQLClient {
 
         this.endpoint = endpoint
         this.client = HttpClient.newHttpClient()
-        this.requestBuilder =  HttpRequest.newBuilder()
-            .uri(URI.create(this.endpoint))
-            .header("Content-Type", "application/json")
-            .header("Authorization", LatchPathUtils.getAuthHeader())
     }
 
     Map execute(String query) {
@@ -43,7 +39,11 @@ class GQLClient {
         JsonBuilder builder = new JsonBuilder()
         builder(["query": query, "variables": variables])
 
-        HttpRequest req = this.requestBuilder.POST(HttpRequest.BodyPublishers.ofString(builder.toString())).build()
+        requestBuilder =  HttpRequest.newBuilder()
+            .uri(URI.create(this.endpoint))
+            .header("Content-Type", "application/json")
+            .header("Authorization", LatchPathUtils.getAuthHeader())
+        HttpRequest req = requestBuilder.POST(HttpRequest.BodyPublishers.ofString(builder.toString())).build()
         HttpResponse<String> response = this.client.send(req, HttpResponse.BodyHandlers.ofString())
 
         JsonSlurper slurper = new JsonSlurper()
