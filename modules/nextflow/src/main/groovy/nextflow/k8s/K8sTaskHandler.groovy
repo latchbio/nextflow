@@ -169,11 +169,14 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 : classicSubmitCli(task)
     }
 
-    protected String getSyntheticPodName(TaskRun task) {
-        "nf-${task.hash}"
+    protected static String getSyntheticPodName(TaskRun task) {
+        def executionToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
+        if (executionToken == null)
+            throw new RuntimeException("failed to fetch execution token")
+        return "${executionToken}-nf-${task.hash}"
     }
 
-    protected String getOwner() { OWNER }
+    protected static String getOwner() { OWNER }
 
     protected Boolean fixOwnership() {
         task.containerConfig.fixOwnership
