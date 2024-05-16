@@ -173,7 +173,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         def executionToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
         if (executionToken == null)
             throw new RuntimeException("failed to fetch execution token")
-        return "${executionToken}-nf-${task.hash}"
+        return "${executionToken}-${task.hash.toString().substring(0, 8)}-${task.index}"
     }
 
     protected static String getOwner() { OWNER }
