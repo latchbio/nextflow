@@ -170,6 +170,11 @@ class TaskProcessor {
     protected int nodeId
 
     /**
+     * Number to tasks that were launched
+     */
+    protected int numTasks
+
+    /**
      * The piece of code to be execute provided by the user
      */
     protected BodyDef taskBody
@@ -263,6 +268,8 @@ class TaskProcessor {
 
     private Boolean isFair0
 
+    private Boolean debug
+
     private CompilerConfiguration compilerConfig() {
         final config = new CompilerConfiguration()
         config.addCompilationCustomizers( new ASTTransformationCustomizer(TaskTemplateVarsXform) )
@@ -314,10 +321,13 @@ class TaskProcessor {
         this.config = config
         this.taskBody = taskBody
         this.name = name
+        this.numTasks = 0
         this.maxForks = config.maxForks ? config.maxForks as int : 0
         this.forksCount = maxForks ? new LongAdder() : null
         this.isFair0 = config.getFair()
+
         this.client = new GQLClient()
+        this.debug = System.getenv("LATCH_NF_DEBUG") != null
     }
 
     /**
@@ -630,7 +640,10 @@ class TaskProcessor {
 
         // notify the creation of a new vertex the execution DAG
         NodeMarker.addProcessNode(this, config.getInputs(), config.getOutputs())
-        createRemoteProcessNode()
+        if (!debug) {
+            // this must happen before the operator is started to ensure that nodeId is populated
+            createRemoteProcessNode()
+        }
 
         // fix issue #41
         start(operator)
@@ -701,7 +714,9 @@ class TaskProcessor {
 
         // -- create the task run instance
         final task = createTaskRun(params)
-        createRemoteProcessTask(task)
+        if (!debug) {
+            createRemoteProcessTask(task)
+        }
 
         // -- set the task instance as the current in this thread
         currentTask.set(task)
@@ -2532,6 +2547,9 @@ class TaskProcessor {
             // apparently auto if-guard instrumented by @Slf4j is not honoured in inner classes - add it explicitly
             if( log.isTraceEnabled() )
                 log.trace "<${name}> Before run -- messages: ${messages}"
+
+            numTasks += 1
+
             // the counter must be incremented here, otherwise it won't be consistent
             state.update { StateObj it -> it.incSubmitted() }
             // task index must be created here to guarantee consistent ordering
@@ -2591,6 +2609,26 @@ class TaskProcessor {
             // apparently auto if-guard instrumented by @Slf4j is not honoured in inner classes - add it explicitly
             if( log.isTraceEnabled() )
                 log.trace "<${name}> After stop"
+
+            client.execute("""
+            mutation CreateTaskInfo(\$nodeId: BigInt!, \$numTasks: BigInt!) {
+                updateNfProcessNode(
+                    input: {
+                        id: \$nodeId,
+                        patch: {
+                            numTasks: \$numTasks
+                        }
+                    }
+                ) {
+                    clientMutationId
+                }
+            }
+            """,
+                [
+                    nodeId: nodeId,
+                    numTasks: numTasks
+                ]
+            )
         }
 
         /**
