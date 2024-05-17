@@ -73,16 +73,4 @@ class DispatcherClient {
         def data = (Map) new JsonSlurper().parseText(resp)
         return data.name
     }
-
-    void updateTaskStatus(int taskId, int attemptIdx, String status) {
-        requestWithRetry(
-            'POST',
-            'status',
-            [
-                task_id: taskId,
-                attempt_idx: attemptIdx,
-                status: status,
-            ]
-        )
-    }
 }
