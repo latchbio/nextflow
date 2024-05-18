@@ -442,7 +442,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             determineNode()
 
             if (updateStatus)
-                task.updateTaskStatus(attemptIdx, task.isSuccess() ? 'SUCCEEDED' : 'FAILED', startTimeMillis, completeTimeMillis)
+                task.updateTaskStatus(attemptIdx, task.isSuccess() ? 'SUCCEEDED' : 'FAILED')
 
             return true
         }
