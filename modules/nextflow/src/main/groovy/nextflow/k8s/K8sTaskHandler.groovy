@@ -434,18 +434,16 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 task.stderr = errorFile
             }
 
-            if (status != TaskStatus.COMPLETED) {
-                if (task.isSuccess()) {
-                    task.updateTaskStatus(attemptIdx, 'SUCCEEDED')
-                } else {
-                    task.updateTaskStatus(attemptIdx, 'FAILED')
-                }
-            }
+            boolean updateStatus = status != TaskStatus.COMPLETED
             status = TaskStatus.COMPLETED
             savePodLogOnError(task)
             deletePodIfSuccessful(task)
             updateTimestamps(state.terminated as Map)
             determineNode()
+
+            if (updateStatus)
+                task.updateTaskStatus(attemptIdx, task.isSuccess() ? 'SUCCEEDED' : 'FAILED', startTimeMillis, completeTimeMillis)
+
             return true
         }
 
