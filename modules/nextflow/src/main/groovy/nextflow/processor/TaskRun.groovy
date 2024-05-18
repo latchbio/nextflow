@@ -1006,19 +1006,21 @@ class TaskRun implements Cloneable {
     }
 
     void updateTaskStatus(int attemptIdx, String status) {
+        String resolutionTime = null
+        if (status == 'SUCCEEDED' || status == 'FAILED')
+            resolutionTime = new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'", TimeZone.getTimeZone('UTC'))
+
         this.processor.client.execute("""
             mutation UpdateTaskStatus(
                 \$taskId: BigInt!,
                 \$attemptIdx: BigInt!,
                 \$status: TaskExecutionStatus!,
-                \$startTime: Datetime,
                 \$resolutionTime: Datetime
             ) {
                 updateNfTaskExecutionInfoByTaskIdAndAttemptIdx(
                     input: {
                         patch: {
                             status: \$status,
-                            startTime: \$startTime,
                             resolutionTime: \$resolutionTime
                         },
                         taskId: \$taskId,
@@ -1033,8 +1035,7 @@ class TaskRun implements Cloneable {
                 taskId: this.taskId,
                 attemptIdx: attemptIdx,
                 status: status,
-                startTime: startTs == -1 ? null : formatTs(startTs),
-                resolutionTime: resolutionTs == -1 ? null : formatTs(resolutionTs)
+                resolutionTime: resolutionTime
             ]
         )
     }
