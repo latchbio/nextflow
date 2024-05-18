@@ -1001,13 +1001,25 @@ class TaskRun implements Cloneable {
         return config?.getStubBlock()?.source
     }
 
+    static String formatTs(long ts) {
+        return new Date(ts).format("yyyy-MM-dd'T'HH:mm:ss'Z'", TimeZone.getTimeZone('UTC'))
+    }
+
     void updateTaskStatus(int attemptIdx, String status) {
         this.processor.client.execute("""
-            mutation UpdateTaskStatus(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$status: TaskExecutionStatus!) {
+            mutation UpdateTaskStatus(
+                \$taskId: BigInt!,
+                \$attemptIdx: BigInt!,
+                \$status: TaskExecutionStatus!,
+                \$startTime: Datetime,
+                \$resolutionTime: Datetime
+            ) {
                 updateNfTaskExecutionInfoByTaskIdAndAttemptIdx(
                     input: {
                         patch: {
-                            status: \$status
+                            status: \$status,
+                            startTime: \$startTime,
+                            resolutionTime: \$resolutionTime
                         },
                         taskId: \$taskId,
                         attemptIdx: \$attemptIdx
@@ -1020,7 +1032,9 @@ class TaskRun implements Cloneable {
             [
                 taskId: this.taskId,
                 attemptIdx: attemptIdx,
-                status: status
+                status: status,
+                startTime: startTs == -1 ? null : formatTs(startTs),
+                resolutionTime: resolutionTs == -1 ? null : formatTs(resolutionTs)
             ]
         )
     }
