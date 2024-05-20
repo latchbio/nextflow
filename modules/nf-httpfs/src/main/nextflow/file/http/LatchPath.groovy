@@ -317,7 +317,7 @@ class LatchPath extends XPath {
         def response = client.send(request, HttpResponse.BodyHandlers.ofString())
 
         if (response.statusCode() != 200) {
-            throw new FileNotFoundException()
+            throw new FileNotFoundException(path.toString())
         }
 
         def slurper = new JsonSlurper()
