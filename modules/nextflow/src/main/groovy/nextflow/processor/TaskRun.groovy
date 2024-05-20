@@ -893,7 +893,11 @@ class TaskRun implements Cloneable {
         return new TaskBean(this)
     }
 
-    void updateTaskStatus(int attemptIdx, String status) {
+    private static long ceilDiv(long x, int y){
+        return -Math.floorDiv(-x,y);
+    }
+
+    void updateTaskStatus(int attemptIdx, String status, long runningDuration = -1) {
         String resolutionTime = null
         if (status == 'SUCCEEDED' || status == 'FAILED')
             resolutionTime = new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'", TimeZone.getTimeZone('UTC'))
@@ -903,13 +907,15 @@ class TaskRun implements Cloneable {
                 \$taskId: BigInt!,
                 \$attemptIdx: BigInt!,
                 \$status: TaskExecutionStatus!,
-                \$resolutionTime: Datetime
+                \$resolutionTime: Datetime,
+                \$runningDuration: BigInt
             ) {
                 updateNfTaskExecutionInfoByTaskIdAndAttemptIdx(
                     input: {
                         patch: {
                             status: \$status,
-                            resolutionTime: \$resolutionTime
+                            resolutionTime: \$resolutionTime,
+                            computeRunningDuration: \$runningDuration
                         },
                         taskId: \$taskId,
                         attemptIdx: \$attemptIdx
@@ -923,7 +929,8 @@ class TaskRun implements Cloneable {
                 taskId: this.taskId,
                 attemptIdx: attemptIdx,
                 status: status,
-                resolutionTime: resolutionTime
+                resolutionTime: resolutionTime,
+                runningDuration: runningDuration != -1 ? Math.max(1, ceilDiv(runningDuration, 1000)) : null
             ]
         )
     }
