@@ -10,7 +10,6 @@ import groovy.json.JsonSlurper
 class GQLClient {
     private String endpoint
     private HttpClient client
-    private HttpRequest.Builder requestBuilder
 
     class GQLQueryException extends Exception {
         GQLQueryException(String msg) {
@@ -39,7 +38,7 @@ class GQLClient {
         JsonBuilder builder = new JsonBuilder()
         builder(["query": query, "variables": variables])
 
-        requestBuilder =  HttpRequest.newBuilder()
+        HttpRequest.Builder requestBuilder =  HttpRequest.newBuilder()
             .uri(URI.create(this.endpoint))
             .header("Content-Type", "application/json")
             .header("Authorization", LatchPathUtils.getAuthHeader())
@@ -50,7 +49,9 @@ class GQLClient {
         Map<String, Map> responseObj = slurper.parseText(response.body()) as Map<String, Map>
 
         if (responseObj.containsKey("errors")) {
-            throw new GQLQueryException(responseObj["errors"].toString())
+            throw new GQLQueryException(
+                "query failed: variables=${variables.toString()} errors=${responseObj['errors'].toString()}"
+            )
         }
 
         return responseObj["data"]
