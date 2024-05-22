@@ -23,7 +23,7 @@ class DispatcherClient {
         for (int i = 0; i < retries; i++) {
             if (i != 0) {
                 log.warn "${path} request failed ${i}/${retries}, retrying: status_code=${statusCode} error=${error}"
-                sleep(5000)
+                sleep(5000 * i)
             }
 
             def url = new URL("http://${DISPATCH_DOMAIN}/${path}")
