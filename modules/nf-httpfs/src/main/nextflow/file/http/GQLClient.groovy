@@ -10,7 +10,6 @@ import groovy.json.JsonSlurper
 class GQLClient {
     private String endpoint
     private HttpClient client
-    private HttpRequest.Builder requestBuilder
 
     class GQLQueryException extends Exception {
         GQLQueryException(String msg) {
@@ -28,10 +27,6 @@ class GQLClient {
 
         this.endpoint = endpoint
         this.client = HttpClient.newHttpClient()
-        this.requestBuilder =  HttpRequest.newBuilder()
-            .uri(URI.create(this.endpoint))
-            .header("Content-Type", "application/json")
-            .header("Authorization", LatchPathUtils.getAuthHeader())
     }
 
     Map execute(String query) {
@@ -39,18 +34,24 @@ class GQLClient {
     }
 
     // todo(ayush): add validation
-    Map execute(String query, Map<String, String> variables) {
+    Map execute(String query, Map variables) {
         JsonBuilder builder = new JsonBuilder()
         builder(["query": query, "variables": variables])
 
-        HttpRequest req = this.requestBuilder.POST(HttpRequest.BodyPublishers.ofString(builder.toString())).build()
+        HttpRequest.Builder requestBuilder =  HttpRequest.newBuilder()
+            .uri(URI.create(this.endpoint))
+            .header("Content-Type", "application/json")
+            .header("Authorization", LatchPathUtils.getAuthHeader())
+        HttpRequest req = requestBuilder.POST(HttpRequest.BodyPublishers.ofString(builder.toString())).build()
         HttpResponse<String> response = this.client.send(req, HttpResponse.BodyHandlers.ofString())
 
         JsonSlurper slurper = new JsonSlurper()
         Map<String, Map> responseObj = slurper.parseText(response.body()) as Map<String, Map>
 
-        if (responseObj.containsKey("error")) {
-            throw new GQLQueryException(responseObj["error"].toString())
+        if (responseObj.containsKey("errors")) {
+            throw new GQLQueryException(
+                "query failed: variables=${variables.toString()} errors=${responseObj['errors'].toString()}"
+            )
         }
 
         return responseObj["data"]

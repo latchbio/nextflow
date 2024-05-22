@@ -16,6 +16,7 @@
 package nextflow.processor
 
 import groovy.json.JsonSlurper
+import nextflow.file.http.GQLClient
 
 import static nextflow.processor.ErrorStrategy.*
 
@@ -164,6 +165,16 @@ class TaskProcessor {
     protected String name
 
     /**
+     * The id of the nf_process_node created in Vacuole
+     */
+    protected int nodeId
+
+    /**
+     * Number to tasks that were launched
+     */
+    protected int numTasks
+
+    /**
      * The piece of code to be execute provided by the user
      */
     protected BodyDef taskBody
@@ -191,6 +202,11 @@ class TaskProcessor {
      * Count the number of time an error occurred
      */
     private volatile int errorCount
+
+    /**
+     * Client for making GQL requests to vacuole
+     */
+    protected GQLClient client
 
 
     /**
@@ -252,6 +268,8 @@ class TaskProcessor {
 
     private Boolean isFair0
 
+    private Boolean debug
+
     private CompilerConfiguration compilerConfig() {
         final config = new CompilerConfiguration()
         config.addCompilationCustomizers( new ASTTransformationCustomizer(TaskTemplateVarsXform) )
@@ -303,9 +321,13 @@ class TaskProcessor {
         this.config = config
         this.taskBody = taskBody
         this.name = name
+        this.numTasks = 0
         this.maxForks = config.maxForks ? config.maxForks as int : 0
         this.forksCount = maxForks ? new LongAdder() : null
         this.isFair0 = config.getFair()
+
+        this.client = new GQLClient()
+        this.debug = System.getenv("LATCH_NF_DEBUG") != null
     }
 
     /**
@@ -482,6 +504,57 @@ class TaskProcessor {
         return result.size() == 1 ? result[0] : result
     }
 
+    void createRemoteProcessNode() {
+        def executionToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
+        if (executionToken == null)
+            throw new RuntimeException("failed to fetch execution token")
+
+        // create process node
+        Map res = client.execute("""
+            mutation CreateNode(\$executionToken: String!, \$name: String!) {
+                createNfProcessNodeByExecutionToken(input: {argExecutionToken: \$executionToken, argName: \$name}) {
+                    bigInt
+                }
+            }
+            """,
+            [
+                executionToken: executionToken,
+                name: this.name,
+            ]
+        )["createNfProcessNodeByExecutionToken"] as Map
+
+        if (res == null)
+            throw new RuntimeException("failed to create remote process node")
+
+        this.nodeId = (res.bigInt as String).toInteger()
+
+        // create process edges
+        config.getInputs().each { it ->
+            Set<TaskProcessor> processors = NodeMarker.findInputSource(it)
+            for (TaskProcessor src: processors) {
+                client.execute("""
+                    mutation CreateEdge(\$startNode: BigInt!, \$endNode: BigInt!) {
+                        createNfProcessEdge(
+                            input: {
+                                nfProcessEdge: {
+                                    startNode: \$startNode,
+                                    endNode: \$endNode
+                                }
+                            }
+                        ) {
+                            clientMutationId
+                        }
+                    }
+                    """,
+                    [
+                        startNode: src.nodeId,
+                        endNode: this.nodeId,
+                    ]
+                )
+            }
+        }
+    }
+
     /**
      * Template method which extending classes have to override in order to
      * create the underlying *dataflow* operator associated with this processor
@@ -567,6 +640,10 @@ class TaskProcessor {
 
         // notify the creation of a new vertex the execution DAG
         NodeMarker.addProcessNode(this, config.getInputs(), config.getOutputs())
+        if (!debug) {
+            // this must happen before the operator is started to ensure that nodeId is populated
+            createRemoteProcessNode()
+        }
 
         // fix issue #41
         start(operator)
@@ -590,6 +667,35 @@ class TaskProcessor {
         return result
     }
 
+    void createRemoteProcessTask(TaskRun task) {
+        Map res = client.execute("""
+            mutation CreateTaskInfo(\$processNodeId: BigInt!, \$index: BigInt!) {
+                createNfTaskInfo(
+                    input: {
+                        nfTaskInfo: {
+                            processNodeId: \$processNodeId,
+                            index: \$index
+                        }
+                    }
+                ) {
+                    nfTaskInfo {
+                        id
+                    }
+                }
+            }
+            """,
+            [
+                processNodeId: this.nodeId,
+                index: task.index,
+            ]
+        )["createNfTaskInfo"] as Map
+
+        if (res == null)
+            throw new RuntimeException("failed to create remote process task")
+
+        task.taskId = ((res.nfTaskInfo as Map).id as String).toInteger()
+    }
+
     /**
      * The processor execution body
      *
@@ -608,7 +714,9 @@ class TaskProcessor {
 
         // -- create the task run instance
         final task = createTaskRun(params)
-        task.createGraphNode()
+        if (!debug) {
+            createRemoteProcessTask(task)
+        }
 
         // -- set the task instance as the current in this thread
         currentTask.set(task)
@@ -2439,6 +2547,9 @@ class TaskProcessor {
             // apparently auto if-guard instrumented by @Slf4j is not honoured in inner classes - add it explicitly
             if( log.isTraceEnabled() )
                 log.trace "<${name}> Before run -- messages: ${messages}"
+
+            numTasks += 1
+
             // the counter must be incremented here, otherwise it won't be consistent
             state.update { StateObj it -> it.incSubmitted() }
             // task index must be created here to guarantee consistent ordering
@@ -2498,6 +2609,26 @@ class TaskProcessor {
             // apparently auto if-guard instrumented by @Slf4j is not honoured in inner classes - add it explicitly
             if( log.isTraceEnabled() )
                 log.trace "<${name}> After stop"
+
+            client.execute("""
+            mutation CreateTaskInfo(\$nodeId: BigInt!, \$numTasks: BigInt!) {
+                updateNfProcessNode(
+                    input: {
+                        id: \$nodeId,
+                        patch: {
+                            numTasks: \$numTasks
+                        }
+                    }
+                ) {
+                    clientMutationId
+                }
+            }
+            """,
+                [
+                    nodeId: nodeId,
+                    numTasks: numTasks
+                ]
+            )
         }
 
         /**

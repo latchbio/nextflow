@@ -17,6 +17,7 @@
 package nextflow.k8s
 
 import groovy.json.JsonSlurper
+import nextflow.util.DispatcherClient
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -73,6 +74,8 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     private K8sClient client
 
+    private DispatcherClient dispatcher
+
     private String podName
 
     private int attemptIdx
@@ -98,6 +101,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         this.attemptIdx = task.config.getAttempt() - 1
         this.executor = executor
         this.client = executor.client
+        this.dispatcher = executor.dispatcher
         this.outputFile = task.workDir.resolve(TaskRun.CMD_OUTFILE)
         this.errorFile = task.workDir.resolve(TaskRun.CMD_ERRFILE)
         this.exitFile = task.workDir.resolve(TaskRun.CMD_EXIT)
@@ -165,11 +169,14 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 : classicSubmitCli(task)
     }
 
-    protected String getSyntheticPodName(TaskRun task) {
-        "nf-${task.hash}"
+    protected static String getSyntheticPodName(TaskRun task) {
+        def executionToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
+        if (executionToken == null)
+            throw new RuntimeException("failed to fetch execution token")
+        return "${executionToken}-${task.hash.toString().substring(0, 8)}-${task.index}"
     }
 
-    protected String getOwner() { OWNER }
+    protected static String getOwner() { OWNER }
 
     protected Boolean fixOwnership() {
         task.containerConfig.fixOwnership
@@ -314,7 +321,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         builder.build()
 
         final req = newSubmitRequest(task)
-        this.podName = task.dispatchPod(req, attemptIdx)
+        this.podName = this.dispatcher.dispatchPod(task.taskId, attemptIdx, req)
 
         log.info "Submitted Pod ${this.podName}"
 
@@ -368,7 +375,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             // include `terminated` state to allow the handler status to progress
             if (state && (state.running != null || state.terminated)) {
                 if (status != TaskStatus.RUNNING) {
-                    task.updateRemoteStatus('RUNNING', attemptIdx)
+                    task.updateTaskStatus(attemptIdx, 'RUNNING')
                 }
                 status = TaskStatus.RUNNING
                 determineNode()
@@ -427,18 +434,16 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 task.stderr = errorFile
             }
 
-            if (status != TaskStatus.COMPLETED) {
-                if (task.isSuccess()) {
-                    task.updateRemoteStatus('SUCCEEDED', attemptIdx)
-                } else {
-                    task.updateRemoteStatus('FAILED', attemptIdx)
-                }
-            }
+            boolean updateStatus = status != TaskStatus.COMPLETED
             status = TaskStatus.COMPLETED
             savePodLogOnError(task)
             deletePodIfSuccessful(task)
             updateTimestamps(state.terminated as Map)
             determineNode()
+
+            if (updateStatus)
+                task.updateTaskStatus(attemptIdx, task.isSuccess() ? 'SUCCEEDED' : 'FAILED', completeTimeMillis - startTimeMillis)
+
             return true
         }
 
