@@ -533,7 +533,7 @@ class TaskProcessor {
         Map res = client.execute("""
             mutation CreateNode(\$executionToken: String!, \$name: String!) {
                 createNfProcessNodeByExecutionToken(input: {argExecutionToken: \$executionToken, argName: \$name}) {
-                    bigInt
+                    nodeId
                 }
             }
             """,
@@ -546,7 +546,7 @@ class TaskProcessor {
         if (res == null)
             throw new RuntimeException("failed to create remote process node")
 
-        this.nodeId = (res.bigInt as String).toInteger()
+        this.nodeId = (res.nodeId as String).toInteger()
 
         // create process edges
         config.getInputs().each { it ->
