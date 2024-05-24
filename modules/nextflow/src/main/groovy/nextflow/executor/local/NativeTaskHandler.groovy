@@ -18,6 +18,8 @@
 package nextflow.executor.local
 
 import java.lang.reflect.InvocationTargetException
+import nextflow.util.DispatcherClient
+
 import java.util.concurrent.Callable
 import java.util.concurrent.Future
 
@@ -41,6 +43,8 @@ class NativeTaskHandler extends TaskHandler {
     private Session session
 
     private Executor executor
+
+    private DispatcherClient dispatcherClient
 
     private class TaskSubmit implements Callable {
 
@@ -66,6 +70,7 @@ class NativeTaskHandler extends TaskHandler {
         super(task)
         this.executor = executor
         this.session = executor.session
+        this.dispatcherClient = executor.dispatcherClient
     }
 
 
@@ -75,12 +80,15 @@ class NativeTaskHandler extends TaskHandler {
         // it returns an error when everything is OK
         // of the exception throw in case of error
         result = session.getExecService().submit(new TaskSubmit(task))
+        dispatcherClient.updateTaskStatus(taskExecutionId, 'INITIALIZING')
         status = TaskStatus.SUBMITTED
     }
 
     @Override
     boolean checkIfRunning() {
         if( isSubmitted() && result != null ) {
+            if (status != TaskStatus.RUNNING)
+                dispatcherClient.updateTaskStatus(taskExecutionId, 'RUNNING')
             status = TaskStatus.RUNNING
             return true
         }
@@ -92,16 +100,16 @@ class NativeTaskHandler extends TaskHandler {
     boolean checkIfCompleted() {
         if( isRunning() && result.isDone() ) {
             status = TaskStatus.COMPLETED
+            dispatcherClient.updateTaskStatus(taskExecutionId, task.isSuccess() ? 'SUCCEEDED' : 'FAILED')
+
             final ret = result.get()
-            if( ret instanceof InvocationTargetException ) {
+            if (ret instanceof InvocationTargetException)
                 task.error = ret.cause
-            }
-            else if( ret instanceof Throwable ) {
-                task.error = (Throwable)ret
-            }
-            else {
+            else if (ret instanceof Throwable)
+                task.error = (Throwable) ret
+            else
                 task.stdout = ret
-            }
+
             return true
         }
         return false

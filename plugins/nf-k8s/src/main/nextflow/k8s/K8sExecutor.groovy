@@ -46,11 +46,6 @@ class K8sExecutor extends Executor implements ExtensionPoint {
      */
     private K8sClient client
 
-    /**
-     * HTTP Client for making requests to Latch Dispatcher
-     */
-    protected DispatcherClient dispatcher
-
     protected K8sClient getClient() {
         client
     }
@@ -72,7 +67,6 @@ class K8sExecutor extends Executor implements ExtensionPoint {
         final k8sConfig = getK8sConfig()
         final clientConfig = k8sConfig.getClient()
         this.client = new K8sClient(clientConfig)
-        this.dispatcher = new DispatcherClient()
         log.debug "[K8s] config=$k8sConfig; API client config=$clientConfig"
     }
 

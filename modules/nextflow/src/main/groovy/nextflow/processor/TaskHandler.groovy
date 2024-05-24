@@ -43,6 +43,7 @@ abstract class TaskHandler {
 
     protected TaskHandler(TaskRun task) {
         this.task = task
+        this.attemptIdx = task.config.getAttempt() - 1
     }
 
     @TestOnly
@@ -52,6 +53,10 @@ abstract class TaskHandler {
      * The task managed by this handler
      */
     TaskRun task
+
+    int attemptIdx
+
+    int taskExecutionId
 
     /**
      * The task managed by this handler

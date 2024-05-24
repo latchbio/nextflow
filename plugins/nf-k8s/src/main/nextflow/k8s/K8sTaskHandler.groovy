@@ -76,11 +76,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     private K8sClient client
 
-    private DispatcherClient dispatcher
+    private DispatcherClient dispatcherClient
 
     private String podName
-
-    private int attemptIdx
 
     private BashWrapperBuilder builder
 
@@ -100,10 +98,10 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     K8sTaskHandler( TaskRun task, K8sExecutor executor ) {
         super(task)
-        this.attemptIdx = task.config.getAttempt() - 1
+
         this.executor = executor
         this.client = executor.client
-        this.dispatcher = executor.dispatcher
+        this.dispatcherClient = executor.dispatcherClient
         this.outputFile = task.workDir.resolve(TaskRun.CMD_OUTFILE)
         this.errorFile = task.workDir.resolve(TaskRun.CMD_ERRFILE)
         this.exitFile = task.workDir.resolve(TaskRun.CMD_EXIT)
@@ -330,7 +328,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         builder.build()
 
         final req = newSubmitRequest(task)
-        this.podName = this.dispatcher.dispatchPod(task.taskId, attemptIdx, req)
+        this.podName = this.dispatcherClient.dispatchPod(taskExecutionId, req)
 
         log.info "Submitted Pod ${this.podName}"
 
@@ -383,9 +381,8 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             def state = getState()
             // include `terminated` state to allow the handler status to progress
             if (state && (state.running != null || state.terminated)) {
-                if (status != TaskStatus.RUNNING) {
-                    task.updateTaskStatus(attemptIdx, 'RUNNING')
-                }
+                if (status != TaskStatus.RUNNING)
+                    dispatcherClient.updateTaskStatus(taskExecutionId, 'RUNNING')
                 status = TaskStatus.RUNNING
                 determineNode()
                 return true
@@ -451,15 +448,13 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 task.stderr = errorFile
             }
 
-            boolean updateStatus = status != TaskStatus.COMPLETED
             status = TaskStatus.COMPLETED
+            dispatcherClient.updateTaskStatus(taskExecutionId, task.isSuccess() ? 'SUCCEEDED' : 'FAILED')
+
             savePodLogOnError(task)
             deletePodIfSuccessful(task)
             updateTimestamps(state.terminated as Map)
             determineNode()
-
-            if (updateStatus)
-                task.updateTaskStatus(attemptIdx, task.isSuccess() ? 'SUCCEEDED' : 'FAILED', completeTimeMillis - startTimeMillis)
 
             return true
         }
