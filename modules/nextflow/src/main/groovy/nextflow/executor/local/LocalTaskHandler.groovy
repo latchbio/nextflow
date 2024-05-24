@@ -17,6 +17,8 @@
 
 package nextflow.executor.local
 
+import nextflow.util.DispatcherClient
+
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
@@ -80,6 +82,8 @@ class LocalTaskHandler extends TaskHandler implements FusionAwareTask {
 
     private volatile TaskResult result
 
+    private DispatcherClient dispatcherClient
+
     LocalTaskHandler(TaskRun task, LocalExecutor executor) {
         super(task)
         // create the task handler
@@ -90,6 +94,7 @@ class LocalTaskHandler extends TaskHandler implements FusionAwareTask {
         this.wallTimeMillis = task.config.getTime()?.toMillis()
         this.executor = executor
         this.session = executor.session
+        this.dispatcherClient = executor.dispatcherClient
     }
 
     @Override
@@ -119,6 +124,7 @@ class LocalTaskHandler extends TaskHandler implements FusionAwareTask {
         } )
 
         // mark as submitted -- transition to STARTED has to be managed by the scheduler
+        dispatcherClient.updateTaskStatus(taskExecutionId, 'INITIALIZING')
         status = TaskStatus.SUBMITTED
     }
 
@@ -185,6 +191,8 @@ class LocalTaskHandler extends TaskHandler implements FusionAwareTask {
     boolean checkIfRunning() {
 
         if( isSubmitted() && (process || result) ) {
+            if (status != TaskStatus.RUNNING)
+                dispatcherClient.updateTaskStatus(taskExecutionId, 'RUNNING')
             status = TaskStatus.RUNNING
             return true
         }
@@ -206,6 +214,7 @@ class LocalTaskHandler extends TaskHandler implements FusionAwareTask {
             task.stdout = outputFile
             task.stderr = result.exitStatus && result.logs.size() ? result.logs.tail(50) : errorFile
             status = TaskStatus.COMPLETED
+            dispatcherClient.updateTaskStatus(taskExecutionId, task.isSuccess() ? 'SUCCEEDED' : 'FAILED')
             destroy()
             // fusion uses a temporary file, clean it up
             if( fusionEnabled() ) result.logs.delete()
@@ -221,7 +230,9 @@ class LocalTaskHandler extends TaskHandler implements FusionAwareTask {
                 task.stdout = outputFile
                 task.stderr = errorFile
                 task.error = new ProcessException("Process exceeded running time limit (${task.config.getTime()})")
+
                 status = TaskStatus.COMPLETED
+                dispatcherClient.updateTaskStatus(taskExecutionId, 'FAILED')
 
                 // signal it has completed
                 return true

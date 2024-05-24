@@ -59,18 +59,91 @@ class DispatcherClient {
         throw new RuntimeException("${path} request failed after ${retries} attempts: status_code=${statusCode} error=${error}")
     }
 
-    String dispatchPod(int taskId, int attemptIdx, Map pod) {
+    int createProcessNode(String processName) {
+        def resp = requestWithRetry(
+            'POST',
+            'create-process',
+            [
+                name: processName
+            ]
+        )
+
+        def data = (Map) new JsonSlurper().parseText(resp)
+        return (int) data.id
+    }
+
+    void closeProcessNode(int nodeId, int numTasks) {
+        requestWithRetry(
+            'POST',
+            'close-process',
+            [
+                id: nodeId,
+                num_tasks: numTasks
+            ]
+        )
+    }
+
+    void createProcessEdge(int from, int to) {
+        requestWithRetry(
+            'POST',
+            'create-edge',
+            [
+                start_node_id: from,
+                end_node_id: to
+            ]
+        )
+    }
+
+    int createProcessTask(int processNodeId, int index) {
+        def resp = requestWithRetry(
+            'POST',
+            'create-task',
+            [
+                process_node_id: processNodeId,
+                index: index
+            ]
+        )
+
+        def data = (Map) new JsonSlurper().parseText(resp)
+        return (int) data.id
+    }
+
+    int createTaskExecution(int taskId, int attemptIdx) {
+        def resp = requestWithRetry(
+            'POST',
+            'create-task-execution',
+            [
+                task_id: taskId,
+                attempt_idx: attemptIdx,
+            ]
+        )
+
+        def data = (Map) new JsonSlurper().parseText(resp)
+        return (int) data.id
+    }
+
+    String dispatchPod(int taskExecutionId, Map pod) {
         def resp = requestWithRetry(
             'POST',
             'submit',
             [
-                task_id: taskId,
-                attempt_idx: attemptIdx,
+                task_execution_id: taskExecutionId,
                 pod: JsonOutput.toJson(pod),
             ]
         )
 
         def data = (Map) new JsonSlurper().parseText(resp)
         return data.name
+    }
+
+    void updateTaskStatus(int taskExecutionId, String status) {
+        requestWithRetry(
+            'POST',
+            'status',
+            [
+                task_execution_id: taskExecutionId,
+                status: status,
+            ]
+        )
     }
 }

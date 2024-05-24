@@ -892,47 +892,5 @@ class TaskRun implements Cloneable {
     TaskBean toTaskBean() {
         return new TaskBean(this)
     }
-
-    private static long ceilDiv(long x, int y){
-        return -Math.floorDiv(-x,y);
-    }
-
-    void updateTaskStatus(int attemptIdx, String status, long runningDuration = -1) {
-        String resolutionTime = null
-        if (status == 'SUCCEEDED' || status == 'FAILED')
-            resolutionTime = new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'", TimeZone.getTimeZone('UTC'))
-
-        this.processor.client.execute("""
-            mutation UpdateTaskStatus(
-                \$taskId: BigInt!,
-                \$attemptIdx: BigInt!,
-                \$status: TaskExecutionStatus!,
-                \$resolutionTime: Datetime,
-                \$runningDuration: BigInt
-            ) {
-                updateNfTaskExecutionInfoByTaskIdAndAttemptIdx(
-                    input: {
-                        patch: {
-                            status: \$status,
-                            resolutionTime: \$resolutionTime,
-                            computeRunningDuration: \$runningDuration
-                        },
-                        taskId: \$taskId,
-                        attemptIdx: \$attemptIdx
-                    }
-                ) {
-                    clientMutationId
-                }
-            }
-            """,
-            [
-                taskId: this.taskId,
-                attemptIdx: attemptIdx,
-                status: status,
-                resolutionTime: resolutionTime,
-                runningDuration: runningDuration != -1 ? Math.max(1, ceilDiv(runningDuration, 1000)) : null
-            ]
-        )
-    }
 }
 

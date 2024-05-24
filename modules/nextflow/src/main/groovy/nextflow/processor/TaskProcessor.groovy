@@ -15,8 +15,6 @@
  */
 package nextflow.processor
 
-import groovy.json.JsonSlurper
-import nextflow.file.http.GQLClient
 
 import static nextflow.processor.ErrorStrategy.*
 
@@ -109,6 +107,7 @@ import nextflow.util.CacheHelper
 import nextflow.util.Escape
 import nextflow.util.LockManager
 import nextflow.util.LoggerHelper
+import nextflow.util.DispatcherClient
 import nextflow.util.TestOnly
 import org.codehaus.groovy.control.CompilerConfiguration
 import org.codehaus.groovy.control.customizers.ASTTransformationCustomizer
@@ -204,10 +203,9 @@ class TaskProcessor {
     private volatile int errorCount
 
     /**
-     * Client for making GQL requests to vacuole
+     * Client for making HTTP requests to dispatcher
      */
-    protected GQLClient client
-
+    protected DispatcherClient dispatcherClient
 
     /**
      * Set to true the very first time the error is shown.
@@ -326,7 +324,7 @@ class TaskProcessor {
         this.forksCount = maxForks ? new LongAdder() : null
         this.isFair0 = config.getFair()
 
-        this.client = new GQLClient()
+        this.dispatcherClient = new DispatcherClient()
         this.debug = System.getenv("LATCH_NF_DEBUG") != null
     }
 
@@ -509,49 +507,12 @@ class TaskProcessor {
         if (executionToken == null)
             throw new RuntimeException("failed to fetch execution token")
 
-        // create process node
-        Map res = client.execute("""
-            mutation CreateNode(\$executionToken: String!, \$name: String!) {
-                createNfProcessNodeByExecutionToken(input: {argExecutionToken: \$executionToken, argName: \$name}) {
-                    nodeId
-                }
-            }
-            """,
-            [
-                executionToken: executionToken,
-                name: this.name,
-            ]
-        )["createNfProcessNodeByExecutionToken"] as Map
+        this.nodeId = dispatcherClient.createProcessNode(this.name)
 
-        if (res == null)
-            throw new RuntimeException("failed to create remote process node")
-
-        this.nodeId = (res.nodeId as String).toInteger()
-
-        // create process edges
         config.getInputs().each { it ->
             Set<TaskProcessor> processors = NodeMarker.findInputSource(it)
-            for (TaskProcessor src: processors) {
-                client.execute("""
-                    mutation CreateEdge(\$startNode: BigInt!, \$endNode: BigInt!) {
-                        createNfProcessEdge(
-                            input: {
-                                nfProcessEdge: {
-                                    startNode: \$startNode,
-                                    endNode: \$endNode
-                                }
-                            }
-                        ) {
-                            clientMutationId
-                        }
-                    }
-                    """,
-                    [
-                        startNode: src.nodeId,
-                        endNode: this.nodeId,
-                    ]
-                )
-            }
+            for (TaskProcessor src: processors)
+                dispatcherClient.createProcessEdge(src.nodeId, this.nodeId)
         }
     }
 
@@ -667,35 +628,6 @@ class TaskProcessor {
         return result
     }
 
-    void createRemoteProcessTask(TaskRun task) {
-        Map res = client.execute("""
-            mutation CreateTaskInfo(\$processNodeId: BigInt!, \$index: BigInt!) {
-                createNfTaskInfo(
-                    input: {
-                        nfTaskInfo: {
-                            processNodeId: \$processNodeId,
-                            index: \$index
-                        }
-                    }
-                ) {
-                    nfTaskInfo {
-                        id
-                    }
-                }
-            }
-            """,
-            [
-                processNodeId: this.nodeId,
-                index: task.index,
-            ]
-        )["createNfTaskInfo"] as Map
-
-        if (res == null)
-            throw new RuntimeException("failed to create remote process task")
-
-        task.taskId = ((res.nfTaskInfo as Map).id as String).toInteger()
-    }
-
     /**
      * The processor execution body
      *
@@ -710,12 +642,12 @@ class TaskProcessor {
         final values = (List) args[1]
 
         // create and initialize the task instance to be executed
-        log.trace "Invoking task > $name with params=$params; values=$values"
+        log.debug "Invoking task > $name with params=$params; values=$values"
 
         // -- create the task run instance
         final task = createTaskRun(params)
         if (!debug) {
-            createRemoteProcessTask(task)
+            task.taskId = this.dispatcherClient.createProcessTask(this.nodeId, task.index)
         }
 
         // -- set the task instance as the current in this thread
@@ -2610,25 +2542,7 @@ class TaskProcessor {
             if( log.isTraceEnabled() )
                 log.trace "<${name}> After stop"
 
-            client.execute("""
-            mutation CreateTaskInfo(\$nodeId: BigInt!, \$numTasks: BigInt!) {
-                updateNfProcessNode(
-                    input: {
-                        id: \$nodeId,
-                        patch: {
-                            numTasks: \$numTasks
-                        }
-                    }
-                ) {
-                    clientMutationId
-                }
-            }
-            """,
-                [
-                    nodeId: nodeId,
-                    numTasks: numTasks
-                ]
-            )
+            dispatcherClient.closeProcessNode(nodeId, numTasks)
         }
 
         /**
