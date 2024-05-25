@@ -301,7 +301,12 @@ class LatchFileSystemProvider extends XFileSystemProvider {
 
         long size = 0
         if (flt["ldataObjectMeta"] != null) {
-            size = Long.parseLong(flt["ldataObjectMeta"]["contentSize"] as String)
+            try {
+                size = Long.parseLong(flt["ldataObjectMeta"]["contentSize"] as String)
+            } catch (NumberFormatException x) {
+                log.info "${path.toUriString()}"
+            }
+
         }
 
         return (A) new LatchFileAttributes((String) flt["type"], size)
