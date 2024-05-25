@@ -300,13 +300,12 @@ class LatchFileSystemProvider extends XFileSystemProvider {
         Map flt = res["ldataNode"]["finalLinkTarget"] as Map
 
         long size = 0
-        if (flt["ldataObjectMeta"] != null) {
-            try {
-                size = Long.parseLong(flt["ldataObjectMeta"]["contentSize"] as String)
-            } catch (NumberFormatException x) {
-                log.info "${path.toUriString()}"
-            }
-
+        if (
+            flt["type"] == "OBJ"
+            && flt["ldataObjectMeta"] != null
+            && flt["ldataObjectMeta"]["contentSize"] != null
+        ) {
+            size = Long.parseLong(flt["ldataObjectMeta"]["contentSize"] as String)
         }
 
         return (A) new LatchFileAttributes((String) flt["type"], size)
