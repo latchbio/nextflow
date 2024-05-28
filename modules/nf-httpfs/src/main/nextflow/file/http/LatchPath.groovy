@@ -6,6 +6,7 @@ import java.net.http.HttpResponse
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.ProviderMismatchException
@@ -43,13 +44,28 @@ class LatchPath extends XPath {
     }
 
     @Override
+    Path getRoot() {
+        return new LatchPath(fs, "/")
+    }
+
+    @Override
+    Path getParent() {
+        String result = path.parent ? path.parent.toString() : null
+        if( result ) {
+            if( result != '/' ) result += '/'
+            return new LatchPath(fs, result)
+        }
+        return null
+    }
+
+    @Override
     Path getName(int index) {
-        return new LatchPath(null, path.getName(index).toString())
+        return new LatchPath(fs, path.getName(index).toString())
     }
 
     @Override
     Path subpath(int beginIndex, int endIndex) {
-        return new LatchPath(null, path.subpath(beginIndex, endIndex).toString())
+        return new LatchPath(fs, path.subpath(beginIndex, endIndex).toString())
     }
 
     @Override
@@ -134,8 +150,12 @@ class LatchPath extends XPath {
     }
 
     boolean exists() {
-        LatchFileAttributes fileAttrs = this.fileSystem.provider().readAttributes(this, LatchFileAttributes)
-        return fileAttrs.exists
+        try {
+            this.fileSystem.provider().readAttributes(this, LatchFileAttributes)
+        } catch (NoSuchFileException ignored) {
+            return false
+        }
+        return true
     }
 
     private final long defaultChunkSize = 5 * 1024 * 1024

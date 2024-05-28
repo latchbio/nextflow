@@ -24,14 +24,10 @@ class LatchFileAttributes implements BasicFileAttributes {
         }
     }
 
-    boolean exists = false
     LDataNodeType type = null
     Long size
 
-    LatchFileAttributes() {}
-
     LatchFileAttributes(String type, Long size) {
-        exists = true
         this.type = LDataNodeType.fromString(type)
         this.size = size
     }
@@ -53,17 +49,17 @@ class LatchFileAttributes implements BasicFileAttributes {
 
     @Override
     boolean isRegularFile() {
-        return exists && type == LDataNodeType.obj
+        return type == LDataNodeType.obj
     }
 
     @Override
     boolean isDirectory() {
-        return !exists || [LDataNodeType.dir, LDataNodeType.mount, LDataNodeType.account_root].contains(type)
+        return [LDataNodeType.dir, LDataNodeType.mount, LDataNodeType.account_root].contains(type)
     }
 
     @Override
     boolean isSymbolicLink() {
-        return exists && type == LDataNodeType.link
+        return type == LDataNodeType.link
     }
 
     @Override
