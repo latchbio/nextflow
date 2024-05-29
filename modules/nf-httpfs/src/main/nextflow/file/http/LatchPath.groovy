@@ -86,6 +86,10 @@ class LatchPath extends XPath {
             throw new UnsupportedOperationException("Cannot relativize two files in different account roots: ${this.toUriString()}, ${that.toUriString()}")
         }
 
+        if (this.path == that.path) {
+            return new LatchPath(this.fs, this.path.toString())
+        }
+
         def thisParts = this.path.iterator().toList()
         def thatParts = that.path.iterator().toList()
 
@@ -107,7 +111,8 @@ class LatchPath extends XPath {
         }
 
         if (res == null) {
-            return null
+            // res should never be null
+            throw new RuntimeException("failed to relativize path")
         }
 
         return new LatchPath(this.fs, res.toString())
