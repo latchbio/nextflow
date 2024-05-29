@@ -1,5 +1,6 @@
 package nextflow.file.http
 
+import groovy.json.JsonException
 import groovy.json.JsonSlurper
 
 class LatchPathUtils {
@@ -46,8 +47,13 @@ class LatchPathUtils {
         if (!wsFile.exists())
             return null
 
-        JsonSlurper slurper = new JsonSlurper()
-        def wsJson = slurper.parse(new FileInputStream(wsFile))
+        def wsJson = null
+        try {
+            JsonSlurper slurper = new JsonSlurper()
+            wsJson = slurper.parse(new FileInputStream(wsFile))
+        } catch (JsonException ignored) {
+            return null
+        }
 
         try {
             return wsJson["workspace_id"]

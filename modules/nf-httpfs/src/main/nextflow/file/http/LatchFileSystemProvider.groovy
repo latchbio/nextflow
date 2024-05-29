@@ -5,20 +5,14 @@ import java.nio.channels.Channels
 import java.nio.channels.SeekableByteChannel
 import java.nio.file.AccessDeniedException
 import java.nio.file.AccessMode
-import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.CopyOption
-import java.nio.file.DirectoryNotEmptyException
 import java.nio.file.DirectoryStream
-import java.nio.file.FileAlreadyExistsException
 import java.nio.file.FileStore
 import java.nio.file.FileSystem
 import java.nio.file.FileSystemAlreadyExistsException
 import java.nio.file.FileSystemNotFoundException
-import java.nio.file.FileSystems
-import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
-import java.nio.file.NotDirectoryException
 import java.nio.file.OpenOption
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -26,7 +20,6 @@ import java.nio.file.ProviderMismatchException
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.FileAttribute
-import java.nio.file.attribute.FileAttributeView
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 
@@ -85,10 +78,9 @@ class LatchFileSystemProvider extends XFileSystemProvider {
             throw new ProviderMismatchException()
 
         def lp = (LatchPath) path
-
-        LatchFileAttributes fileAttrs = readAttributes(lp, LatchFileAttributes)
-        if (lp.exists() && !fileAttrs.isRegularFile()) {
-            throw new Exception("Cannot create input byte channel because ${lp.toUriString()} is a directory.")
+        if (lp.exists()) {
+            if (!readAttributes(lp, LatchFileAttributes).isRegularFile())
+                throw new Exception("Cannot create input byte channel because ${lp.toUriString()} is a directory.")
         }
 
         if (options.size() > 0) {
@@ -257,8 +249,11 @@ class LatchFileSystemProvider extends XFileSystemProvider {
 
     @Override
     void checkAccess(Path path, AccessMode... modes) throws IOException {
-        if (!(path instanceof LatchPath))
+        if (!(path instanceof LatchPath)) {
+            log.info "Invalid path type: ${path.getClass()}, ${path.fileName}"
             throw new ProviderMismatchException()
+        }
+
 
         for (AccessMode m : modes) {
             if (m == AccessMode.EXECUTE)
@@ -266,8 +261,7 @@ class LatchFileSystemProvider extends XFileSystemProvider {
         }
 
         def lp = (LatchPath) path
-        LatchFileAttributes fileAttrs = readAttributes(lp, LatchFileAttributes)
-        if (!fileAttrs.exists)
+        if (!lp.exists())
             throw new NoSuchFileException("Path ${lp.toUriString()} does not exist")
     }
 
@@ -293,14 +287,17 @@ class LatchFileSystemProvider extends XFileSystemProvider {
             }
         """, ["argPath": path.toUriString()])["ldataResolvePathToNode"]
 
-        if (res["path"] != null) {
-            return (A) new LatchFileAttributes()
-        }
+        if (res["path"] != null)
+            throw new NoSuchFileException("Path ${path.toUriString()} does not exist")
 
         Map flt = res["ldataNode"]["finalLinkTarget"] as Map
 
         long size = 0
-        if (flt["ldataObjectMeta"] != null) {
+        if (
+            flt["type"] == "OBJ"
+            && flt["ldataObjectMeta"] != null
+            && flt["ldataObjectMeta"]["contentSize"] != null
+        ) {
             size = Long.parseLong(flt["ldataObjectMeta"]["contentSize"] as String)
         }
 
