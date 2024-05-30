@@ -58,7 +58,7 @@ class AwsS3Config {
         this.storageEncryption = parseStorageEncryption(opts.storageEncryption as String)
         this.storageKmsKeyId = opts.storageKmsKeyId
         this.pathStyleAccess = opts.s3PathStyleAccess as Boolean
-        this.anonymous = opts.anonymous as Boolean
+        this.anonymous = true // opts.anonymous as Boolean
         this.s3Acl = parseS3Acl(opts.s3Acl as String)
     }
 

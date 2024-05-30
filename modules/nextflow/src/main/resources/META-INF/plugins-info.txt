@@ -1,4 +1,4 @@
-nf-amazon@2.2.0
+nf-amazon@2.2.1
 nf-cloudcache@0.3.1
 nf-codecommit@0.1.6
 nf-console@1.0.7
