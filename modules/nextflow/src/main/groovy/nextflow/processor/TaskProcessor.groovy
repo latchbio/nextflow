@@ -683,16 +683,21 @@ class TaskProcessor {
         final foreignFiles = makeTaskContextStage2(task, secondPass, count)
 
         // verify that `when` guard, when specified, is satisfied
-        if( !checkWhenGuard(task) )
+        if( !checkWhenGuard(task) ) {
+            this.dispatcherClient.createTaskExecution(task.taskId, 0, 'SKIPPED')
             return
+        }
+
 
         // -- resolve the task command script
         task.resolve(taskBody)
 
         // -- verify if exists a stored result for this case,
         //    if true skip the execution and return the stored data
-        if( checkStoredOutput(task) )
+        if( checkStoredOutput(task) ) {
+            this.dispatcherClient.createTaskExecution(task.taskId, 0, 'SKIPPED')
             return
+        }
 
         // -- download foreign files
         session.filePorter.transfer(foreignFiles)
