@@ -94,7 +94,7 @@ class LatchFileSystemProvider extends XFileSystemProvider {
         }
 
         Path url = Paths.get(lp.getSignedURL().toURI())
-        log.info "Downloading ${lp.toUriString()}"
+        log.debug "Downloading ${lp.toUriString()}"
         return url.fileSystem.provider().newByteChannel(url, options, attrs)
     }
 

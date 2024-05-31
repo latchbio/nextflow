@@ -108,13 +108,14 @@ class DispatcherClient {
         return (int) data.id
     }
 
-    int createTaskExecution(int taskId, int attemptIdx) {
+    int createTaskExecution(int taskId, int attemptIdx, String status = null) {
         def resp = requestWithRetry(
             'POST',
             'create-task-execution',
             [
                 task_id: taskId,
                 attempt_idx: attemptIdx,
+                status: status
             ]
         )
 
