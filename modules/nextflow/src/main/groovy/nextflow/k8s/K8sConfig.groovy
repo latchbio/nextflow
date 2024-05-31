@@ -110,7 +110,7 @@ class K8sConfig implements Map<String,Object> {
     }
 
     static String getStorageClaimName() {
-        def name = System.getenv('K8_STORAGE_CLAIM_NAME')
+        def name = System.getenv('K8S_STORAGE_CLAIM_NAME')
         if (name == null) {
             throw new RuntimeException("failed to get storage claim name")
         }
