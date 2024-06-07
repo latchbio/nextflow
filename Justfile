@@ -1,7 +1,8 @@
 bucket := "latch-public"
-nextflow_dir := "nextflow-v2"
+subdir := "nextflow-v2"
 version := `echo $(cat LATCH_VERSION) | tr -d '\n'`
-path := "s3://" + bucket + "/" + nextflow_dir + "/" + version
+nextflow_dir := "s3://" + bucket + "/" + subdir
+path := nextflow_dir + "/" + version
 
 build:
   make clean
@@ -23,4 +24,7 @@ upload:
   aws s3 cp --recursive --quiet $HOME/.nextflow {{path}}/.nextflow
   aws s3 cp --quiet nextflow {{path}}/nextflow
 
-do-the-thing: build upload
+publish:
+  aws s3 cp LATCH_VERSION {{nextflow_dir}}/LATEST
+
+do-the-thing: build upload publish
