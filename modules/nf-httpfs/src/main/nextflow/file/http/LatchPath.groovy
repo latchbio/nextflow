@@ -264,6 +264,7 @@ class LatchPath extends XPath {
             def bytes_read = file.read(buf)
 
             byte[] arr = buf.array()
+            arr = Arrays.copyOf(arr, arr.length)
             if (bytes_read < chunkSize) {
                 arr = Arrays.copyOfRange(arr, 0, bytes_read)
             }
