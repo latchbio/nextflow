@@ -274,8 +274,6 @@ class TaskProcessor {
 
     private TaskArrayCollector arrayCollector
 
-    private Boolean debug
-
     private CompilerConfiguration compilerConfig() {
         final config = new CompilerConfiguration()
         config.addCompilationCustomizers( new ASTTransformationCustomizer(TaskTemplateVarsXform) )
@@ -336,7 +334,6 @@ class TaskProcessor {
         log.debug "Creating process '$name': maxForks=${maxForks}; fair=${isFair0}; array=${arraySize}"
 
         this.dispatcherClient = new DispatcherClient()
-        this.debug = System.getenv("LATCH_NF_DEBUG") != null
     }
 
     /**
@@ -524,10 +521,6 @@ class TaskProcessor {
     }
 
     void createRemoteProcessNode() {
-        def executionToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
-        if (executionToken == null)
-            throw new RuntimeException("failed to fetch execution token")
-
         this.nodeId = dispatcherClient.createProcessNode(this.name)
 
         config.getInputs().each { it ->
@@ -622,10 +615,8 @@ class TaskProcessor {
 
         // notify the creation of a new vertex the execution DAG
         NodeMarker.addProcessNode(this, config.getInputs(), config.getOutputs())
-        if (!debug) {
-            // this must happen before the operator is started to ensure that nodeId is populated
-            createRemoteProcessNode()
-        }
+        // this must happen before the operator is started to ensure that nodeId is populated
+        createRemoteProcessNode()
 
         // fix issue #41
         start(operator)
@@ -667,9 +658,7 @@ class TaskProcessor {
 
         // -- create the task run instance
         final task = createTaskRun(params)
-        if (!debug) {
-            task.taskId = this.dispatcherClient.createProcessTask(this.nodeId, task.index)
-        }
+        task.taskId = this.dispatcherClient.createProcessTask(this.nodeId, task.index)
 
         // -- set the task instance as the current in this thread
         currentTask.set(task)

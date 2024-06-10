@@ -10,6 +10,12 @@ class DispatcherClient {
 
     private String authToken
 
+    private Boolean debug
+
+    DispatcherClient() {
+        this.debug = System.getenv("LATCH_NF_DEBUG") != null
+    }
+
     private String requestWithRetry(String method, String path, Map body, int retries = 3) {
         if (authToken == null) {
             def token = System.getenv('FLYTE_INTERNAL_EXECUTION_ID')
@@ -60,6 +66,9 @@ class DispatcherClient {
     }
 
     int createProcessNode(String processName) {
+        if (debug)
+            return 0
+
         def resp = requestWithRetry(
             'POST',
             'create-process',
@@ -73,6 +82,9 @@ class DispatcherClient {
     }
 
     void closeProcessNode(int nodeId, int numTasks) {
+        if (debug)
+            return
+
         requestWithRetry(
             'POST',
             'close-process',
@@ -84,6 +96,9 @@ class DispatcherClient {
     }
 
     void createProcessEdge(int from, int to) {
+        if (debug)
+            return
+
         requestWithRetry(
             'POST',
             'create-edge',
@@ -95,6 +110,9 @@ class DispatcherClient {
     }
 
     int createProcessTask(int processNodeId, int index) {
+        if (debug)
+            return 0
+
         def resp = requestWithRetry(
             'POST',
             'create-task',
@@ -109,6 +127,9 @@ class DispatcherClient {
     }
 
     int createTaskExecution(int taskId, int attemptIdx, String status = null) {
+        if (debug)
+            return 0
+
         def resp = requestWithRetry(
             'POST',
             'create-task-execution',
@@ -124,6 +145,9 @@ class DispatcherClient {
     }
 
     String dispatchPod(int taskExecutionId, Map pod) {
+        if (debug)
+            return ""
+
         def resp = requestWithRetry(
             'POST',
             'submit',
@@ -138,6 +162,9 @@ class DispatcherClient {
     }
 
     void updateTaskStatus(int taskExecutionId, String status) {
+        if (debug)
+            return
+
         requestWithRetry(
             'POST',
             'status',
