@@ -71,14 +71,13 @@ abstract class Executor {
      */
     final void init() {
         log.debug "[warm up] executor > ${getDisplayName()}"
+        this.dispatcherClient = new DispatcherClient()
         monitor = createTaskMonitor()
         monitor.start()
         register()
     }
 
-    protected void register() {
-        this.dispatcherClient = new DispatcherClient()
-    }
+    protected void register() { }
 
     void signal() {
         monitor.signal()

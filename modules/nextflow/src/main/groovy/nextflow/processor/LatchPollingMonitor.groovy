@@ -4,6 +4,7 @@ import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import nextflow.Session
 import nextflow.util.Duration
+import nextflow.util.MemoryUnit
 
 
 @Slf4j
@@ -40,6 +41,8 @@ class LatchPollingMonitor extends LocalPollingMonitor {
         final capacity = session.getQueueSize(name, defQueueSize)
         final pollInterval = session.getPollInterval(name, defPollInterval)
         final dumpInterval = session.getMonitorDumpInterval(name)
+
+        log.debug "Creating latch task monitor for executor '$name' > cpuLimit=$cpuLimit; memoryLimit=$memoryLimit; cpuDefault=$cpuDefault; memoryDefault=$memoryDefault; capacity=$capacity; pollInterval=$pollInterval; dumpInterval=$dumpInterval"
 
         new LatchPollingMonitor(
             name: name,
