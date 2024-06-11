@@ -32,6 +32,8 @@ import nextflow.executor.GridTaskHandler
 import nextflow.util.Duration
 import nextflow.util.Threads
 import nextflow.util.Throttle
+import nextflow.k8s.ResourceQuotaExceededException
+
 /**
  * Monitors the queued tasks waiting for their termination
  *
@@ -562,7 +564,14 @@ class TaskPollingMonitor implements TaskMonitor {
 
                 count++
                 handler.incProcessForks()
-                submit(handler)
+                try {
+                    submit(handler)
+                } catch ( ResourceQuotaExceededException e ) {
+                    log.warn e.message
+                    count--
+                    handler.decProcessForks()
+                    continue
+                }
             }
             catch ( Throwable e ) {
                 handleException(handler, e)

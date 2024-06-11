@@ -17,6 +17,7 @@
 package nextflow.k8s
 
 import nextflow.util.DispatcherClient
+import nextflow.util.DispatcherException
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -318,9 +319,16 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         builder.build()
 
         final req = newSubmitRequest(task)
-        this.podName = this.dispatcherClient.dispatchPod(taskExecutionId, req)
+        try {
+            this.podName = this.dispatcherClient.dispatchPod(taskExecutionId, req)
+        } catch (DispatcherException e) {
+            if (e.statusCode == 403 && e.error.contains("exceeded quota")) {
+                throw new ResourceQuotaExceededException("latch resource quota exceeded")
+            }
 
-        log.info "Submitted Pod ${this.podName}"
+            throw e
+        }
+
 
         this.status = TaskStatus.SUBMITTED
     }
@@ -342,7 +350,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 def newState = useJobResource()
                         ? client.jobState(podName)
                         : client.podState(podName)
-                log.info "${newState}"
+
                 if( newState ) {
                    log.trace "[K8s] Get ${resourceType.lower()}=$podName state=$newState"
                    state = newState
