@@ -18,16 +18,14 @@ package nextflow.k8s
 
 import groovy.transform.CompileStatic
 import groovy.transform.Memoized
-import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
 import nextflow.executor.Executor
 import nextflow.fusion.FusionHelper
 import nextflow.k8s.client.K8sClient
+import nextflow.processor.LatchPollingMonitor
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskMonitor
-import nextflow.processor.TaskPollingMonitor
 import nextflow.processor.TaskRun
-import nextflow.util.DispatcherClient
 import nextflow.util.Duration
 import nextflow.util.ServiceName
 /**
@@ -86,7 +84,18 @@ class K8sExecutor extends Executor {
      */
     @Override
     protected TaskMonitor createTaskMonitor() {
-        TaskPollingMonitor.create(session, name, 100, Duration.of('15 sec'))
+        Map quota = this.dispatcherClient.getResourceQuota()
+
+        LatchPollingMonitor.create(
+            session,
+            name,
+            100,
+            Duration.of('15 sec'),
+            (int) quota.cpu_limit,
+            (long) quota.memory_limit,
+            (int) quota.cpu_default,
+            (long) quota.memory_default,
+        )
     }
 
     /**

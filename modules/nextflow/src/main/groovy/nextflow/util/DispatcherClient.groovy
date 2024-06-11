@@ -16,7 +16,7 @@ class DispatcherClient {
         this.debug = System.getenv("LATCH_NF_DEBUG") != null
     }
 
-    private String requestWithRetry(String method, String path, Map body, int retries = 3) {
+    private String requestWithRetry(String method, String path, Map body = null, int retries = 3) {
         if (authToken == null) {
             def token = System.getenv('FLYTE_INTERNAL_EXECUTION_ID')
             if (token == null)
@@ -39,9 +39,11 @@ class DispatcherClient {
             conn.setRequestProperty('Authorization', "Latch-Execution-Token ${authToken}")
 
             try {
-                conn.setDoOutput(true)
-                conn.outputStream.withWriter { writer ->
-                    writer << JsonOutput.toJson(body)
+                if (body != null) {
+                    conn.setDoOutput(true)
+                    conn.outputStream.withWriter { writer ->
+                        writer << JsonOutput.toJson(body)
+                    }
                 }
 
                 statusCode = conn.getResponseCode()
@@ -173,5 +175,17 @@ class DispatcherClient {
                 status: status,
             ]
         )
+    }
+
+    Map getResourceQuota() {
+        if (debug)
+            return
+
+        def resp = requestWithRetry(
+            'GET',
+            'resource-quota',
+        )
+
+        return (Map) new JsonSlurper().parseText(resp)
     }
 }

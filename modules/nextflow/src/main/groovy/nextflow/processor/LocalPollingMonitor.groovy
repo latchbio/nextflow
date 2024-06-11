@@ -134,7 +134,7 @@ class LocalPollingMonitor extends TaskPollingMonitor {
      * @return
      *      The number of cpus requested to execute the specified task
      */
-    private static int cpus(TaskHandler handler) {
+    protected int cpus(TaskHandler handler) {
         handler.task.getConfig()?.getCpus()
     }
 
@@ -145,7 +145,7 @@ class LocalPollingMonitor extends TaskPollingMonitor {
      * @return
      *      The amount of memory (bytes) requested to execute the specified task
      */
-    private static long mem(TaskHandler handler) {
+    protected long mem(TaskHandler handler) {
         handler.task.getConfig()?.getMemory()?.toBytes() ?: 1L
     }
 
