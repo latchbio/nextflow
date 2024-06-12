@@ -32,6 +32,8 @@ import nextflow.executor.GridTaskHandler
 import nextflow.util.Duration
 import nextflow.util.Threads
 import nextflow.util.Throttle
+import nextflow.k8s.ResourceQuotaExceededException
+
 /**
  * Monitors the queued tasks waiting for their termination
  *
@@ -308,7 +310,8 @@ class TaskPollingMonitor implements TaskMonitor {
     }
 
     protected RateLimiter createSubmitRateLimit() {
-        def limit = session.getExecConfigProp(name,'submitRateLimit',null) as String
+        //def limit = session.getExecConfigProp(name,'submitRateLimit',null) as String
+        def limit = '50 min'
         if( !limit )
             return null
 
@@ -562,7 +565,13 @@ class TaskPollingMonitor implements TaskMonitor {
 
                 count++
                 handler.incProcessForks()
-                submit(handler)
+                try {
+                    submit(handler)
+                } catch ( ResourceQuotaExceededException e ) {
+                    count--
+                    handler.decProcessForks()
+                    continue
+                }
             }
             catch ( Throwable e ) {
                 handleException(handler, e)

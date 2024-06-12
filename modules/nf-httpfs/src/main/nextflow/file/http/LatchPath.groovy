@@ -12,7 +12,6 @@ import java.nio.file.Paths
 import java.nio.file.ProviderMismatchException
 import java.util.concurrent.CompletionService
 import java.util.concurrent.ExecutorCompletionService
-import java.util.concurrent.ForkJoinPool
 
 import groovy.json.JsonBuilder
 import groovy.json.JsonGenerator
@@ -245,14 +244,7 @@ class LatchPath extends XPath {
         // be > 2^31 - 1 (this would require a file larger than the max size of 5 TiB)
         def buf = ByteBuffer.allocate(chunkSize as int)
 
-
-        ForkJoinPool fjp = new ForkJoinPool(
-            Runtime.getRuntime().availableProcessors(),
-            ForkJoinPool.defaultForkJoinWorkerThreadFactory,
-            null,
-            true // async
-        )
-        CompletionService<CompletedPart> cs = new ExecutorCompletionService<CompletedPart>(fjp)
+        CompletionService<CompletedPart> cs = new ExecutorCompletionService<CompletedPart>(this.fs.executor)
 
         long partIndex = 0
         List<CompletedPart> parts = new ArrayList<CompletedPart>(numParts as int)

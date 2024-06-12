@@ -45,8 +45,10 @@ class DispatcherClient {
                 }
 
                 statusCode = conn.getResponseCode()
-                if (conn.errorStream != null)
-                    error = conn.errorStream.getText()
+                if (conn.errorStream != null) {
+                    def errorData = (Map) new JsonSlurper().parseText(conn.errorStream.getText())
+                    error = errorData.error
+                }
 
                 if (statusCode != 200) {
                     if (statusCode >= 500)
@@ -62,7 +64,7 @@ class DispatcherClient {
             }
         }
 
-        throw new RuntimeException("${path} request failed after ${retries} attempts: status_code=${statusCode} error=${error}")
+        throw new DispatcherException("${path} request failed", statusCode, error)
     }
 
     int createProcessNode(String processName) {
