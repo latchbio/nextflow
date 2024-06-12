@@ -320,8 +320,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         final req = newSubmitRequest(task)
         this.podName = this.dispatcherClient.dispatchPod(taskExecutionId, req)
 
-        log.info "Submitted Pod ${this.podName}"
-
         this.status = TaskStatus.SUBMITTED
     }
 
@@ -342,7 +340,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 def newState = useJobResource()
                         ? client.jobState(podName)
                         : client.podState(podName)
-                log.info "${newState}"
+
                 if( newState ) {
                    log.trace "[K8s] Get ${resourceType.lower()}=$podName state=$newState"
                    state = newState
