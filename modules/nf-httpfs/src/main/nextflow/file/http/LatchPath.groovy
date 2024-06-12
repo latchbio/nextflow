@@ -244,7 +244,7 @@ class LatchPath extends XPath {
         // be > 2^31 - 1 (this would require a file larger than the max size of 5 TiB)
         def buf = ByteBuffer.allocate(chunkSize as int)
 
-        CompletionService<CompletedPart> cs = new ExecutorCompletionService<CompletedPart>(this.fs.executor)
+        CompletionService<CompletedPart> cs = new ExecutorCompletionService<CompletedPart>(this.fs.provider.executor)
 
         long partIndex = 0
         List<CompletedPart> parts = new ArrayList<CompletedPart>(numParts as int)

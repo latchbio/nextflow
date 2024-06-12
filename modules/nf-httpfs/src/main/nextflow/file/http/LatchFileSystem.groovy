@@ -10,20 +10,12 @@ import java.util.concurrent.ForkJoinPool
 class LatchFileSystem extends XFileSystem {
     LatchFileSystemProvider provider
     String domain
-    ForkJoinPool executor
 
     LatchFileSystem(LatchFileSystemProvider provider, String domain) {
         super(provider, new URI("latch", domain, "/", null, null))
 
         this.provider = provider
         this.domain = domain
-
-        this.executor = new ForkJoinPool(
-            Math.max(10, Runtime.getRuntime().availableProcessors()*3),
-            ForkJoinPool.defaultForkJoinWorkerThreadFactory,
-            null,
-            true // async
-        )
     }
 
     @Override
