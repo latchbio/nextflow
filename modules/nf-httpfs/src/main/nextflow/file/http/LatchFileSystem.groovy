@@ -4,8 +4,6 @@ import java.nio.file.Path
 
 import groovy.util.logging.Slf4j
 
-import java.util.concurrent.ForkJoinPool
-
 @Slf4j
 class LatchFileSystem extends XFileSystem {
     LatchFileSystemProvider provider
