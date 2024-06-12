@@ -310,7 +310,8 @@ class TaskPollingMonitor implements TaskMonitor {
     }
 
     protected RateLimiter createSubmitRateLimit() {
-        def limit = session.getExecConfigProp(name,'submitRateLimit',null) as String
+        //def limit = session.getExecConfigProp(name,'submitRateLimit',null) as String
+        def limit = '50 min'
         if( !limit )
             return null
 
@@ -567,7 +568,6 @@ class TaskPollingMonitor implements TaskMonitor {
                 try {
                     submit(handler)
                 } catch ( ResourceQuotaExceededException e ) {
-                    log.warn e.message
                     count--
                     handler.decProcessForks()
                     continue
