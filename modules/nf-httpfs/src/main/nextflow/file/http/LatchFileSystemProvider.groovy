@@ -23,7 +23,8 @@ import java.nio.file.attribute.FileAttribute
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 
-import java.util.concurrent.ForkJoinPool
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 @CompileStatic
 @Slf4j
@@ -35,14 +36,13 @@ class LatchFileSystemProvider extends XFileSystemProvider {
      * Map of domain -> filesystem
      * keys are e.g. 1721.account, bucket.mount, etc.
      */
-    private final Map<String, LatchFileSystem> fileSystems = new HashMap<String, LatchFileSystem>();
+    private final Map<String, LatchFileSystem> fileSystems = new HashMap<String, LatchFileSystem>()
 
-    ForkJoinPool executor = new ForkJoinPool(
-        Math.max(10, Runtime.getRuntime().availableProcessors()*3),
-        ForkJoinPool.defaultForkJoinWorkerThreadFactory,
-        null,
-        true // async
-    )
+    static ExecutorService executor = Executors.newFixedThreadPool(Math.max(10, Runtime.getRuntime().availableProcessors() * 3))
+
+    static void shutdown() {
+        executor.shutdown()
+    }
 
     @Override
     String getScheme() {

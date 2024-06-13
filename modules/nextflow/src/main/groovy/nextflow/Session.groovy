@@ -16,6 +16,8 @@
 
 package nextflow
 
+import nextflow.file.http.LatchFileSystemProvider
+
 import static nextflow.Const.*
 
 import java.nio.file.Files
@@ -672,6 +674,7 @@ class Session implements ISession {
             log.trace "Session > destroying"
             // shutdown publish dir executor
             publishPoolManager.shutdown(aborted)
+            LatchFileSystemProvider.shutdown()
             // invoke shutdown callbacks
             shutdown0()
             log.trace "Session > after cleanup"
