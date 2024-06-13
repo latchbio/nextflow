@@ -240,10 +240,6 @@ class LatchPath extends XPath {
         String uploadId = data.get("upload_id") as String
 
         def file = FileChannel.open(local)
-        // casting cur_chunk_size to int is fine here as cur_chunk_size will never
-        // be > 2^31 - 1 (this would require a file larger than the max size of 5 TiB)
-        def buf = ByteBuffer.allocate(chunkSize as int)
-
         CompletionService<CompletedPart> cs = new ExecutorCompletionService<CompletedPart>(this.fs.provider.executor)
 
         long partIndex = 0
@@ -251,22 +247,26 @@ class LatchPath extends XPath {
         for (String url: urls) {
             partIndex++
             def idx = partIndex
-
-            buf.clear()
-            def bytes_read = file.read(buf)
-
-            byte[] arr = buf.array()
-            arr = Arrays.copyOf(arr, arr.length)
-            if (bytes_read < chunkSize) {
-                arr = Arrays.copyOfRange(arr, 0, bytes_read)
-            }
-
-            HttpRequest req =  HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .PUT(HttpRequest.BodyPublishers.ofByteArray(arr))
-                .build()
+            def chunkUrl = url
 
             cs.submit {
+                // casting cur_chunk_size to int is fine here as cur_chunk_size will never
+                // be > 2^31 - 1 (this would require a file larger than the max size of 5 TiB)
+                def buf = ByteBuffer.allocate(chunkSize as int)
+
+                def pos = chunkSize * (idx - 1)
+                def bytes_read = file.read(buf, pos)
+
+                byte[] arr = buf.array()
+                if (bytes_read < chunkSize) {
+                    arr = Arrays.copyOfRange(arr, 0, bytes_read)
+                }
+
+                HttpRequest req =  HttpRequest.newBuilder()
+                    .uri(URI.create(chunkUrl))
+                    .PUT(HttpRequest.BodyPublishers.ofByteArray(arr))
+                    .build()
+
                 def resp = client.send(req, HttpResponse.BodyHandlers.ofString())
 
                 String etag = resp.headers().firstValue("ETag").get().replace("\"", "") // ayush: no idea why but ETag has quotes sometimes
@@ -276,12 +276,12 @@ class LatchPath extends XPath {
 
         }
 
-        file.close()
-
         for (String url: urls) {
             CompletedPart res = cs.take().get()
             parts[res.PartNumber - 1] = res
         }
+
+        file.close()
 
         // necessary bc otherwise "PartNumber" gets camelCased to "partNumber" without my consent
         // groovy continues to find new and fun ways to make me want to unalive myself

@@ -16,6 +16,10 @@
 
 package nextflow
 
+import nextflow.file.http.LatchFileSystemProvider
+
+import static nextflow.Const.*
+
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -709,6 +713,7 @@ class Session implements ISession {
             // shutdown thread pools
             finalizePoolManager?.shutdownOrAbort(aborted,this)
             publishPoolManager?.shutdownOrAbort(aborted,this)
+            LatchFileSystemProvider.shutdown()
             // invoke shutdown callbacks
             shutdown0()
             log.trace "Session > after cleanup"
