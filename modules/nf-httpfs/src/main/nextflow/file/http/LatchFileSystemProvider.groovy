@@ -36,13 +36,12 @@ class LatchFileSystemProvider extends XFileSystemProvider {
      * Map of domain -> filesystem
      * keys are e.g. 1721.account, bucket.mount, etc.
      */
-    private final Map<String, LatchFileSystem> fileSystems = new HashMap<String, LatchFileSystem>();
+    private final Map<String, LatchFileSystem> fileSystems = new HashMap<String, LatchFileSystem>()
 
     static ExecutorService executor = Executors.newFixedThreadPool(Math.max(10, Runtime.getRuntime().availableProcessors() * 3))
 
     static void shutdown() {
-        if (executor != null)
-            executor.shutdown()
+        executor.shutdown()
     }
 
     @Override
