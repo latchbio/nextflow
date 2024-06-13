@@ -176,6 +176,39 @@ class LatchPath extends XPath {
         }
     }
 
+    static String requestWithRetry(HttpClient client, String endpoint, String body, int retries = 3) {
+        if (retries <= 0) {
+            throw new RuntimeException("failed to submit request, retries must be > 0")
+        }
+
+        HttpResponse<String> response
+
+        for (int i = 0; i < retries; i++) {
+            def request =  HttpRequest.newBuilder()
+                .uri(URI.create(endpoint))
+                .header("Content-Type", "application/json")
+                .header("Authorization", LatchPathUtils.getAuthHeader())
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build()
+
+            response = client.send(request, HttpResponse.BodyHandlers.ofString())
+
+            def statusCode = response.statusCode()
+            if (statusCode != 200) {
+                if (statusCode == 429) {
+                    sleep(2 ** (i + 1) * 5000)
+                    continue
+                }
+
+                break
+            }
+
+            return response.body()
+        }
+
+        throw new Exception("Failed to upload file: ${response != null ? response.body() : ""}")
+    }
+
     void upload(Path local) {
         if (!local.exists()) {
             throw new Exception("Could not find path ${local} to upload")
@@ -209,27 +242,15 @@ class LatchPath extends XPath {
         }
 
         String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
-        String endpoint = "https://nucleus.$cluster/ldata/start-upload"
+        def client = HttpClient.newHttpClient()
 
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString(), "part_count": numParts, "content_type": mimeType])
 
-        def client = HttpClient.newHttpClient()
-        def request =  HttpRequest.newBuilder()
-            .uri(URI.create(endpoint))
-            .header("Content-Type", "application/json")
-            .header("Authorization", LatchPathUtils.getAuthHeader())
-            .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
-            .build()
-
-        def response = client.send(request, HttpResponse.BodyHandlers.ofString())
-
-        if (response.statusCode() != 200) {
-            throw new Exception("Failed to upload file: ${response.body()}")
-        }
+        def response = requestWithRetry(client, "https://nucleus.$cluster/ldata/start-upload", builder.toString())
 
         def slurper = new JsonSlurper()
-        Map json = slurper.parseText(response.body()) as Map
+        Map json = slurper.parseText(response) as Map
         Map data = json.get("data") as Map
 
         if (data.containsKey("version_id")) {
@@ -307,14 +328,7 @@ class LatchPath extends XPath {
             "parts": parts,
         ])
 
-        request = HttpRequest.newBuilder()
-            .uri(URI.create("https://nucleus.$cluster/ldata/end-upload"))
-            .header("Content-Type", "application/json")
-            .header("Authorization", LatchPathUtils.getAuthHeader())
-            .POST(HttpRequest.BodyPublishers.ofString(endUploadBody))
-            .build()
-
-        client.send(request, HttpResponse.BodyHandlers.ofString())
+        requestWithRetry(client, "https://nucleus.$cluster/ldata/end-upload", endUploadBody)
     }
 
     URL getSignedURL() {
