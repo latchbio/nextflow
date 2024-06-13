@@ -1,5 +1,12 @@
 # Latch SDK Changelog
 
+## 1.0.4 - 2024-06-13
+
+### Fixed
+
+* Use ExecutorService instead of `ForkJoinPool` because ForkJoinPool doesn't cleanup threads -- causes memory to be leaked
+* Move memory allocation logic into thread to avoid OOM when uploading large files
+
 ## 1.0.3 - 2024-06-12
 
 ### Refactor
