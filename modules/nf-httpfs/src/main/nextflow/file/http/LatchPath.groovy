@@ -227,6 +227,7 @@ class LatchPath extends XPath {
             .build()
 
         def response = client.send(request)
+
         if (response.statusCode() != 200) {
             throw new Exception("Failed to upload file: ${response.body()}")
         }
@@ -310,7 +311,7 @@ class LatchPath extends XPath {
             "parts": parts,
         ])
 
-        request =  HttpRequest.newBuilder()
+        request = HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/end-upload"))
             .header("Content-Type", "application/json")
             .header("Authorization", LatchPathUtils.getAuthHeader())
@@ -331,12 +332,10 @@ class LatchPath extends XPath {
             .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
             .build()
 
-        HttpResponse<String> response
-        try {
-            response = client.send(request)
-        } catch (Exception e) {
-            throw new FileNotFoundException("${path.toString()}: ${e.message}")
-        }
+        HttpResponse<String> response = client.send(request)
+
+        if (response.statusCode() != 200) {
+            throw new FileNotFoundException(path.toString())
 
         def slurper = new JsonSlurper()
         def json = slurper.parseText(response.body())
