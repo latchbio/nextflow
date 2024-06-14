@@ -176,48 +176,6 @@ class LatchPath extends XPath {
         }
     }
 
-    static String requestWithRetry(HttpClient client, String endpoint, String body, int retries = 3) {
-        if (retries <= 0) {
-            throw new RuntimeException("failed to submit request, retries must be > 0")
-        }
-
-        String error = ""
-
-        for (int i = 0; i < retries; i++) {
-            def request =  HttpRequest.newBuilder()
-                .uri(URI.create(endpoint))
-                .header("Content-Type", "application/json")
-                .header("Authorization", LatchPathUtils.getAuthHeader())
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build()
-
-            HttpResponse<String> response
-            try {
-                response = client.send(request, HttpResponse.BodyHandlers.ofString())
-            } catch (IOException e) {
-                sleep(2 ** (i + 1) * 5000)
-                error = e.message
-                continue
-            }
-
-
-            def statusCode = response.statusCode()
-            if (statusCode != 200) {
-                if (statusCode == 429 || statusCode >= 500) {
-                    sleep(2 ** (i + 1) * 5000)
-                    error = response.body()
-                    continue
-                }
-
-                break
-            }
-
-            return response.body()
-        }
-
-        throw new Exception("Failed to upload file: ${error}")
-    }
-
     void upload(Path local) {
         if (!local.exists()) {
             throw new Exception("Could not find path ${local} to upload")
@@ -251,15 +209,22 @@ class LatchPath extends XPath {
         }
 
         String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
-        def client = HttpClient.newHttpClient()
+        def client = new HttpRetryClient()
 
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString(), "part_count": numParts, "content_type": mimeType])
 
-        def response = requestWithRetry(client, "https://nucleus.$cluster/ldata/start-upload", builder.toString())
+        def request =  HttpRequest.newBuilder()
+            .uri(URI.create("https://nucleus.$cluster/ldata/start-upload"))
+            .header("Content-Type", "application/json")
+            .header("Authorization", LatchPathUtils.getAuthHeader())
+            .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
+            .build()
+
+        def response = client.send(request)
 
         def slurper = new JsonSlurper()
-        Map json = slurper.parseText(response) as Map
+        Map json = slurper.parseText(response.body()) as Map
         Map data = json.get("data") as Map
 
         if (data.containsKey("version_id")) {
@@ -297,7 +262,7 @@ class LatchPath extends XPath {
                     .PUT(HttpRequest.BodyPublishers.ofByteArray(arr))
                     .build()
 
-                def resp = client.send(req, HttpResponse.BodyHandlers.ofString())
+                def resp = client.send(req)
 
                 String etag = resp.headers().firstValue("ETag").get().replace("\"", "") // ayush: no idea why but ETag has quotes sometimes
                 def res = new CompletedPart(idx, etag)
@@ -337,19 +302,32 @@ class LatchPath extends XPath {
             "parts": parts,
         ])
 
-        requestWithRetry(client, "https://nucleus.$cluster/ldata/end-upload", endUploadBody)
+        request =  HttpRequest.newBuilder()
+            .uri(URI.create("https://nucleus.$cluster/ldata/end-upload"))
+            .header("Content-Type", "application/json")
+            .header("Authorization", LatchPathUtils.getAuthHeader())
+            .POST(HttpRequest.BodyPublishers.ofString(endUploadBody))
+            .build()
+        client.send(request)
     }
 
     URL getSignedURL() {
-        def client = HttpClient.newHttpClient()
+        def client = new HttpRetryClient()
         String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
 
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString()])
 
+        def request =  HttpRequest.newBuilder()
+            .uri(URI.create("https://nucleus.$cluster/ldata/get-signed-url"))
+            .header("Content-Type", "application/json")
+            .header("Authorization", LatchPathUtils.getAuthHeader())
+            .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
+            .build()
+
         String response
         try {
-            response = requestWithRetry(client, "https://nucleus.$cluster/ldata/get-signed-url", builder.toString())
+            response = client.send(request)
         } catch (Exception e) {
             throw new FileNotFoundException("${path.toString()}: ${e.message}")
         }
