@@ -23,11 +23,18 @@ class LatchPath extends XPath {
     LatchFileSystem fs
     Path path
 
+    private String host
+    private HttpRetryClient client
+
     LatchPath(LatchFileSystem fs, String path) {
         super(fs, path)
 
         this.fs = fs
         this.path = Paths.get(path)
+
+        String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
+        this.host = "https://nucleus.${cluster}"
+        this.client = new HttpRetryClient()
     }
 
     LatchPath(LatchFileSystem fs, String path, String[] more) {
@@ -35,6 +42,7 @@ class LatchPath extends XPath {
 
         this.fs = fs
         this.path = Paths.get(path, more)
+        this.client = new HttpRetryClient()
     }
 
     @Override
@@ -208,14 +216,11 @@ class LatchPath extends XPath {
             }
         }
 
-        String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
-        def client = new HttpRetryClient()
-
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString(), "part_count": numParts, "content_type": mimeType])
 
         def request =  HttpRequest.newBuilder()
-            .uri(URI.create("https://nucleus.$cluster/ldata/start-upload"))
+            .uri(URI.create("${host}/ldata/start-upload"))
             .header("Content-Type", "application/json")
             .header("Authorization", LatchPathUtils.getAuthHeader())
             .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
@@ -303,7 +308,7 @@ class LatchPath extends XPath {
         ])
 
         request =  HttpRequest.newBuilder()
-            .uri(URI.create("https://nucleus.$cluster/ldata/end-upload"))
+            .uri(URI.create("${host}/ldata/end-upload"))
             .header("Content-Type", "application/json")
             .header("Authorization", LatchPathUtils.getAuthHeader())
             .POST(HttpRequest.BodyPublishers.ofString(endUploadBody))
@@ -312,14 +317,11 @@ class LatchPath extends XPath {
     }
 
     URL getSignedURL() {
-        def client = new HttpRetryClient()
-        String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
-
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString()])
 
         def request =  HttpRequest.newBuilder()
-            .uri(URI.create("https://nucleus.$cluster/ldata/get-signed-url"))
+            .uri(URI.create("${host}/ldata/get-signed-url"))
             .header("Content-Type", "application/json")
             .header("Authorization", LatchPathUtils.getAuthHeader())
             .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
