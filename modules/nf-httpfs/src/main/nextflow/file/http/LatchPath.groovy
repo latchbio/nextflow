@@ -332,10 +332,11 @@ class LatchPath extends XPath {
             .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
             .build()
 
-        HttpResponse<String> response = client.send(request)
+        def response = client.send(request)
 
         if (response.statusCode() != 200) {
             throw new FileNotFoundException(path.toString())
+        }
 
         def slurper = new JsonSlurper()
         def json = slurper.parseText(response.body())
