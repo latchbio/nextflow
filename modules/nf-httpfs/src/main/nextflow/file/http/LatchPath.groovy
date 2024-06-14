@@ -181,7 +181,7 @@ class LatchPath extends XPath {
             throw new RuntimeException("failed to submit request, retries must be > 0")
         }
 
-        HttpResponse<String> response
+        String error = ""
 
         for (int i = 0; i < retries; i++) {
             def request =  HttpRequest.newBuilder()
@@ -191,12 +191,21 @@ class LatchPath extends XPath {
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build()
 
-            response = client.send(request, HttpResponse.BodyHandlers.ofString())
+            HttpResponse<String> response
+            try {
+                response = client.send(request, HttpResponse.BodyHandlers.ofString())
+            } catch (IOException e) {
+                sleep(2 ** (i + 1) * 5000)
+                error = e.message
+                continue
+            }
+
 
             def statusCode = response.statusCode()
             if (statusCode != 200) {
                 if (statusCode == 429 || statusCode >= 500) {
                     sleep(2 ** (i + 1) * 5000)
+                    error = response.body()
                     continue
                 }
 
@@ -206,7 +215,7 @@ class LatchPath extends XPath {
             return response.body()
         }
 
-        throw new Exception("Failed to upload file: ${response != null ? response.body() : ""}")
+        throw new Exception("Failed to upload file: ${error}")
     }
 
     void upload(Path local) {
