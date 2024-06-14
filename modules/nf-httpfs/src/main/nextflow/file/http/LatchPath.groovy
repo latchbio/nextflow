@@ -23,7 +23,8 @@ class LatchPath extends XPath {
     LatchFileSystem fs
     Path path
 
-    private String host
+    private static String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
+    private static String host = "https://nucleus.${cluster}"
     private HttpRetryClient client
 
     LatchPath(LatchFileSystem fs, String path) {
@@ -32,8 +33,6 @@ class LatchPath extends XPath {
         this.fs = fs
         this.path = Paths.get(path)
 
-        String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
-        this.host = "https://nucleus.${cluster}"
         this.client = new HttpRetryClient()
     }
 
@@ -42,6 +41,7 @@ class LatchPath extends XPath {
 
         this.fs = fs
         this.path = Paths.get(path, more)
+
         this.client = new HttpRetryClient()
     }
 
@@ -313,6 +313,7 @@ class LatchPath extends XPath {
             .header("Authorization", LatchPathUtils.getAuthHeader())
             .POST(HttpRequest.BodyPublishers.ofString(endUploadBody))
             .build()
+
         client.send(request)
     }
 
@@ -327,7 +328,7 @@ class LatchPath extends XPath {
             .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
             .build()
 
-        String response
+        HttpResponse<String> response
         try {
             response = client.send(request)
         } catch (Exception e) {
@@ -335,7 +336,7 @@ class LatchPath extends XPath {
         }
 
         def slurper = new JsonSlurper()
-        def json = slurper.parseText(response)
+        def json = slurper.parseText(response.body())
 
         return new URL(json["data"]["url"] as String)
     }
