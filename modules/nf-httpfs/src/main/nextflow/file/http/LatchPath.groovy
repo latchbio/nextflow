@@ -195,7 +195,7 @@ class LatchPath extends XPath {
 
             def statusCode = response.statusCode()
             if (statusCode != 200) {
-                if (statusCode == 429) {
+                if (statusCode == 429 || statusCode >= 500) {
                     sleep(2 ** (i + 1) * 5000)
                     continue
                 }
@@ -332,28 +332,21 @@ class LatchPath extends XPath {
     }
 
     URL getSignedURL() {
+        def client = HttpClient.newHttpClient()
         String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
-        String endpoint = "https://nucleus.$cluster/ldata/get-signed-url"
 
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString()])
 
-        def client = HttpClient.newHttpClient()
-        def request =  HttpRequest.newBuilder()
-            .uri(URI.create(endpoint))
-            .header("Content-Type", "application/json")
-            .header("Authorization", LatchPathUtils.getAuthHeader())
-            .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
-            .build()
-
-        def response = client.send(request, HttpResponse.BodyHandlers.ofString())
-
-        if (response.statusCode() != 200) {
-            throw new FileNotFoundException(path.toString())
+        String response
+        try {
+            response = requestWithRetry(client, "https://nucleus.$cluster/ldata/get-signed-url", builder.toString())
+        } catch (Exception e) {
+            throw new FileNotFoundException("${path.toString()}: ${e.message}")
         }
 
         def slurper = new JsonSlurper()
-        def json = slurper.parseText(response.body())
+        def json = slurper.parseText(response)
 
         return new URL(json["data"]["url"] as String)
     }
