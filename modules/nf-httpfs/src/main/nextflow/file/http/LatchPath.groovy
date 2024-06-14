@@ -227,6 +227,9 @@ class LatchPath extends XPath {
             .build()
 
         def response = client.send(request)
+        if (response.statusCode() != 200) {
+            throw new Exception("Failed to upload file: ${response.body()}")
+        }
 
         def slurper = new JsonSlurper()
         Map json = slurper.parseText(response.body()) as Map
