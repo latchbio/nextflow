@@ -17,33 +17,33 @@ class HttpRetryClient {
             throw new RuntimeException("failed to submit request, retries must be > 0")
         }
 
-        String error = ""
+        Exception error
+        HttpResponse<String> response
 
         for (int i = 0; i < retries; i++) {
-            HttpResponse<String> response
+            if (i != 0) {
+                sleep(2 ** i * 5000)
+            }
+
+            error = null
             try {
                 response = client.send(request, HttpResponse.BodyHandlers.ofString())
             } catch (IOException e) {
-                sleep(2 ** (i + 1) * 5000)
-                error = e.message
+                error = e
                 continue
             }
 
-
             def statusCode = response.statusCode()
-            if (statusCode != 200) {
-                if (statusCode == 429 || statusCode >= 500) {
-                    sleep(2 ** (i + 1) * 5000)
-                    error = response.body()
-                    continue
-                }
+            if (statusCode == 429 || statusCode >= 500)
+                continue
 
-                break
-            }
-
-            return response
+            break
         }
 
-        throw new Exception("Failed to upload file: ${error}")
+        if (error != null) {
+            throw error
+        }
+
+        return response
     }
 }
