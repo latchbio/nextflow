@@ -62,24 +62,12 @@ class Const {
     /**
      * The app build time as linux/unix timestamp
      */
-<<<<<<< HEAD
-    static public final long APP_TIMESTAMP = 1718391533866
-||||||| parent of b9c4c1eb1 (fix release to workspace)
-    static public final long APP_TIMESTAMP = 1718310626619
-=======
-    static public final long APP_TIMESTAMP = 1718472588907
->>>>>>> b9c4c1eb1 (fix release to workspace)
+    static public final long APP_TIMESTAMP = 1718488344980
 
     /**
      * The app build number
      */
-<<<<<<< HEAD
-    static public final int APP_BUILDNUM = 6025
-||||||| parent of b9c4c1eb1 (fix release to workspace)
-    static public final int APP_BUILDNUM = 6012
-=======
-    static public final int APP_BUILDNUM = 6013
->>>>>>> b9c4c1eb1 (fix release to workspace)
+    static public final int APP_BUILDNUM = 6015
 
     /**
      * The app build time string relative to UTC timezone

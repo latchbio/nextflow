@@ -85,7 +85,7 @@ class AnsiLogObserver implements TraceObserver {
 
     private int labelWidth
 
-    private volatile int cols = 80
+    private volatile int cols = 100
 
     private volatile int rows = 24
 
@@ -254,8 +254,7 @@ class AnsiLogObserver implements TraceObserver {
             return
         }
 
-        cols = TerminalFactory.get().getWidth()
-        rows = TerminalFactory.get().getHeight()
+        // cols = TerminalFactory.get().getWidth()
 
         // calc max width
         final now = System.currentTimeMillis()
