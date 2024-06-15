@@ -1,5 +1,11 @@
 # Latch SDK Changelog
 
+## 1.0.5 - 2024-06-15
+
+### Fixed
+
+* Fix releasing nextflow workflows to different workspace
+
 ## 1.0.4 - 2024-06-13
 
 ### Fixed
