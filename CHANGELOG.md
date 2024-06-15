@@ -1,5 +1,11 @@
 # Latch SDK Changelog
 
+## 1.0.6 - 2024-06-15
+
+### Fixed
+
+* Set line width to 100 so that logs don't get cut off
+
 ## 1.0.5 - 2024-06-15
 
 ### Fixed
