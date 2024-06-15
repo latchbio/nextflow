@@ -168,7 +168,7 @@ class K8sConfig implements Map<String,Object> {
     }
 
     static String getNamespace() {
-        def wsId = System.getenv('FLYTE_INTERNAL_TASK_PROJECT')
+        def wsId = System.getenv('FLYTE_INTERNAL_EXECUTION_PROJECT')
         if (wsId == null) {
             throw new RuntimeException("failed to get workspaceId")
         }
