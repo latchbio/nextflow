@@ -18,6 +18,7 @@ package nextflow.k8s
 
 import java.nio.file.FileAlreadyExistsException
 import groovy.json.JsonSlurper
+import nextflow.exception.K8sTimeoutException
 import nextflow.util.DispatcherClient
 
 import java.nio.file.Files
@@ -28,7 +29,6 @@ import java.time.format.DateTimeFormatter
 import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
-import groovy.json.JsonOutput
 
 import nextflow.SysEnv
 import nextflow.container.DockerBuilder
@@ -38,7 +38,6 @@ import nextflow.exception.ProcessSubmitException
 import nextflow.executor.BashWrapperBuilder
 import nextflow.fusion.FusionAwareTask
 import nextflow.k8s.client.K8sClient
-import nextflow.k8s.client.K8sResponseException
 import nextflow.k8s.model.PodEnv
 import nextflow.k8s.model.PodOptions
 import nextflow.k8s.model.PodSpecBuilder
@@ -359,7 +358,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             }
             return state
         }
-        catch (NodeTerminationException | PodUnschedulableException e) {
+        catch (NodeTerminationException | K8sTimeoutException | PodUnschedulableException e) {
             // create a synthetic `state` object adding an extra `nodeTermination`
             // attribute to return the error to the caller method
             final instant = Instant.now()
@@ -425,6 +424,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         def state = getState()
         if( state && state.terminated ) {
             if( state.nodeTermination instanceof NodeTerminationException ||
+                state.nodeTermination instanceof K8sTimeoutException ||
                 state.nodeTermination instanceof PodUnschedulableException ) {
                 // keep track of the node termination error
                 task.error = (Throwable) state.nodeTermination

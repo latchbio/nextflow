@@ -10,6 +10,5 @@ import groovy.transform.InheritConstructors
  */
 @InheritConstructors
 @CompileStatic
-
 class K8sTimeoutException extends Exception implements ProcessRetryableException {
 }
