@@ -1,5 +1,11 @@
 # Latch SDK Changelog
 
+## 1.0.7 - 2024-06-17
+
+### Added
+
+* Add retry on "context deadline exceeded" error for k8s executor
+
 ## 1.0.6 - 2024-06-15
 
 ### Fixed
