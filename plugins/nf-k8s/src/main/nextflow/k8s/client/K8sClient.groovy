@@ -18,6 +18,7 @@ package nextflow.k8s.client
 
 import nextflow.exception.K8sOutOfCpuException
 import nextflow.exception.K8sOutOfMemoryException
+import nextflow.exception.K8sTimeoutException
 
 import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.HttpsURLConnection
@@ -526,9 +527,17 @@ class K8sClient {
             final cause = new K8sResponseException(resp)
             throw new PodUnschedulableException(message, cause)
         }
+
         if( waiting.reason =~ /.+Error$/ ) {
             def message = "K8s pod waiting on unknown error state"
             if( waiting.message ) message += " -- $waiting.message"
+
+            // rahul: this is a common workflow issue that seem to
+            // resolve itself on retry
+            if (waiting.message == "context deadline exceeded") {
+                throw new K8sTimeoutException(message)
+            }
+
             final cause = new K8sResponseException(resp)
             throw new PodUnschedulableException(message, cause)
         }
