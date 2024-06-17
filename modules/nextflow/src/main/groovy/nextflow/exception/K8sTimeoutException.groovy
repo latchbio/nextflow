@@ -4,10 +4,9 @@ import groovy.transform.CompileStatic
 import groovy.transform.InheritConstructors
 
 /**
- * Exception thrown to signal a task execution failed due to a node termination,
- * likely due to a preemptive instance retirement
+ * Exception thrown to signal a task execution failed due to a k8s timeout
  *
- * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
+ * @author Rahul Desai <rahul@latch.bio>
  */
 @InheritConstructors
 @CompileStatic
