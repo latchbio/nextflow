@@ -1,21 +1,21 @@
 # Latch SDK Changelog
 
-<<<<<<< HEAD
-## 1.0.6 - 2024-06-15
+## 1.0.7 - 2024-06-17
 
 ### Added
 
-* HttpRetryClient -- retries on 429 and 500s
+* Add retry on "context deadline exceeded" error for k8s executor
 
-||||||| parent of c21bd29b1 (fix line width)
-=======
 ## 1.0.6 - 2024-06-15
 
 ### Fixed
 
 * Set line width to 100 so that logs don't get cut off
 
->>>>>>> c21bd29b1 (fix line width)
+### Added
+
+* HttpRetryClient -- retries on 429 and 500s
+
 ## 1.0.5 - 2024-06-15
 
 ### Fixed
