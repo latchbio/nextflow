@@ -50,7 +50,9 @@ class LatchPathUtils {
         def wsJson = null
         try {
             JsonSlurper slurper = new JsonSlurper()
-            wsJson = slurper.parse(new FileInputStream(wsFile))
+            def f = new FileInputStream(wsFile)
+            wsJson = slurper.parse(f)
+            f.close()
         } catch (JsonException ignored) {
             return null
         }
