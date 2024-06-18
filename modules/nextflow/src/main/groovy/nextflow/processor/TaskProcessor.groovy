@@ -134,6 +134,8 @@ class TaskProcessor {
 
     final private static Pattern QUESTION_MARK = ~/(\?+)/
 
+    final private static int MAX_SYSTEM_RETRY = 5
+
     @TestOnly private static volatile TaskProcessor currentProcessor0
 
     @TestOnly static TaskProcessor currentProcessor() { currentProcessor0 }
@@ -1051,11 +1053,18 @@ class TaskProcessor {
 
             // -- retry without increasing the error counts
             if( task && (error.cause instanceof ProcessRetryableException || error.cause instanceof CloudSpotTerminationException) ) {
+                if (task.systemRetryCount > MAX_SYSTEM_RETRY) {
+                    log.info "[$task.hashLog] NOTE: ${error.message} -- Execution exceeded max retry count (${task.systemRetryCount})"
+                    return errorStrategy
+                }
+
                 if( error.cause instanceof ProcessRetryableException )
                     log.info "[$task.hashLog] NOTE: ${error.message} -- Execution is retried"
                 else
                     log.info "[$task.hashLog] NOTE: ${error.message} -- Cause: ${error.cause.message} -- Execution is retried"
+
                 task.failCount+=1
+                task.systemRetryCount+=1
                 final taskCopy = task.makeCopy()
                 session.getExecService().submit {
                     try {
