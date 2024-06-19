@@ -413,15 +413,23 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         if( !podName ) throw new IllegalStateException("Missing K8s ${resourceType.lower()} name - cannot check if complete")
         def state = getState()
         if( state && state.terminated ) {
-            if( state.nodeTermination instanceof NodeTerminationException ||
+            if ( state.nodeTermination instanceof NodeTerminationException ) {
+                // rahul: node termination exception could mean that the
+                // pod completed successfully but was deleted before processing
+                if (readExitFile() != Integer.MAX_VALUE)
+                    state.nodeTermination = null
+            }
+
+            if (
+                state.nodeTermination instanceof NodeTerminationException ||
                 state.nodeTermination instanceof K8sTimeoutException ||
-                state.nodeTermination instanceof PodUnschedulableException ) {
+                state.nodeTermination instanceof PodUnschedulableException
+            ) {
                 // keep track of the node termination error
                 task.error = (Throwable) state.nodeTermination
                 // mark the task as ABORTED since the failure is caused by a node failure
                 task.aborted = true
-            }
-            else {
+            } else {
                 // finalize the task
                 task.exitStatus = readExitFile()
                 task.stdout = outputFile

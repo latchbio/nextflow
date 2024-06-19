@@ -23,11 +23,17 @@ class LatchPath extends XPath {
     LatchFileSystem fs
     Path path
 
+    private static String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
+    private static String host = "https://nucleus.${cluster}"
+    private HttpRetryClient client
+
     LatchPath(LatchFileSystem fs, String path) {
         super(fs, path)
 
         this.fs = fs
         this.path = Paths.get(path)
+
+        this.client = new HttpRetryClient()
     }
 
     LatchPath(LatchFileSystem fs, String path, String[] more) {
@@ -35,6 +41,8 @@ class LatchPath extends XPath {
 
         this.fs = fs
         this.path = Paths.get(path, more)
+
+        this.client = new HttpRetryClient()
     }
 
     @Override
@@ -208,21 +216,17 @@ class LatchPath extends XPath {
             }
         }
 
-        String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
-        String endpoint = "https://nucleus.$cluster/ldata/start-upload"
-
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString(), "part_count": numParts, "content_type": mimeType])
 
-        def client = HttpClient.newHttpClient()
         def request =  HttpRequest.newBuilder()
-            .uri(URI.create(endpoint))
+            .uri(URI.create("${host}/ldata/start-upload"))
             .header("Content-Type", "application/json")
             .header("Authorization", LatchPathUtils.getAuthHeader())
             .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
             .build()
 
-        def response = client.send(request, HttpResponse.BodyHandlers.ofString())
+        def response = client.send(request)
 
         if (response.statusCode() != 200) {
             throw new Exception("Failed to upload file: ${response.body()}")
@@ -267,7 +271,7 @@ class LatchPath extends XPath {
                     .PUT(HttpRequest.BodyPublishers.ofByteArray(arr))
                     .build()
 
-                def resp = client.send(req, HttpResponse.BodyHandlers.ofString())
+                def resp = client.send(req)
 
                 String etag = resp.headers().firstValue("ETag").get().replace("\"", "") // ayush: no idea why but ETag has quotes sometimes
                 def res = new CompletedPart(idx, etag)
@@ -308,31 +312,27 @@ class LatchPath extends XPath {
         ])
 
         request = HttpRequest.newBuilder()
-            .uri(URI.create("https://nucleus.$cluster/ldata/end-upload"))
+            .uri(URI.create("${host}/ldata/end-upload"))
             .header("Content-Type", "application/json")
             .header("Authorization", LatchPathUtils.getAuthHeader())
             .POST(HttpRequest.BodyPublishers.ofString(endUploadBody))
             .build()
 
-        client.send(request, HttpResponse.BodyHandlers.ofString())
+        client.send(request)
     }
 
     URL getSignedURL() {
-        String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
-        String endpoint = "https://nucleus.$cluster/ldata/get-signed-url"
-
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString()])
 
-        def client = HttpClient.newHttpClient()
         def request =  HttpRequest.newBuilder()
-            .uri(URI.create(endpoint))
+            .uri(URI.create("${host}/ldata/get-signed-url"))
             .header("Content-Type", "application/json")
             .header("Authorization", LatchPathUtils.getAuthHeader())
             .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
             .build()
 
-        def response = client.send(request, HttpResponse.BodyHandlers.ofString())
+        def response = client.send(request)
 
         if (response.statusCode() != 200) {
             throw new FileNotFoundException(path.toString())

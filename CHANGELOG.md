@@ -1,5 +1,11 @@
 # Latch SDK Changelog
 
+## 1.0.8 - 2024-06-18
+
+### Added
+
+* HttpRetryClient -- retries on 429 and 500s
+
 ## 1.0.7 - 2024-06-17
 
 ### Added
