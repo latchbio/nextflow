@@ -5,6 +5,8 @@
 ### Added
 
 * HttpRetryClient -- retries on 429 and 500s
+* Check task completion on "NodeTerminationError"
+* decreasing polling interval from 15s to 5s
 
 ## 1.0.7 - 2024-06-17
 
