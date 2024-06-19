@@ -1,5 +1,12 @@
 # Latch SDK Changelog
 
+## 1.0.9 - 2024-06-19
+
+### Added
+
+* Add support for retry from failed task
+
+
 ## 1.0.8 - 2024-06-18
 
 ### Added
