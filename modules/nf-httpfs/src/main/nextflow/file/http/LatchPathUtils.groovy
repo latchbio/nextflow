@@ -32,9 +32,10 @@ class LatchPathUtils {
         String domain = uri.authority
         if (domain == null || domain == "") {
             String ws = getCurrentWorkspace()
-            if (ws != null) {
-                domain = "${ws}.account"
-            }
+            if (ws == null)
+                throw new RuntimeException("failed to get current workspace")
+
+            domain = "${ws}.account"
         }
 
         return domain
@@ -77,10 +78,12 @@ class LatchPathUtils {
             } 
         """)["accountInfoCurrent"] as Map
 
-        if (accInfo["user"] != null) {
-            return accInfo["user"]["defaultAccount"] as String
-        }
+        if (accInfo == null)
+            return null
 
-        return accInfo["id"] as String
+        if (accInfo.user != null)
+            return ((Map) accInfo.user).defaultAccount as String
+
+        return accInfo.id as String
     }
 }
