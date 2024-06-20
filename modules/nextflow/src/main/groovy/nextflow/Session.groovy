@@ -713,10 +713,11 @@ class Session implements ISession {
             // shutdown thread pools
             finalizePoolManager?.shutdownOrAbort(aborted,this)
             publishPoolManager?.shutdownOrAbort(aborted,this)
-            LatchFileSystemProvider.shutdown()
             // invoke shutdown callbacks
             shutdown0()
             log.trace "Session > after cleanup"
+            // shutdown latch path executor
+            LatchFileSystemProvider.shutdown()
             // shutdown executors
             executorFactory?.shutdown()
             executorFactory = null
