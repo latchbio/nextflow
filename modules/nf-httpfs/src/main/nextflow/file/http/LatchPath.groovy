@@ -244,7 +244,6 @@ class LatchPath extends XPath {
         String uploadId = data.get("upload_id") as String
 
         def file = FileChannel.open(local)
-        CompletionService<CompletedPart> cs = new ExecutorCompletionService<CompletedPart>(this.fs.provider.executor)
 
         long partIndex = 0
         List<CompletedPart> parts = new ArrayList<CompletedPart>(numParts as int)
@@ -273,9 +272,8 @@ class LatchPath extends XPath {
             def resp = client.send(req)
 
             String etag = resp.headers().firstValue("ETag").get().replace("\"", "") // ayush: no idea why but ETag has quotes sometimes
-            parts << new CompletedPart(idx, etag)
+            parts << new CompletedPart(partIndex, etag)
         }
-
 
         file.close()
 
