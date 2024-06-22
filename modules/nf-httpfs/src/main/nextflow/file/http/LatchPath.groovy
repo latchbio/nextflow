@@ -248,42 +248,34 @@ class LatchPath extends XPath {
 
         long partIndex = 0
         List<CompletedPart> parts = new ArrayList<CompletedPart>(numParts as int)
+
+        def buf = ByteBuffer.allocate(chunkSize as int)
         for (String url: urls) {
+            buf.clear()
             partIndex++
-            def idx = partIndex
-            def chunkUrl = url
 
-            cs.submit {
-                // casting cur_chunk_size to int is fine here as cur_chunk_size will never
-                // be > 2^31 - 1 (this would require a file larger than the max size of 5 TiB)
-                def buf = ByteBuffer.allocate(chunkSize as int)
+            // casting cur_chunk_size to int is fine here as cur_chunk_size will never
+            // be > 2^31 - 1 (this would require a file larger than the max size of 5 TiB)
 
-                def pos = chunkSize * (idx - 1)
-                def bytes_read = file.read(buf, pos)
+            def pos = chunkSize * (partIndex - 1)
+            def bytes_read = file.read(buf, pos)
 
-                byte[] arr = buf.array()
-                if (bytes_read < chunkSize) {
-                    arr = Arrays.copyOfRange(arr, 0, bytes_read)
-                }
-
-                HttpRequest req =  HttpRequest.newBuilder()
-                    .uri(URI.create(chunkUrl))
-                    .PUT(HttpRequest.BodyPublishers.ofByteArray(arr))
-                    .build()
-
-                def resp = client.send(req)
-
-                String etag = resp.headers().firstValue("ETag").get().replace("\"", "") // ayush: no idea why but ETag has quotes sometimes
-                def res = new CompletedPart(idx, etag)
-                return res
+            byte[] arr = buf.array()
+            if (bytes_read < chunkSize) {
+                arr = Arrays.copyOfRange(arr, 0, bytes_read)
             }
 
+            HttpRequest req =  HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .PUT(HttpRequest.BodyPublishers.ofByteArray(arr))
+                .build()
+
+            def resp = client.send(req)
+
+            String etag = resp.headers().firstValue("ETag").get().replace("\"", "") // ayush: no idea why but ETag has quotes sometimes
+            parts << new CompletedPart(idx, etag)
         }
 
-        for (String url: urls) {
-            CompletedPart res = cs.take().get()
-            parts[res.PartNumber - 1] = res
-        }
 
         file.close()
 
