@@ -319,7 +319,6 @@ class FilePorter {
                     return stageForeignFile0(filePath, stagePath)
                 }
                 catch( IOException e ) {
-                    throw e
                     if( count++ < maxRetries && e !instanceof NoSuchFileException && e !instanceof InterruptedIOException && !Thread.currentThread().isInterrupted() ) {
                         def message = "Unable to stage foreign file: ${filePath.toUriString()} (try ${count}) -- Cause: $e.message"
                         log.isDebugEnabled() ? log.warn(message, e) : log.warn(message)
