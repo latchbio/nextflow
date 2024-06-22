@@ -144,6 +144,7 @@ public class CopyMoveHelper {
         };
 
         Files.walkFileTree(source, EnumSet.of(FileVisitOption.FOLLOW_LINKS), Integer.MAX_VALUE, visitor);
+
     }
 
     /**
