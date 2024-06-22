@@ -85,7 +85,7 @@ class AnsiLogObserver implements TraceObserver {
 
     private int labelWidth
 
-    private volatile int cols = 100
+    private volatile int cols = 150
 
     private volatile int rows = 24
 
