@@ -1,5 +1,12 @@
 # Latch SDK Changelog
 
+## 1.0.10 - 2024-06-20
+
+### Fixed
+
+* error handling when getting current workspace
+* close LatchFileSystem thread executor after workflow onComplete
+
 ## 1.0.9 - 2024-06-19
 
 ### Added
