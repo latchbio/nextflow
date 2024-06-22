@@ -1,5 +1,11 @@
 # Latch SDK Changelog
 
+## 1.0.11 - 2024-06-22
+
+### Fixed
+
+* bump log column length from 100 to 150
+
 ## 1.0.10 - 2024-06-20
 
 ### Fixed
