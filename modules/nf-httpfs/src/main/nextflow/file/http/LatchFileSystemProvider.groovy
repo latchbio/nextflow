@@ -161,6 +161,7 @@ class LatchFileSystemProvider extends XFileSystemProvider {
             void close() throws IOException {
                 writer.close()
                 lp.upload(Paths.get(temp.getPath()))
+                temp.delete()
             }
         }
     }

@@ -1,5 +1,12 @@
 # Latch SDK Changelog
 
+## 1.1.1 - 2024-06-25
+
+### Fixed
+
+* delete tmp file after latch file upload
+* fix memory leak caused by HttpClient creation
+
 ## 1.1.0 - 2024-06-25
 
 ### Added
