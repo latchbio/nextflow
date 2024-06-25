@@ -87,7 +87,7 @@ class LatchPath extends XPath {
         }
 
         if (this.path == that.path) {
-            return new LatchPath(this.fs, this.path.toString())
+            return new LatchPath(this.fs, "")
         }
 
         def thisParts = this.path.iterator().toList()
@@ -102,18 +102,15 @@ class LatchPath extends XPath {
             start++
         }
 
-        Path res = null
-        for (int i = start; i < thatParts.size(); i++) {
-            if (res == null) {
-                res = Paths.get("")
-            }
-            res = res.resolve(thatParts[i].name)
-        }
-
-        if (res == null) {
-            // res should never be null
+        if (start >= thatParts.size())
             throw new RuntimeException("failed to relativize path")
-        }
+
+        Path res = Paths.get("")
+        for (int i = start; i < thisParts.size(); i++)
+            res = res.resolve("..")
+
+        for (int i = start; i < thatParts.size(); i++)
+            res = res.resolve(thatParts[i].name)
 
         return new LatchPath(this.fs, res.toString())
     }
