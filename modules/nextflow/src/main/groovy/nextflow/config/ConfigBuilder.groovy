@@ -519,7 +519,7 @@ class ConfigBuilder {
             uniqueId = HistoryFile.DEFAULT.getLast()?.sessionId
 
             if( !uniqueId ) {
-                log.warn "It appears you have never run this project before -- Option `-resume` is ignored"
+                log.debug "It appears you have never run this project before -- Option `-resume` is ignored"
             }
         }
 
