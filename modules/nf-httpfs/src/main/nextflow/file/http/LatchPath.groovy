@@ -1,8 +1,6 @@
 package nextflow.file.http
 
-import java.net.http.HttpClient
 import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.Files
@@ -25,15 +23,12 @@ class LatchPath extends XPath {
 
     private static String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
     private static String host = "https://nucleus.${cluster}"
-    private HttpRetryClient client
 
     LatchPath(LatchFileSystem fs, String path) {
         super(fs, path)
 
         this.fs = fs
         this.path = Paths.get(path)
-
-        this.client = new HttpRetryClient()
     }
 
     LatchPath(LatchFileSystem fs, String path, String[] more) {
@@ -41,8 +36,6 @@ class LatchPath extends XPath {
 
         this.fs = fs
         this.path = Paths.get(path, more)
-
-        this.client = new HttpRetryClient()
     }
 
     @Override
@@ -219,6 +212,7 @@ class LatchPath extends XPath {
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString(), "part_count": numParts, "content_type": mimeType])
 
+        HttpRetryClient client = new HttpRetryClient()
         def request =  HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/start-upload"))
             .header("Content-Type", "application/json")
@@ -325,6 +319,7 @@ class LatchPath extends XPath {
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString()])
 
+        HttpRetryClient client = new HttpRetryClient()
         def request =  HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/get-signed-url"))
             .header("Content-Type", "application/json")
