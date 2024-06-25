@@ -1,5 +1,11 @@
 # Latch SDK Changelog
 
+## 1.1.0 - 2024-06-25
+
+### Added
+
+* ability to download directories via LatchPath
+
 ## 1.0.11 - 2024-06-22
 
 ### Fixed
