@@ -52,7 +52,7 @@ class XPath implements Path {
     XPath(XFileSystem fs, String path, String[] more) {
         this.fs = fs
         this.query = query(path)
-        this.path = Paths.get(stripQuery(path) ?:'/', more)
+        this.path = Paths.get(stripQuery(path) ?: "", more)
     }
 
     private XPath(XFileSystem fs, Path path, String query=null) {
