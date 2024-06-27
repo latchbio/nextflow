@@ -90,7 +90,10 @@ public class CopyMoveHelper {
             return;
         }
 
-        IN_FOREIGN_COPY.set(true);
+        if (target.getFileSystem().provider().getScheme().equals("latch")) {
+            target.getFileSystem().provider().copy(source, target, options);
+        }
+
         try (InputStream in = Files.newInputStream(source)) {
             Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
         } finally {

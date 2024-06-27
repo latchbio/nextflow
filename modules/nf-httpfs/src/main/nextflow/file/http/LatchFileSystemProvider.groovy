@@ -237,7 +237,15 @@ class LatchFileSystemProvider extends XFileSystemProvider {
     void delete(Path path) throws IOException {}
 
     @Override
-    void copy(Path source, Path target, CopyOption... options) throws IOException {}
+    void copy(Path source, Path target, CopyOption... options) throws IOException {
+        if (target.scheme == "latch" && source.scheme == "file") {
+            LatchPath lp = (LatchPath) target
+            lp.upload(source)
+            return
+        }
+
+        throw new RuntimeException("Can only copy local file -> latch")
+    }
 
     @Override
     void move(Path source, Path target, CopyOption... options) throws IOException {}
