@@ -238,6 +238,8 @@ class LatchFileSystemProvider extends XFileSystemProvider {
 
     @Override
     void copy(Path source, Path target, CopyOption... options) throws IOException {
+        // todo(ayush): better errors for common failure modes
+        // todo(ayush): deal with copy options
         if (target.scheme == "latch" && source.scheme == "file") {
             LatchPath lp = (LatchPath) target
             lp.upload(source)
