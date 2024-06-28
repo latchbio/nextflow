@@ -238,7 +238,7 @@ task buildInfo { doLast {
  * Compile sources and copies all libs to target directory
  */
 task compile {
-    dependsOn buildInfo
+//    dependsOn buildInfo // ayush: remove this to stop all the Const.groovy merge conflicts
     dependsOn allprojects.classes
 }
 

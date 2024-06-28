@@ -1,5 +1,12 @@
 # Latch SDK Changelog
 
+## 1.1.2 - 2024-06-28
+
+### Fixed
+
+* CopyMoveHelper.java will now attempt to copy files to Latch directly (instead of 
+  opening a stream and creating an auxiliary file to upload from)
+
 ## 1.1.1 - 2024-06-25
 
 ### Fixed
