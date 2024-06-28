@@ -335,4 +335,9 @@ class LatchPath extends XPath {
 
         return new URL(json["data"]["url"] as String)
     }
+
+    @Override
+    Path toAbsolutePath() {
+        return this
+    }
 }

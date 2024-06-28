@@ -65,7 +65,7 @@ class LatchFileSystemProvider extends XFileSystemProvider {
         String domain = LatchPathUtils.getDomain(uri)
 
         if (!this.fileSystems.containsKey(domain)) {
-            throw new FileSystemNotFoundException("S3 filesystem not yet created. Use newFileSystem() instead");
+            throw new FileSystemNotFoundException("Latch filesystem not yet created. Use newFileSystem() instead");
         }
 
         return this.fileSystems[domain];
@@ -78,7 +78,14 @@ class LatchFileSystemProvider extends XFileSystemProvider {
 
     @Override
     Path getPath(URI uri) {
-        return getFileSystem(uri).getPath(uri.path)
+        FileSystem fs
+        try {
+            fs = getFileSystem(uri)
+        } catch (FileSystemNotFoundException _) {
+            fs = newFileSystem(uri, [:])
+        }
+
+        return fs.getPath(uri.path)
     }
 
     @Override
