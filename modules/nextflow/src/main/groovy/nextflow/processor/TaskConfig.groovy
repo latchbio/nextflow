@@ -16,6 +16,9 @@
 
 package nextflow.processor
 
+import nextflow.file.FileHelper
+import nextflow.util.CmdLineOptionMap
+
 import static nextflow.processor.TaskProcessor.*
 
 import java.nio.file.Path
@@ -410,7 +413,15 @@ class TaskConfig extends LazyMap implements Cloneable {
         if( !path )
             return null
 
-        return (path as Path).complete()
+        Path storeDir;
+        if (path instanceof Path)
+            storeDir = path
+        else if (path instanceof String)
+            storeDir = FileHelper.asPath(path)
+        else
+            throw new RuntimeException("storeDir must either be a Path or a String")
+
+        return storeDir.complete()
     }
 
     List<PublishDir> getPublishDir() {
@@ -463,7 +474,7 @@ class TaskConfig extends LazyMap implements Cloneable {
             throw new IllegalArgumentException("Unexpected value for clusterOptions process directive - offending value: $opts")
         return null
     }
-    
+
     /**
      * @return Parse the {@code clusterOptions} configuration option and return the entries as a list of values
      */
