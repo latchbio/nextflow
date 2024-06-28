@@ -88,6 +88,7 @@ public class CopyMoveHelper {
 
         if (target.getFileSystem().provider().getScheme().equals("latch")) {
             target.getFileSystem().provider().copy(source, target, options);
+            return;
         }
 
         try (InputStream in = Files.newInputStream(source)) {
