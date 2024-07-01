@@ -639,7 +639,7 @@ class TaskProcessor {
 
         // -- create the task run instance
         final task = createTaskRun(params)
-        task.taskId = this.dispatcherClient.createProcessTask(this.nodeId, task.index)
+        task.taskId = this.dispatcherClient.createProcessTask(this.nodeId, task.index, task.getTag())
 
         // -- set the task instance as the current in this thread
         currentTask.set(task)
