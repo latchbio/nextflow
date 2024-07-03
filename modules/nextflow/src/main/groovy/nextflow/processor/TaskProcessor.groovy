@@ -652,7 +652,7 @@ class TaskProcessor {
         makeTaskContextStage2(task, secondPass, count)
 
         // rahul: the task process must be created after the task context is setup
-        task.taskId = this.dispatcherClient.createProcessTask(this.nodeId, task.index, task.getTag())
+        task.taskId = this.dispatcherClient.createProcessTask(this.nodeId, task.index, task.tag)
 
         // verify that `when` guard, when specified, is satisfied
         if( !checkWhenGuard(task) ) {

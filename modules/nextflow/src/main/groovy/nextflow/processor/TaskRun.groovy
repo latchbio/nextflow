@@ -394,9 +394,8 @@ class TaskRun implements Cloneable {
 
         final baseName = processor.name
 
-        String tag = getTag()
         if (tag != null)
-            return "${baseName} (${tag})"
+            return name = "${baseName} (${tag})"
 
         return lazyName()
     }
