@@ -383,7 +383,7 @@ class TaskRun implements Cloneable {
     }
 
     String getTag() {
-        if (config.containsKey('tag')) {
+        if (config.containsKey('tag') && config.tag != null) {
             try {
                 // -- look-up the 'sampleId' property, and if everything is fine
                 //    cache this value in the 'name' attribute
@@ -406,7 +406,7 @@ class TaskRun implements Cloneable {
 
         String tag = getTag()
         if (tag != null)
-            return name = "${baseName} (${tag})"
+            return "${baseName} (${tag})"
 
         return lazyName()
     }
