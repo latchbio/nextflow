@@ -24,6 +24,9 @@ upload:
   aws s3 cp --recursive --quiet $HOME/.nextflow {{path}}/.nextflow
   aws s3 cp --quiet nextflow {{path}}/nextflow
 
+upload-archive:
+  #!/usr/bin/env bash
+
   CUR_DIR=$(pwd)
 
   cd $HOME
@@ -31,7 +34,8 @@ upload:
   cd $CUR_DIR
   aws s3 cp --quiet nextflow.tar.gz {{path}}/nextflow.tar.gz
 
+
 publish:
   aws s3 cp LATCH_VERSION {{nextflow_dir}}/LATEST
 
-do-the-thing: build upload publish
+do-the-thing: build upload upload-archive publish
