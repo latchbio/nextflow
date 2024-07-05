@@ -34,7 +34,6 @@ upload-archive:
   cd $CUR_DIR
   aws s3 cp --quiet nextflow.tar.gz {{path}}/nextflow.tar.gz
 
-
 publish:
   aws s3 cp LATCH_VERSION {{nextflow_dir}}/LATEST
 
