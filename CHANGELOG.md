@@ -1,5 +1,11 @@
 # Latch SDK Changelog
 
+## 1.1.3 - 2024-07-01
+
+### Added
+* Add tag to task_info
+* Demote K8s unschedulable warning to debug
+
 ## 1.1.2 - 2024-06-28
 
 ### Fixed

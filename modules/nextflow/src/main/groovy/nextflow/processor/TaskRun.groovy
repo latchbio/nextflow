@@ -372,23 +372,30 @@ class TaskRun implements Cloneable {
         return processor.singleton ? processor.name : "$processor.name ($index)"
     }
 
+    String getTag() {
+        if (config.containsKey('tag') && config.tag != null) {
+            try {
+                // -- look-up the 'sampleId' property, and if everything is fine
+                //    cache this value in the 'name' attribute
+                return String.valueOf(config.tag).trim()
+            } catch( IllegalStateException ignored ) {
+                log.debug "Cannot access `tag` property for task: ${processor.name} (${index})"
+            } catch (Exception e) {
+                log.debug "Unable to evaluate `tag` property for task: ${processor.name} (${index})", e
+            }
+        }
+
+        return null
+    }
+
     String getName() {
         if( name )
             return name
 
         final baseName = processor.name
-        if( config.containsKey('tag') )
-            try {
-                // -- look-up the 'sampleId' property, and if everything is fine
-                //    cache this value in the 'name' attribute
-                return name = "$baseName (${String.valueOf(config.tag).trim()})"
-            }
-            catch( IllegalStateException e ) {
-                log.debug "Cannot access `tag` property for task: $baseName ($index)"
-            }
-            catch( Exception e ) {
-                log.debug "Unable to evaluate `tag` property for task: $baseName ($index)", e
-            }
+
+        if (tag != null)
+            return name = "${baseName} (${tag})"
 
         return lazyName()
     }

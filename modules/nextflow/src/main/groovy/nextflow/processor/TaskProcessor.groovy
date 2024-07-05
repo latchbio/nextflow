@@ -639,7 +639,6 @@ class TaskProcessor {
 
         // -- create the task run instance
         final task = createTaskRun(params)
-        task.taskId = this.dispatcherClient.createProcessTask(this.nodeId, task.index)
 
         // -- set the task instance as the current in this thread
         currentTask.set(task)
@@ -651,6 +650,9 @@ class TaskProcessor {
         final secondPass = [:]
         int count = makeTaskContextStage1(task, secondPass, values)
         makeTaskContextStage2(task, secondPass, count)
+
+        // rahul: the task process must be created after the task context is setup
+        task.taskId = this.dispatcherClient.createProcessTask(this.nodeId, task.index, task.tag)
 
         // verify that `when` guard, when specified, is satisfied
         if( !checkWhenGuard(task) ) {
