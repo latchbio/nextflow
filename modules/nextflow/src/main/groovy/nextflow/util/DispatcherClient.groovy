@@ -109,7 +109,7 @@ class DispatcherClient {
         )
     }
 
-    int createProcessTask(int processNodeId, int index) {
+    int createProcessTask(int processNodeId, int index, String tag) {
         if (debug)
             return 0
 
@@ -118,7 +118,8 @@ class DispatcherClient {
             'create-task',
             [
                 process_node_id: processNodeId,
-                index: index
+                index: index,
+                tag: tag
             ]
         )
 
