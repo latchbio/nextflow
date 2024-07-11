@@ -15,7 +15,7 @@ class LatchPathUtils {
         String home = System.getProperty("user.home")
         File tokenFile = new File("$home/.latch/token")
         if (tokenFile.exists())
-            return "Latch-SDK-Token ${tokenFile.text}"
+            return "Latch-SDK-Token ${tokenFile.text.strip()}"
 
         throw new UnauthenticatedException()
     }
