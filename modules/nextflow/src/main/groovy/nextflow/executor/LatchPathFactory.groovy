@@ -48,6 +48,6 @@ class LatchPathFactory extends FileSystemPathFactory {
 
     @Override
     protected String getUploadCmd(String source, Path target) {
-        return "latch mkdirp ${target.toUriString()}; latch cp --progress=none --verbose ${source} ${target.toUriString()}"
+        return "/opt/latch-env/bin/latch mkdirp ${target.toUriString()}; /opt/latch-env/bin/latch cp --progress=none --verbose ${source} ${target.toUriString()}"
     }
 }
