@@ -18,6 +18,8 @@ package nextflow.k8s
 
 import java.nio.file.FileAlreadyExistsException
 import groovy.json.JsonSlurper
+import java.nio.file.Paths
+
 import nextflow.exception.K8sTimeoutException
 import nextflow.util.DispatcherClient
 
@@ -222,6 +224,12 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             .withAnnotations(getAnnotations())
             .withPodOptions(getPodOptions())
             .withCpuLimits(cpuLimitsEnabled())
+            .withHostMount("/opt/latch-env", "/opt/latch-env")
+
+        if (System.getenv("LATCH_NF_DEBUG") != "true") {
+            def execId = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
+            builder.withEnv(PodEnv.value("FLYTE_INTERNAL_EXECUTION_ID", execId))
+        }
 
         // when `entrypointOverride` is false the launcher is run via `args` instead of `command`
         // to not override the container entrypoint
