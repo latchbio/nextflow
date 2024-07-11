@@ -226,6 +226,8 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             .withCpuLimits(cpuLimitsEnabled())
             .withHostMount("/opt/latch-env", "/opt/latch-env")
 
+        builder.withEnv(PodEnv.value("LATCH_NO_CRASH_REPORT", "1"))a
+
         if (System.getenv("LATCH_NF_DEBUG") != "true") {
             def execId = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
             builder.withEnv(PodEnv.value("FLYTE_INTERNAL_EXECUTION_ID", execId))
