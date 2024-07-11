@@ -16,6 +16,8 @@ class LatchPathFactory extends FileSystemPathFactory {
 
     @Override
     protected Path parseUri(String uri) {
+        if (!uri.startsWith("latch://")) return null
+
         List<FileSystemProvider> provs = FileSystemProvider.installedProviders()
         for (FileSystemProvider prov: provs) {
             if (prov.scheme != "latch") continue;
@@ -23,13 +25,13 @@ class LatchPathFactory extends FileSystemPathFactory {
             return prov.getPath(new URI(null, null, uri, null, null))
         }
 
-        throw new ProviderNotFoundException("LatchFilesystemProvider is not installed")
+        return null
     }
 
     @Override
     protected String toUriString(Path path) {
         if (!(path instanceof LatchPath)) {
-            throw new ProviderMismatchException("Can only use LatchPathFactory with LatchPaths")
+            return null
         }
 
         LatchPath lp = (LatchPath) path
@@ -40,7 +42,7 @@ class LatchPathFactory extends FileSystemPathFactory {
     @Override
     protected String getBashLib(Path target) {
         if (target.scheme != "latch") {
-            throw new ProviderMismatchException("Cannot use LatchPathFactory on non-latch path ${target.toUriString()}")
+            return null
         }
 
         return LatchBashLib.script()
@@ -48,6 +50,12 @@ class LatchPathFactory extends FileSystemPathFactory {
 
     @Override
     protected String getUploadCmd(String source, Path target) {
-        return "/opt/latch-env/bin/latch mkdirp ${target.toUriString()}; /opt/latch-env/bin/latch cp --progress=none --verbose ${source} ${target.toUriString()}"
+        if (target.scheme != "latch") {
+            return null
+        }
+
+        def remoteParent = target.resolve(source).parent
+
+        return "/opt/latch-env/bin/latch mkdirp ${target.toUriString()}/\"\$(dirname \"$source\")\"; /opt/latch-env/bin/latch cp --progress=none --verbose ${source} ${target.toUriString()}/$source"
     }
 }
