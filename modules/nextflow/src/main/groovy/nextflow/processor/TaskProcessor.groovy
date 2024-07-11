@@ -1631,7 +1631,6 @@ class TaskProcessor {
             def splitter = param.glob ? FilePatternSplitter.glob().parse(filePattern) : null
             if( splitter?.isPattern() ) {
                 result = fetchResultFiles(param, filePattern, workDir)
-                log.info "Result files: $result, param: $param, pattern: $filePattern, workDir: ${workDir.toUriString()}"
                 // filter the inputs
                 if( result && !param.includeInputs ) {
                     result = filterByRemovingStagedInputs(task, result, workDir)
@@ -1704,7 +1703,7 @@ class TaskProcessor {
         def opts = visitOptions(param, namePattern)
         // scan to find the file with that name
         try {
-            FileHelper.visitFiles(opts, workDir, namePattern) {  Path it -> log.info "$it"; files.add(it) }
+            FileHelper.visitFiles(opts, workDir, namePattern) {  Path it -> files.add(it) }
         }
         catch( NoSuchFileException e ) {
             throw new MissingFileException("Cannot access directory: '$workDir'", e)
