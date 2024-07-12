@@ -1703,7 +1703,7 @@ class TaskProcessor {
         def opts = visitOptions(param, namePattern)
         // scan to find the file with that name
         try {
-            FileHelper.visitFiles(opts, workDir, namePattern) {  Path it -> files.add(it) }
+            FileHelper.visitFiles(opts, workDir, namePattern) { Path it -> files.add(it) }
         }
         catch( NoSuchFileException e ) {
             throw new MissingFileException("Cannot access directory: '$workDir'", e)
