@@ -749,7 +749,7 @@ class PodSpecBuilder {
     protected String sanitizeValue(value, MetaType kind, SegmentType segment) {
         def str = String.valueOf(value)
         if( str.length() > segment.maxSize ) {
-            log.debug "K8s $kind $segment exceeds allowed size: $segment.maxSize -- offending str=$str"
+            log.trace "K8s $kind $segment exceeds allowed size: $segment.maxSize -- offending str=$str"
             str = str.substring(0,segment.maxSize)
         }
         str = str.replaceAll(/[^a-zA-Z0-9\.\_\-]+/, '_')
