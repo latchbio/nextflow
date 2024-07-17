@@ -27,6 +27,8 @@ upload:
   cd $CUR_DIR
   aws s3 cp --quiet nextflow.tar.gz {{path}}/nextflow.tar.gz
 
+  aws s3 cp --quiet nextflow {{path}}/nextflow
+
 publish:
   #!/usr/bin/env bash
 
