@@ -1,5 +1,15 @@
 # Latch SDK Changelog
 
+## 1.1.5 - 2024-07-17
+
+### Added
+* Cleanup logging for DispatcherClient
+
+## 1.1.4 - 2024-07-11
+
+### Added
+* storeDir support for Latch Paths
+
 ## 1.1.3 - 2024-07-01
 
 ### Added
