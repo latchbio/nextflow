@@ -403,11 +403,21 @@ class LoggerHelper {
      * to the application stdout
      */
     static private class PrettyConsoleLayout extends LayoutBase<ILoggingEvent> {
+        private final String red = "\u001b[31m"
+        private final String yellow = "\u001b[33m"
+        private final String stop = "\u001b[0m"
 
         @Override
         String doLayout(ILoggingEvent event) {
             final session = (Session)Global.session
-            fmtEvent(event, session, true)
+            String message = fmtEvent(event, session, true)
+
+            if ( event.level == Level.WARN )
+                message = yellow + message + stop
+            else if ( event.level == Level.ERROR )
+                message = red + message + stop
+
+            return message
         }
     }
 

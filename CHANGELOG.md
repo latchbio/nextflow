@@ -1,5 +1,10 @@
 # Latch SDK Changelog
 
+## 1.1.6 - 2024-07-26
+
+### Added
+* Ansi color codes to warning and error messages
+
 ## 1.1.5 - 2024-07-17
 
 ### Added
