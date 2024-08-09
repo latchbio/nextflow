@@ -48,7 +48,6 @@ class RunDownload {
     }
 
     private int downloadPart(FileChannel outputStream, HttpRetryClient client, URL url, long start, long end, long part) {
-        println "Downloading part ${part} from ${start} to ${end}"
         def req =  HttpRequest.newBuilder()
             .uri(url.toURI())
             .header("Range", "bytes=${start}-${end}")
@@ -75,8 +74,6 @@ class RunDownload {
     }
 
     void downloadParallel(Path path, Path local) {
-        println "Downloading Latch file ${path.toString()} to ${local.toString()}"
-
         def url = getSignedURL(path)
 
         HttpRetryClient client = new HttpRetryClient()

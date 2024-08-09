@@ -24,6 +24,8 @@ class LatchPath extends XPath {
     LatchFileSystem fs
     Path path
 
+    private static HttpRetryClient client = new HttpRetryClient()
+
     private static String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
     private static String host = "https://nucleus.${cluster}"
 
@@ -180,9 +182,7 @@ class LatchPath extends XPath {
         }
     }
 
-    private void downloadPart(FileChannel outputStream, HttpRetryClient client, URL url, long start, long end) {
-        log.info "Downloading ${path.toUriString()} from ${start} to ${end}"
-
+    private void downloadPart(FileChannel outputStream, URL url, long start, long end) {
         def req =  HttpRequest.newBuilder()
             .uri(url.toURI())
             .header("Range", "bytes=${start}-${end}")
@@ -206,11 +206,8 @@ class LatchPath extends XPath {
     }
 
     void download(Path local) {
-        log.info "Downloading Latch file ${path.toString()} to ${local.toString()}"
-
         def url = getSignedURL()
 
-        HttpRetryClient client = new HttpRetryClient()
         def request =  HttpRequest.newBuilder()
             .uri(url.toURI())
             .header("Range", "bytes=0-0")
@@ -219,7 +216,7 @@ class LatchPath extends XPath {
 
         def response = client.send(request)
         if (![200, 206].contains(response.statusCode()))
-            throw new Exception("Failed to get file size: ${response.statusCode()}")
+            throw new Exception("Failed to get file size for ${path.toUriString()}: ${response.body()}")
 
         def contentRange = response.headers().firstValue('Content-Range')
 
@@ -228,7 +225,12 @@ class LatchPath extends XPath {
             throw new Exception("Failed to get file size: Content-Range invalid ${contentRange.get()}")
 
         long fileSize = Long.parseLong(contentRange.get().substring(byteRangePrefix.length()))
-        long numParts = (long) Math.ceil(fileSize / (double) downloadPartSize)
+        long partSize = downloadPartSize
+
+        long numParts = fileSize.intdiv(partSize)
+        if (fileSize % partSize != 0) {
+            numParts = numParts + 1
+        }
 
         if (local.exists())
             Files.delete(local)
@@ -237,14 +239,14 @@ class LatchPath extends XPath {
         outputStream.truncate(fileSize)
 
         try {
-            ArrayList<Future> futures = []
+            List<Future> futures = []
 
             for (long i = 0; i < numParts; i++) {
                 long start = i * downloadPartSize
                 long end = Math.min(start + downloadPartSize - 1, fileSize - 1)
 
                 futures << this.fs.provider.downloadExecutor.submit {
-                    downloadPart(outputStream, client, url, start, end)
+                    downloadPart(outputStream, url, start, end)
                 }
             }
 
@@ -289,7 +291,6 @@ class LatchPath extends XPath {
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString(), "part_count": numParts, "content_type": mimeType])
 
-        HttpRetryClient client = new HttpRetryClient()
         def request =  HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/start-upload"))
             .header("Content-Type", "application/json")
@@ -396,7 +397,6 @@ class LatchPath extends XPath {
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString()])
 
-        HttpRetryClient client = new HttpRetryClient()
         def request =  HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/get-signed-url"))
             .header("Content-Type", "application/json")

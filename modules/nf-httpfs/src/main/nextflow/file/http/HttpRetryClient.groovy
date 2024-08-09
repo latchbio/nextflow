@@ -6,13 +6,9 @@ import java.net.http.HttpResponse
 
 class HttpRetryClient {
 
-    private HttpClient client
+    private HttpClient client = HttpClient.newHttpClient()
 
-    HttpRetryClient() {
-        this.client = HttpClient.newHttpClient()
-    }
-
-    HttpResponse _send(HttpRequest request, boolean stream = false, int retries = 3) {
+    HttpResponse sendHelper(HttpRequest request, boolean stream = false, int retries = 3) {
         if (retries <= 0) {
             throw new RuntimeException("failed to submit request, retries must be > 0")
         }
@@ -48,10 +44,10 @@ class HttpRetryClient {
     }
 
     HttpResponse<InputStream> stream(HttpRequest request, int retries = 3) {
-        return (HttpResponse<InputStream>) _send(request, true, retries)
+        return (HttpResponse<InputStream>) sendHelper(request, true, retries)
     }
 
     HttpResponse<String> send(HttpRequest request, int retries = 3) {
-        return (HttpResponse<String>) _send(request, false, retries)
+        return (HttpResponse<String>) sendHelper(request, false, retries)
     }
 }
