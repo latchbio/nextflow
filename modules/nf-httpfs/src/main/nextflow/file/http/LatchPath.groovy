@@ -180,6 +180,31 @@ class LatchPath extends XPath {
         }
     }
 
+    private void downloadPart(FileChannel outputStream, HttpRetryClient client, URL url, long start, long end) {
+        log.info "Downloading ${path.toUriString()} from ${start} to ${end}"
+
+        def req =  HttpRequest.newBuilder()
+            .uri(url.toURI())
+            .header("Range", "bytes=${start}-${end}")
+            .GET()
+            .build()
+
+        def resp = client.stream(req)
+        InputStream inputStream = resp.body()
+
+        try {
+            long bytesWritten = 0
+            byte[] buffer = new byte[downloadChunkSize]
+            int bytesRead
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, 0, bytesRead)
+                bytesWritten += outputStream.write(byteBuffer, start + bytesWritten)
+            }
+        } finally {
+            inputStream.close()
+        }
+    }
+
     void download(Path local) {
         log.info "Downloading Latch file ${path.toString()} to ${local.toString()}"
 
@@ -218,28 +243,9 @@ class LatchPath extends XPath {
                 long start = i * downloadPartSize
                 long end = Math.min(start + downloadPartSize - 1, fileSize - 1)
 
-                futures.add(this.fs.provider.downloadExecutor.submit {
-                    def req =  HttpRequest.newBuilder()
-                        .uri(url.toURI())
-                        .header("Range", "bytes=${start}-${end}")
-                        .GET()
-                        .build()
-
-                    def resp = client.stream(req)
-                    InputStream inputStream = resp.body()
-
-                    try {
-                        long bytesWritten = 0
-                        byte[] buffer = new byte[downloadChunkSize]
-                        int bytesRead
-                        while ((bytesRead = inputStream.read(buffer)) != -1) {
-                            ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, 0, bytesRead)
-                            bytesWritten += outputStream.write(byteBuffer, start + bytesWritten)
-                        }
-                    } finally {
-                        inputStream.close()
-                    }
-                })
+                futures << this.fs.provider.downloadExecutor.submit {
+                    downloadPart(outputStream, client, url, start, end)
+                }
             }
 
             futures.each { it.get() }
