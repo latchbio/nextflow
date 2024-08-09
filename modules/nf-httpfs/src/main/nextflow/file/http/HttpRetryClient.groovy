@@ -27,7 +27,6 @@ class HttpRetryClient {
 
             error = null
             try {
-                client.send(request, HttpResponse.BodyHandlers.ofInputStream())
                 response = client.send(request, stream ? HttpResponse.BodyHandlers.ofInputStream() : HttpResponse.BodyHandlers.ofString())
             } catch (IOException e) {
                 error = e
