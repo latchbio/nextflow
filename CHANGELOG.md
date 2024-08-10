@@ -1,5 +1,10 @@
 # Latch SDK Changelog
 
+## 1.1.7 - 2024-08-09
+
+### Added
+* Parallel downloads for latch paths
+
 ## 1.1.6 - 2024-07-26
 
 ### Added

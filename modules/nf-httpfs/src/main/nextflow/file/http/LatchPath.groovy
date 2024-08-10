@@ -3,6 +3,7 @@ package nextflow.file.http
 import java.net.http.HttpRequest
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.nio.file.StandardOpenOption
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
@@ -16,10 +17,14 @@ import groovy.json.JsonGenerator
 import groovy.json.JsonSlurper
 import groovy.util.logging.Slf4j
 
+import java.util.concurrent.Future
+
 @Slf4j
 class LatchPath extends XPath {
     LatchFileSystem fs
     Path path
+
+    private static HttpRetryClient client = new HttpRetryClient()
 
     private static String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
     private static String host = "https://nucleus.${cluster}"
@@ -160,9 +165,12 @@ class LatchPath extends XPath {
         return true
     }
 
-    private final long defaultChunkSize = 5 * 1024 * 1024
-    private final long max_parts = 10000
-    private final long max_upload_size = 5497558138880 // 5 * 1024 * 1024 * 1024 * 1024, cant put this though bc groovy is quirky and integer overflows
+    private final long uploadChunkSize = 5 * 1024 * 1024
+    private final long maxParts = 10000
+    private final long maxUploadSize = 5497558138880 // 5 * 1024 * 1024 * 1024 * 1024, cant put this though bc groovy is quirky and integer overflows
+
+    private final long downloadPartSize = 100 * 1024 * 1024
+    private final long downloadChunkSize = 1 * 1024 * 1024
 
     class CompletedPart {
         long PartNumber
@@ -171,6 +179,80 @@ class LatchPath extends XPath {
         CompletedPart(long PartNumber, String ETag) {
             this.PartNumber = PartNumber
             this.ETag = ETag
+        }
+    }
+
+    private void downloadPart(FileChannel outputStream, URL url, long start, long end) {
+        def req =  HttpRequest.newBuilder()
+            .uri(url.toURI())
+            .header("Range", "bytes=${start}-${end}")
+            .GET()
+            .build()
+
+        def resp = client.stream(req)
+        InputStream inputStream = resp.body()
+
+        try {
+            long bytesWritten = 0
+            byte[] buffer = new byte[downloadChunkSize]
+            int bytesRead
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, 0, bytesRead)
+                bytesWritten += outputStream.write(byteBuffer, start + bytesWritten)
+            }
+        } finally {
+            inputStream.close()
+        }
+    }
+
+    void download(Path local) {
+        def url = getSignedURL()
+
+        def request =  HttpRequest.newBuilder()
+            .uri(url.toURI())
+            .header("Range", "bytes=0-0")
+            .GET()
+            .build()
+
+        def response = client.send(request)
+        if (![200, 206].contains(response.statusCode()))
+            throw new Exception("Failed to get file size for ${path.toUriString()}: ${response.body()}")
+
+        def contentRange = response.headers().firstValue('Content-Range')
+
+        def byteRangePrefix = "bytes 0-0/"
+        if (contentRange.empty || !contentRange.get().startsWith(byteRangePrefix))
+            throw new Exception("Failed to get file size: Content-Range invalid ${contentRange.get()}")
+
+        long fileSize = Long.parseLong(contentRange.get().substring(byteRangePrefix.length()))
+        long partSize = downloadPartSize
+
+        long numParts = fileSize.intdiv(partSize)
+        if (fileSize % partSize != 0) {
+            numParts = numParts + 1
+        }
+
+        if (local.exists())
+            Files.delete(local)
+
+        FileChannel outputStream = FileChannel.open(local, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+        outputStream.truncate(fileSize)
+
+        try {
+            List<Future> futures = []
+
+            for (long i = 0; i < numParts; i++) {
+                long start = i * downloadPartSize
+                long end = Math.min(start + downloadPartSize - 1, fileSize - 1)
+
+                futures << this.fs.provider.downloadExecutor.submit {
+                    downloadPart(outputStream, url, start, end)
+                }
+            }
+
+            futures.each { it.get() }
+        } finally {
+            outputStream.close()
         }
     }
 
@@ -184,22 +266,22 @@ class LatchPath extends XPath {
         }
 
         def size = local.size()
-        if (size > max_upload_size) {
+        if (size > maxUploadSize) {
             double size_tib = (size as double) / (1024 * 1024 * 1024 * 1024)
             throw new Exception("File $local is too large to upload ($size_tib TiB, maximum upload size is 5 TiB)")
         }
 
         def mimeType = Files.probeContentType(local) ?: "application/octet-stream"
 
-        long chunkSize = defaultChunkSize
+        long chunkSize = uploadChunkSize
 
         long numParts = size.intdiv(chunkSize)
         if (size % chunkSize != 0) {
             numParts = numParts + 1
         }
 
-        if (numParts > max_parts) {
-            numParts = max_parts
+        if (numParts > maxParts) {
+            numParts = maxParts
             chunkSize = size.intdiv(numParts)
             if (size % numParts != 0) {
                 chunkSize = chunkSize + 1
@@ -209,7 +291,6 @@ class LatchPath extends XPath {
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString(), "part_count": numParts, "content_type": mimeType])
 
-        HttpRetryClient client = new HttpRetryClient()
         def request =  HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/start-upload"))
             .header("Content-Type", "application/json")
@@ -235,7 +316,7 @@ class LatchPath extends XPath {
         String uploadId = data.get("upload_id") as String
 
         def file = FileChannel.open(local)
-        CompletionService<CompletedPart> cs = new ExecutorCompletionService<CompletedPart>(this.fs.provider.executor)
+        CompletionService<CompletedPart> cs = new ExecutorCompletionService<CompletedPart>(this.fs.provider.uploadExecutor)
 
         long partIndex = 0
         List<CompletedPart> parts = new ArrayList<CompletedPart>(numParts as int)
@@ -316,7 +397,6 @@ class LatchPath extends XPath {
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUri().toString()])
 
-        HttpRetryClient client = new HttpRetryClient()
         def request =  HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/get-signed-url"))
             .header("Content-Type", "application/json")

@@ -38,10 +38,12 @@ class LatchFileSystemProvider extends XFileSystemProvider {
      */
     private final Map<String, LatchFileSystem> fileSystems = new HashMap<String, LatchFileSystem>()
 
-    static ExecutorService executor = Executors.newFixedThreadPool(Math.max(10, Runtime.getRuntime().availableProcessors() * 3))
+    static ExecutorService uploadExecutor = Executors.newFixedThreadPool(20)
+    static ExecutorService downloadExecutor = Executors.newFixedThreadPool(20)
 
     static void shutdown() {
-        executor.shutdown()
+        uploadExecutor.shutdown()
+        downloadExecutor.shutdown()
     }
 
     @Override
@@ -253,7 +255,13 @@ class LatchFileSystemProvider extends XFileSystemProvider {
             return
         }
 
-        throw new RuntimeException("Can only copy local file -> latch")
+        if (source.scheme == "latch" && target.scheme == "file") {
+            LatchPath lp = (LatchPath) source
+            lp.download(target)
+            return
+        }
+
+        throw new RuntimeException("Copy failed: either source or target must be Latch path")
     }
 
     @Override
