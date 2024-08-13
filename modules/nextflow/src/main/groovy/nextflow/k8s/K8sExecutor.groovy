@@ -86,7 +86,7 @@ class K8sExecutor extends Executor {
      */
     @Override
     protected TaskMonitor createTaskMonitor() {
-        TaskPollingMonitor.create(session, name, 100, Duration.of('5 sec'))
+        TaskPollingMonitor.create(session, name, 100, Duration.of('15 sec'))
     }
 
     /**
