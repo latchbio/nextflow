@@ -107,51 +107,102 @@ class DispatcherClient {
     }
 
     int createTaskExecution(int taskId, int attemptIdx, String status = null) {
-        def resp = requestWithRetry(
-            'POST',
-            'create-task-execution',
+        Map res = client.execute("""
+            mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$status: String!) {
+                createNfTaskExecutionInfo(
+                    input: {
+                        nfTaskExecutionInfo: {
+                            taskId: \$taskId,
+                            attemptIdx: \$attemptIdx,
+                            status: \$status
+                            cpuLimitMillicores: 0,
+                            memoryLimitBytes: 0,
+                            ephemeralStorageLimitBytes: 0,
+                            gpuLimit: 0
+                        }
+                    }
+                ) {
+                    nfTaskExecutionInfo {
+                        id
+                    }
+                }
+            }
+            """,
             [
-                task_id: taskId,
-                attempt_idx: attemptIdx,
-                status: status
+                taskId: taskId,
+                attemptIdx: attemptIdx,
+                status: status == null ? 'UNDEFINED' : status,
             ]
-        )
+        )["createNfTaskExecutionInfo"] as Map
 
-        def data = (Map) new JsonSlurper().parseText(resp)
-        return (int) data.id
+        if (res == null)
+            throw new RuntimeException("failed to create remote task execution")
+
+        return ((res.nfTaskExecutionInfo as Map).id as String).toInteger()
     }
 
     void submitPod(int taskExecutionId, Map pod) {
-        def resp = requestWithRetry(
-            'POST',
-            'submit',
+        client.execute("""
+            mutation UpdateTaskExecution(\$taskExecutionId: BigInt!, \$podSpec: String!) {
+                updateNfTaskExecutionInfo(
+                    input: {
+                        id: \$taskExecutionId,
+                        patch: {
+                            status: 'QUEUED',
+                            podSpec: \$podSpec
+                        },
+                    }
+                ) {
+                    clientMutationId
+                }
+            }
+            """,
             [
-                task_execution_id: taskExecutionId,
-                pod: JsonOutput.toJson(pod),
+                taskExecutionId: taskExecutionId,
+                podSpec: JsonOutput.toJson(pod)
+            ]
+        )
+    }
+
+    void updateTaskStatus(int taskExecutionId, String status) {
+        client.execute("""
+            mutation UpdateTaskExecution(\$taskExecutionId: BigInt!, \$status: String!) {
+                updateNfTaskExecutionInfo(
+                    input: {
+                        id: \$taskExecutionId,
+                        patch: {
+                            status: \$status
+                        },
+                    }
+                ) {
+                    clientMutationId
+                }
+            }
+            """,
+            [
+                taskExecutionId: taskExecutionId,
+                status: status
             ]
         )
     }
 
     String getTaskStatus(int taskExecutionId) {
-        requestWithRetry(
-            'POST',
-            'status',
+        Map res = client.execute("""
+            query GetNfExecutionTaskStatus(\$taskExecutionId: BigInt!) {
+                nfTaskExecutionInfo(input: { id: \$taskExecutionId }) {
+                    id
+                    status
+                }
+            }
+            """,
             [
-                task_execution_id: taskExecutionId,
-                status: status,
+                taskExecutionId: taskExecutionId
             ]
-        )
-    }
+        )["nfTaskExecutionInfo"] as Map
 
-    void abortTask(int taskExecutionId) {
-        requestWithRetry(
-            'POST',
-            'status',
-            [
-                task_execution_id: taskExecutionId,
-                status: status,
-            ]
-        )
-    }
+        if (res == null)
+            throw new RuntimeException("failed to task execution status")
 
+        return res.status as String
+    }
 }
