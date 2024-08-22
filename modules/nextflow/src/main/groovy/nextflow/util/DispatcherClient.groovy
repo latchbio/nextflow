@@ -151,7 +151,7 @@ class DispatcherClient {
                     input: {
                         id: \$taskExecutionId,
                         patch: {
-                            status: "QUEUED",
+                            status: QUEUED,
                             podSpec: \$podSpec
                         },
                     }
@@ -192,7 +192,7 @@ class DispatcherClient {
     String getTaskStatus(int taskExecutionId) {
         Map res = client.execute("""
             query GetNfExecutionTaskStatus(\$taskExecutionId: BigInt!) {
-                nfTaskExecutionInfo(input: { id: \$taskExecutionId }) {
+                nfTaskExecutionInfo(id: \$taskExecutionId) {
                     id
                     status
                 }
