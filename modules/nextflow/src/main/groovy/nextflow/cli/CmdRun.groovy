@@ -422,48 +422,11 @@ class CmdRun extends CmdBase implements HubOptions {
         final ver = NF.dsl2 ? DSL2 : DSL1
         final repo = scriptFile.repository ?: scriptFile.source.toString()
         final head = preview ? "* PREVIEW * $scriptFile.repository" : "Launching `$repo`"
-        final revision = scriptFile.repository
-            ? scriptFile.revisionInfo.toString()
-            : scriptFile.getScriptId()?.substring(0,10)
-        printLaunchInfo(ver, repo, head, revision)
-    }
-
-    static void detectModuleBinaryFeature(ConfigMap config) {
-        final moduleBinaries = config.navigate('nextflow.enable.moduleBinaries', false)
-        if( moduleBinaries ) {
-            log.debug "Enabling module binaries"
-            NextflowMeta.instance.moduleBinaries(true)
-        }
-    }
-
-    static void detectStrictFeature(ConfigMap config, Map sysEnv) {
-        final defStrict = sysEnv.get('NXF_ENABLE_STRICT') ?: false
-        log
-        final strictMode = config.navigate('nextflow.enable.strict', defStrict)
-        if( strictMode ) {
-            log.debug "Enabling nextflow strict mode"
-            NextflowMeta.instance.strictMode(true)
-        }
-    }
-
-    protected void printLaunchInfo(String ver, String repo, String head, String revision) {
-        if( launcher.options.ansiLog ){
-            log.debug "${head} [$runName] DSL${ver} - revision: ${revision}"
-
-            def fmt = ansi()
-            fmt.a("Launching").fg(Color.MAGENTA).a(" `$repo` ").reset()
-            fmt.a(Attribute.INTENSITY_FAINT).a("[").reset()
-            fmt.bold().fg(Color.CYAN).a(runName).reset()
-            fmt.a(Attribute.INTENSITY_FAINT).a("]")
-            fmt.a(" DSL${ver} - ")
-            fmt.fg(Color.CYAN).a("revision: ").reset()
-            fmt.fg(Color.CYAN).a(revision).reset()
-            fmt.a("\n")
-            AnsiConsole.out().println(fmt.eraseLine())
-        }
-        else {
-            log.info "${head} [$runName] DSL${ver} - revision: ${revision}"
-        }
+        log.info "USING LATCH NEXTFLOW V2"
+        if( scriptFile.repository )
+            log.info "${head} [$runName] DSL${ver} - revision: ${scriptFile.revisionInfo}"
+        else
+            log.info "${head} [$runName] DSL${ver} - revision: ${scriptFile.getScriptId()?.substring(0,10)}"
     }
 
     static String detectDslMode(ConfigMap config, String scriptText, Map sysEnv) {
