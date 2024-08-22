@@ -11,6 +11,10 @@ class DispatcherClient {
     private GQLClient client = new GQLClient()
 
     int createProcessNode(String processName) {
+        String executionToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
+        if (executionToken == null)
+                throw new RuntimeException("unable to get execution token")
+
         Map res = client.execute("""
             mutation CreateNode(\$executionToken: String!, \$name: String!) {
                 createNfProcessNodeByExecutionToken(input: {argExecutionToken: \$executionToken, argName: \$name}) {
@@ -19,7 +23,6 @@ class DispatcherClient {
             }
             """,
             [
-                // TODO(rahul): inject nf execution info id into env variable and use that for creating process nodes
                 executionToken: executionToken,
                 name: processName,
             ]
@@ -108,17 +111,17 @@ class DispatcherClient {
 
     int createTaskExecution(int taskId, int attemptIdx, String status = null) {
         Map res = client.execute("""
-            mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$status: String!) {
+            mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$status: TaskExecutionStatus!) {
                 createNfTaskExecutionInfo(
                     input: {
                         nfTaskExecutionInfo: {
                             taskId: \$taskId,
                             attemptIdx: \$attemptIdx,
-                            status: \$status
-                            cpuLimitMillicores: 0,
-                            memoryLimitBytes: 0,
-                            ephemeralStorageLimitBytes: 0,
-                            gpuLimit: 0
+                            status: \$status,
+                            cpuLimitMillicores: "0",
+                            memoryLimitBytes: "0",
+                            ephemeralStorageLimitBytes: "0",
+                            gpuLimit: "0"
                         }
                     }
                 ) {
@@ -148,7 +151,7 @@ class DispatcherClient {
                     input: {
                         id: \$taskExecutionId,
                         patch: {
-                            status: 'QUEUED',
+                            status: "QUEUED",
                             podSpec: \$podSpec
                         },
                     }
@@ -166,7 +169,7 @@ class DispatcherClient {
 
     void updateTaskStatus(int taskExecutionId, String status) {
         client.execute("""
-            mutation UpdateTaskExecution(\$taskExecutionId: BigInt!, \$status: String!) {
+            mutation UpdateTaskExecution(\$taskExecutionId: BigInt!, \$status: TaskExecutionStatus!) {
                 updateNfTaskExecutionInfo(
                     input: {
                         id: \$taskExecutionId,
