@@ -372,6 +372,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
      */
     @Override
     void kill() {
-        dispatcherClient.updateTaskStatus(taskExecutionId, 'ABORTED')
+        dispatcherClient.updateTaskStatus(taskExecutionId, 'ABORTING')
     }
 }
