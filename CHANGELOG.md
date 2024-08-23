@@ -1,5 +1,10 @@
 # Latch SDK Changelog
 
+## 2.0.0 - 2024-08-23
+
+### Changed
+* Use v2 Nextflow scheduler
+
 ## 1.1.7 - 2024-08-09
 
 ### Added
