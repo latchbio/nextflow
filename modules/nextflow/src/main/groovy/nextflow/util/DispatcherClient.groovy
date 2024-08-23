@@ -18,7 +18,7 @@ class DispatcherClient {
         Map res = client.execute("""
             mutation CreateNode(\$executionToken: String!, \$name: String!) {
                 createNfProcessNodeByExecutionToken(input: {argExecutionToken: \$executionToken, argName: \$name}) {
-                    bigInt
+                    nodeId
                 }
             }
             """,
@@ -31,7 +31,7 @@ class DispatcherClient {
         if (res == null)
             throw new RuntimeException("failed to create remote process node")
 
-        return (res.bigInt as String).toInteger()
+        return (res.nodeId as String).toInteger()
     }
 
     void closeProcessNode(int nodeId, int numTasks) {
