@@ -189,12 +189,13 @@ class DispatcherClient {
         )
     }
 
-    String getTaskStatus(int taskExecutionId) {
+    Map getTaskStatus(int taskExecutionId) {
         Map res = client.execute("""
             query GetNfExecutionTaskStatus(\$taskExecutionId: BigInt!) {
                 nfTaskExecutionInfo(id: \$taskExecutionId) {
                     id
                     status
+                    systemError
                 }
             }
             """,
@@ -206,6 +207,6 @@ class DispatcherClient {
         if (res == null)
             throw new RuntimeException("failed to task execution status")
 
-        return res.status as String
+        return res
     }
 }
