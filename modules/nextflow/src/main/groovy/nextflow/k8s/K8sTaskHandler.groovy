@@ -16,6 +16,8 @@
 
 package nextflow.k8s
 
+import nextflow.k8s.client.K8sResponseException
+import nextflow.k8s.client.PodUnschedulableException
 import nextflow.util.DispatcherClient
 
 import java.nio.file.Path
@@ -328,13 +330,19 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     @Override
     boolean checkIfCompleted() {
-        def s = dispatcherClient.getTaskStatus(taskExecutionId)
+        Map s = dispatcherClient.getTaskStatus(taskExecutionId)
 
-        if( ['SUCCEEDED', 'FAILED'].contains(s) ) {
-            // finalize the task
-            task.exitStatus = readExitFile()
-            task.stdout = outputFile
-            task.stderr = errorFile
+        if( ['SUCCEEDED', 'FAILED'].contains(s.status) ) {
+
+            if (s.status == 'FAILED' && s.systemError != null) {
+                task.error = new PodUnschedulableException((String) s.systemError, new Exception("failed to launch pod"))
+                task.aborted = true
+            } else {
+                // finalize the task
+                task.exitStatus = readExitFile()
+                task.stdout = outputFile
+                task.stderr = errorFile
+            }
 
             status = TaskStatus.COMPLETED
 
