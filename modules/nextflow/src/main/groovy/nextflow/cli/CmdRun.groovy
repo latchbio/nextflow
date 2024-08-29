@@ -398,6 +398,7 @@ class CmdRun extends CmdBase implements HubOptions {
         final ver = NF.dsl2 ? DSL2 : DSL1
         final repo = scriptFile.repository ?: scriptFile.source
         final head = preview ? "* PREVIEW * $scriptFile.repository" : "Launching `$repo`"
+        log.info "USING LATCH NEXTFLOW V2"
         if( scriptFile.repository )
             log.info "${head} [$runName] DSL${ver} - revision: ${scriptFile.revisionInfo}"
         else

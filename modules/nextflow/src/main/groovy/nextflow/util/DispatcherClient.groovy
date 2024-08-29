@@ -3,178 +3,210 @@ package nextflow.util
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import groovy.util.logging.Slf4j
+import nextflow.file.http.GQLClient
 
 @Slf4j
 class DispatcherClient {
-    final private String DISPATCH_DOMAIN = 'nf-dispatcher-service.flyte.svc.cluster.local'
 
-    private String authToken
-
-    private Boolean debug
-
-    DispatcherClient() {
-        this.debug = System.getenv("LATCH_NF_DEBUG") != null
-    }
-
-    private String requestWithRetry(String method, String path, Map body, int retries = 3) {
-        if (authToken == null) {
-            def token = System.getenv('FLYTE_INTERNAL_EXECUTION_ID')
-            if (token == null)
-                throw new RuntimeException("failed to get latch execution token")
-            authToken = token
-        }
-
-        def statusCode = -1
-        def error = ""
-        for (int i = 0; i < retries; i++) {
-            if (i != 0) {
-                log.warn "${path} request failed ${i}/${retries}, retrying: status_code=${statusCode} error=${error}"
-                sleep(5000 * i)
-            }
-
-            def url = new URL("http://${DISPATCH_DOMAIN}/${path}")
-            def conn = (HttpURLConnection) url.openConnection()
-            conn.setRequestMethod(method)
-            conn.setRequestProperty('Content-Type', 'application/json')
-            conn.setRequestProperty('Authorization', "Latch-Execution-Token ${authToken}")
-
-            try {
-                conn.setDoOutput(true)
-                conn.outputStream.withWriter { writer ->
-                    writer << JsonOutput.toJson(body)
-                }
-
-                statusCode = conn.getResponseCode()
-                if (conn.errorStream != null) {
-                    def resp = (Map) new JsonSlurper().parseText(conn.errorStream.getText())
-                    error = resp.error
-                }
-
-                if (statusCode != 200) {
-                    if (statusCode >= 500)
-                        continue
-                    break
-                }
-
-                return conn.getInputStream().getText()
-            } catch (ConnectException  e) {
-                error = e.toString()
-            } finally {
-                conn.disconnect()
-            }
-        }
-
-        throw new RuntimeException("${path} request failed: status_code=${statusCode} error=${error}")
-    }
+    private GQLClient client = new GQLClient()
 
     int createProcessNode(String processName) {
-        if (debug)
-            return 0
+        String executionToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
+        if (executionToken == null)
+                throw new RuntimeException("unable to get execution token")
 
-        def resp = requestWithRetry(
-            'POST',
-            'create-process',
+        Map res = client.execute("""
+            mutation CreateNode(\$executionToken: String!, \$name: String!) {
+                createNfProcessNodeByExecutionToken(input: {argExecutionToken: \$executionToken, argName: \$name}) {
+                    nodeId
+                }
+            }
+            """,
             [
-                name: processName
+                executionToken: executionToken,
+                name: processName,
             ]
-        )
+        )["createNfProcessNodeByExecutionToken"] as Map
 
-        def data = (Map) new JsonSlurper().parseText(resp)
-        return (int) data.id
+        if (res == null)
+            throw new RuntimeException("failed to create remote process node")
+
+        return (res.nodeId as String).toInteger()
     }
 
     void closeProcessNode(int nodeId, int numTasks) {
-        if (debug)
-            return
-
-        requestWithRetry(
-            'POST',
-            'close-process',
+        client.execute("""
+            mutation CreateTaskInfo(\$nodeId: BigInt!, \$numTasks: BigInt!) {
+                updateNfProcessNode(
+                    input: {
+                        id: \$nodeId,
+                        patch: {
+                            numTasks: \$numTasks
+                        }
+                    }
+                ) {
+                    clientMutationId
+                }
+            }
+            """,
             [
-                id: nodeId,
-                num_tasks: numTasks
+                nodeId: nodeId,
+                numTasks: numTasks
             ]
         )
     }
 
     void createProcessEdge(int from, int to) {
-        if (debug)
-            return
-
-        requestWithRetry(
-            'POST',
-            'create-edge',
+        client.execute("""
+            mutation CreateEdge(\$startNode: BigInt!, \$endNode: BigInt!) {
+                createNfProcessEdge(
+                    input: {
+                        nfProcessEdge: {
+                            startNode: \$startNode,
+                            endNode: \$endNode
+                        }
+                    }
+                ) {
+                    clientMutationId
+                }
+            }
+            """,
             [
-                start_node_id: from,
-                end_node_id: to
+                startNode: from,
+                endNode: to,
             ]
         )
     }
 
     int createProcessTask(int processNodeId, int index, String tag) {
-        if (debug)
-            return 0
-
-        def resp = requestWithRetry(
-            'POST',
-            'create-task',
+        Map res = client.execute("""
+            mutation CreateTaskInfo(\$processNodeId: BigInt!, \$index: BigInt!, \$tag: String) {
+                createNfTaskInfo(
+                    input: {
+                        nfTaskInfo: {
+                            processNodeId: \$processNodeId,
+                            index: \$index,
+                            tag: \$tag
+                        }
+                    }
+                ) {
+                    nfTaskInfo {
+                        id
+                    }
+                }
+            }
+            """,
             [
-                process_node_id: processNodeId,
+                processNodeId: processNodeId,
                 index: index,
-                tag: tag
+                tag: tag,
             ]
-        )
+        )["createNfTaskInfo"] as Map
 
-        def data = (Map) new JsonSlurper().parseText(resp)
-        return (int) data.id
+        if (res == null)
+            throw new RuntimeException("failed to create remote process task")
+
+        return ((res.nfTaskInfo as Map).id as String).toInteger()
     }
 
     int createTaskExecution(int taskId, int attemptIdx, String status = null) {
-        if (debug)
-            return 0
-
-        def resp = requestWithRetry(
-            'POST',
-            'create-task-execution',
+        Map res = client.execute("""
+            mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$status: TaskExecutionStatus!) {
+                createNfTaskExecutionInfo(
+                    input: {
+                        nfTaskExecutionInfo: {
+                            taskId: \$taskId,
+                            attemptIdx: \$attemptIdx,
+                            status: \$status,
+                            cpuLimitMillicores: "0",
+                            memoryLimitBytes: "0",
+                            ephemeralStorageLimitBytes: "0",
+                            gpuLimit: "0"
+                        }
+                    }
+                ) {
+                    nfTaskExecutionInfo {
+                        id
+                    }
+                }
+            }
+            """,
             [
-                task_id: taskId,
-                attempt_idx: attemptIdx,
-                status: status
+                taskId: taskId,
+                attemptIdx: attemptIdx,
+                status: status == null ? 'UNDEFINED' : status,
             ]
-        )
+        )["createNfTaskExecutionInfo"] as Map
 
-        def data = (Map) new JsonSlurper().parseText(resp)
-        return (int) data.id
+        if (res == null)
+            throw new RuntimeException("failed to create remote task execution")
+
+        return ((res.nfTaskExecutionInfo as Map).id as String).toInteger()
     }
 
-    String dispatchPod(int taskExecutionId, Map pod) {
-        if (debug)
-            return ""
-
-        def resp = requestWithRetry(
-            'POST',
-            'submit',
+    void submitPod(int taskExecutionId, Map pod) {
+        client.execute("""
+            mutation UpdateTaskExecution(\$taskExecutionId: BigInt!, \$podSpec: String!) {
+                updateNfTaskExecutionInfo(
+                    input: {
+                        id: \$taskExecutionId,
+                        patch: {
+                            status: QUEUED,
+                            podSpec: \$podSpec
+                        },
+                    }
+                ) {
+                    clientMutationId
+                }
+            }
+            """,
             [
-                task_execution_id: taskExecutionId,
-                pod: JsonOutput.toJson(pod),
+                taskExecutionId: taskExecutionId,
+                podSpec: JsonOutput.toJson(pod)
             ]
         )
-
-        def data = (Map) new JsonSlurper().parseText(resp)
-        return data.name
     }
 
     void updateTaskStatus(int taskExecutionId, String status) {
-        if (debug)
-            return
-
-        requestWithRetry(
-            'POST',
-            'status',
+        client.execute("""
+            mutation UpdateTaskExecution(\$taskExecutionId: BigInt!, \$status: TaskExecutionStatus!) {
+                updateNfTaskExecutionInfo(
+                    input: {
+                        id: \$taskExecutionId,
+                        patch: {
+                            status: \$status
+                        },
+                    }
+                ) {
+                    clientMutationId
+                }
+            }
+            """,
             [
-                task_execution_id: taskExecutionId,
-                status: status,
+                taskExecutionId: taskExecutionId,
+                status: status
             ]
         )
+    }
+
+    Map getTaskStatus(int taskExecutionId) {
+        Map res = client.execute("""
+            query GetNfExecutionTaskStatus(\$taskExecutionId: BigInt!) {
+                nfTaskExecutionInfo(id: \$taskExecutionId) {
+                    id
+                    status
+                    systemError
+                }
+            }
+            """,
+            [
+                taskExecutionId: taskExecutionId
+            ]
+        )["nfTaskExecutionInfo"] as Map
+
+        if (res == null)
+            throw new RuntimeException("failed to task execution status")
+
+        return res
     }
 }

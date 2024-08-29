@@ -16,15 +16,11 @@
 
 package nextflow.k8s
 
-import java.nio.file.Paths
-
-import nextflow.exception.K8sTimeoutException
+import nextflow.k8s.client.K8sResponseException
+import nextflow.k8s.client.PodUnschedulableException
 import nextflow.util.DispatcherClient
 
-import java.nio.file.Files
 import java.nio.file.Path
-import java.time.Instant
-import java.time.format.DateTimeFormatter
 
 import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
@@ -32,8 +28,6 @@ import groovy.util.logging.Slf4j
 
 import nextflow.SysEnv
 import nextflow.container.DockerBuilder
-import nextflow.exception.NodeTerminationException
-import nextflow.k8s.client.PodUnschedulableException
 import nextflow.exception.ProcessSubmitException
 import nextflow.executor.BashWrapperBuilder
 import nextflow.fusion.FusionAwareTask
@@ -45,7 +39,6 @@ import nextflow.k8s.model.ResourceType
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskRun
 import nextflow.processor.TaskStatus
-import nextflow.trace.TraceRecord
 import nextflow.util.Escape
 import nextflow.util.PathTrie
 /**
@@ -76,8 +69,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     private DispatcherClient dispatcherClient
 
-    private String podName
-
     private BashWrapperBuilder builder
 
     private Path outputFile
@@ -86,13 +77,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     private Path exitFile
 
-    private Map state
-
-    private long timestamp
-
     private K8sExecutor executor
-
-    private String runsOnNode = null
 
     K8sTaskHandler( TaskRun task, K8sExecutor executor ) {
         super(task)
@@ -116,10 +101,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
      */
     protected String getRunName() {
         executor.session.runName
-    }
-
-    protected String getPodName() {
-        return podName
     }
 
     protected K8sConfig getK8sConfig() { executor.getK8sConfig() }
@@ -327,117 +308,34 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         builder.build()
 
         final req = newSubmitRequest(task)
-        this.podName = this.dispatcherClient.dispatchPod(taskExecutionId, req)
+        this.dispatcherClient.submitPod(taskExecutionId, req)
 
         this.status = TaskStatus.SUBMITTED
     }
 
-    @CompileDynamic
-    protected Path yamlDebugPath() {
-        boolean debug = k8sConfig.getDebug().getYaml()
-        return debug ? task.workDir.resolve('.command.yaml') : null
-    }
-
-    /**
-     * @return Retrieve the submitted pod state
-     */
-    protected Map getState() {
-        final now = System.currentTimeMillis()
-        try {
-            final delta =  now - timestamp;
-            if( !state || delta >= 1_000) {
-                def newState = useJobResource()
-                        ? client.jobState(podName)
-                        : client.podState(podName)
-
-                if( newState ) {
-                   log.trace "[K8s] Get ${resourceType.lower()}=$podName state=$newState"
-                   state = newState
-                   timestamp = now
-                }
-            }
-            return state
-        } 
-        catch (NodeTerminationException | K8sTimeoutException | PodUnschedulableException e) {
-            // create a synthetic `state` object adding an extra `nodeTermination`
-            // attribute to return the error to the caller method
-            final instant = Instant.now()
-            final result = new HashMap(10)
-            result.terminated = [startedAt:instant.toString(), finishedAt:instant.toString()]
-            result.nodeTermination = e
-            timestamp = now
-            state = result
-            return state
-        }
-    }
-
     @Override
     boolean checkIfRunning() {
-        if( !podName ) throw new IllegalStateException("Missing K8s ${resourceType.lower()} name -- cannot check if running")
         if(isSubmitted()) {
-            def state = getState()
-            // include `terminated` state to allow the handler status to progress
-            if (state && (state.running != null || state.terminated)) {
-                if (status != TaskStatus.RUNNING)
-                    dispatcherClient.updateTaskStatus(taskExecutionId, 'RUNNING')
+            def s = dispatcherClient.getTaskStatus(taskExecutionId)
+
+            // include terminated states to allow the handler status to progress
+            if (['RUNNING', 'SUCCEEDED', 'FAILED'].contains(s)) {
                 status = TaskStatus.RUNNING
-                determineNode()
                 return true
             }
         }
+
         return false
-    }
-
-    long getEpochMilli(String timeString) {
-        final time = DateTimeFormatter.ISO_INSTANT.parse(timeString)
-        return Instant.from(time).toEpochMilli()
-    }
-
-    /**
-     * Update task start and end times based on pod timestamps.
-     * We update timestamps because it's possible for a task to run  so quickly
-     * (less than 1 second) that it skips right over the RUNNING status.
-     * If this happens, the startTimeMillis never gets set and remains equal to 0.
-     * To make sure startTimeMillis is non-zero we update it with the pod start time.
-     * We update completeTimeMillis from the same pod info to be consistent.
-     */
-    void updateTimestamps(Map terminated) {
-        try {
-            startTimeMillis = getEpochMilli(terminated.startedAt as String)
-            completeTimeMillis = getEpochMilli(terminated.finishedAt as String)
-        } catch( Exception e ) {
-            log.debug "Failed updating timestamps '${terminated.toString()}'", e
-            // Only update if startTimeMillis hasn't already been set.
-            // If startTimeMillis _has_ been set, then both startTimeMillis
-            // and completeTimeMillis will have been set with the normal
-            // TaskHandler mechanism, so there's no need to reset them here.
-            if (!startTimeMillis) {
-                startTimeMillis = System.currentTimeMillis()
-                completeTimeMillis = System.currentTimeMillis()
-            }
-        }
     }
 
     @Override
     boolean checkIfCompleted() {
-        if( !podName ) throw new IllegalStateException("Missing K8s ${resourceType.lower()} name - cannot check if complete")
-        def state = getState()
-        if( state && state.terminated ) {
-            if ( state.nodeTermination instanceof NodeTerminationException ) {
-                // rahul: node termination exception could mean that the
-                // pod completed successfully but was deleted before processing
-                if (readExitFile() != Integer.MAX_VALUE)
-                    state.nodeTermination = null
-            }
+        Map s = dispatcherClient.getTaskStatus(taskExecutionId)
 
-            if (
-                state.nodeTermination instanceof NodeTerminationException ||
-                state.nodeTermination instanceof K8sTimeoutException ||
-                state.nodeTermination instanceof PodUnschedulableException
-            ) {
-                // keep track of the node termination error
-                task.error = (Throwable) state.nodeTermination
-                // mark the task as ABORTED since the failure is caused by a node failure
+        if( ['SUCCEEDED', 'FAILED'].contains(s.status) ) {
+
+            if (s.status == 'FAILED' && s.systemError != null) {
+                task.error = new PodUnschedulableException((String) s.systemError, new Exception("failed to launch pod"))
                 task.aborted = true
             } else {
                 // finalize the task
@@ -447,39 +345,11 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             }
 
             status = TaskStatus.COMPLETED
-            dispatcherClient.updateTaskStatus(taskExecutionId, task.isSuccess() ? 'SUCCEEDED' : 'FAILED')
-
-            savePodLogOnError(task)
-            deletePodIfSuccessful(task)
-            updateTimestamps(state.terminated as Map)
-            determineNode()
 
             return true
         }
 
         return false
-    }
-
-    protected void savePodLogOnError(TaskRun task) {
-        if( task.isSuccess() )
-            return
-
-        if( errorFile && !errorFile.empty() )
-            return
-
-        final session = executor.getSession()
-        if( session.isAborted() || session.isCancelled() || session.isTerminated() )
-            return
-
-        try {
-            final stream = useJobResource()
-                    ? client.jobLog(podName)
-                    : client.podLog(podName)
-            Files.copy(stream, task.workDir.resolve(TaskRun.CMD_LOG))
-        }
-        catch( Exception e ) {
-            log.warn "Failed to copy log for ${resourceType.lower()} $podName", e
-        }
     }
 
     protected int readExitFile() {
@@ -497,62 +367,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
      */
     @Override
     void kill() {
-        if( cleanupDisabled() )
-            return
-        
-        if( podName ) {
-            log.trace "[K8s] deleting ${resourceType.lower()} name=$podName"
-            if ( useJobResource() )
-                client.jobDelete(podName)
-            else
-                client.podDelete(podName)
-        }
-        else {
-            log.debug "[K8s] Invalid delete action"
-        }
+        dispatcherClient.updateTaskStatus(taskExecutionId, 'ABORTING')
     }
-
-    protected boolean cleanupDisabled() {
-        !k8sConfig.getCleanup()
-    }
-
-    protected void deletePodIfSuccessful(TaskRun task) {
-        if( !podName )
-            return
-
-        if( cleanupDisabled() )
-            return
-
-        if( !task.isSuccess() ) {
-            // do not delete successfully executed pods for debugging purpose
-            return
-        }
-
-        try {
-            if ( useJobResource() )
-                client.jobDelete(podName)
-            else
-                client.podDelete(podName)
-        }
-        catch( Exception e ) {
-            log.warn "Unable to cleanup ${resourceType.lower()}: $podName -- see the log file for details", e
-        }
-    }
-
-    private void determineNode(){
-        try {
-            if ( k8sConfig.fetchNodeName() && !runsOnNode )
-                runsOnNode = client.getNodeOfPod( podName )
-        } catch ( Exception e ){
-            log.warn ("Unable to get the node name of pod $podName -- see the log file for details", e)
-        }
-    }
-
-    TraceRecord getTraceRecord() {
-        final result = super.getTraceRecord()
-        result.put('native_id', podName)
-        result.put( 'hostname', runsOnNode )
-        return result
-    }
-
 }
