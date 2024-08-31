@@ -1,5 +1,10 @@
 # Latch SDK Changelog
 
+## 1.1.8 - 2024-08-31
+
+### Fixed
+* Fix status handling for NativeTaskExecutor
+
 ## 1.1.7 - 2024-08-09
 
 ### Added
