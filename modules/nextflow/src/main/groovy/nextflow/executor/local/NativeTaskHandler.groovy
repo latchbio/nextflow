@@ -99,11 +99,12 @@ class NativeTaskHandler extends TaskHandler {
     boolean checkIfCompleted() {
         if( isRunning() && result.isDone() ) {
             status = TaskStatus.COMPLETED
-            dispatcherClient.updateTaskStatus(taskExecutionId, task.isSuccess() ? 'SUCCEEDED' : 'FAILED')
             if( result.get() instanceof Throwable ) {
+                dispatcherClient.updateTaskStatus(taskExecutionId, 'FAILED')
                 task.error = (Throwable)result.get()
             }
             else {
+                dispatcherClient.updateTaskStatus(taskExecutionId, 'SUCCEEDED')
                 task.stdout = result.get()
             }
             return true
