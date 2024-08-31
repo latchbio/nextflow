@@ -1,5 +1,11 @@
 # Latch SDK Changelog
 
+## 2.0.1 - 2024-08-31
+** NOT YET RELEASED **
+
+### Fixed
+* Fix status for native nextflow processes
+
 ## 2.0.0 - 2024-08-23
 
 ### Changed
