@@ -647,41 +647,103 @@ class PodSpecBuilder {
         return res
     }
 
+
     @PackageScope
-    String getAcceleratorType(AcceleratorResource accelerator) {
+    void validateAccelerator(AcceleratorResource accelerator) {
+        // gpu-small: nvidia-t4 (1)
+        // gpu-large: nvidia-a10g (1)
+        // v100-x1: nvidia-v100 (1)
+        // v100-x4: nvidia-v100 (4)
+        // v100-x8: nvidia-v100 (8)
 
-        def type = accelerator.type ?: 'nvidia.com'
+        if (accelerator.type == null) {
+            accelerator.setProperty("type", "nvidia-t4")
+            log.info("No GPU type specified - defaulting to \"nvidia-t4\"")
+        }
 
-        if ( type.contains('/') )
-            // Assume the user has fully specified the resource type.
-            return type
+        if (
+            (accelerator.type == "nvidia-t4" && accelerator.limit == 1)
+            || (accelerator.type == "nvidia-a10g" && accelerator.limit == 1)
+            || (accelerator.type == "nvidia-v100" && accelerator.limit in [1, 4, 8])
+        ) {
+           return
+        }
 
-        // Assume we're using GPU and update as necessary.
-        if( !type.contains('.') ) type += '.com'
-        type += '/gpu'
+        throw new VerifyError("""\
+Invalid GPU configuration. Latch only allows the following combinations:
+    - accelerator 1, type: "nvidia-t4"
+    - accelerator 1, type: "nvidia-a10g"
+    - accelerator 1, type: "nvidia-v100"
+    - accelerator 4, type: "nvidia-v100"
+    - accelerator 8, type: "nvidia-v100"
 
-        return type
+You provided ${accelerator.type}, ${accelerator.limit}
+        """)
+
     }
-
 
     @PackageScope
     Map addAcceleratorResources(AcceleratorResource accelerator, Map res) {
-
         if( res == null )
             res = new LinkedHashMap(2)
 
-        def type = getAcceleratorType(accelerator)
+        final requests = res.get("requests") as Map ?: new LinkedHashMap<>(2)
+        final limits = res.get("limits") as Map ?: new LinkedHashMap<>(2)
 
-        if( accelerator.request ) {
-            final req = res.requests as Map ?: new LinkedHashMap<>(2)
-            req.put(type, accelerator.request)
-            res.requests = req
+        validateAccelerator(accelerator)
+        def type = accelerator.type
+
+        if (type != null) {
+            log.info "GPU Accelerator selected - CPU / RAM settings will be overwritten"
+            limits.put("gpu-type", type)
         }
-        if( accelerator.limit ) {
-            final lim = res.limits as Map ?: new LinkedHashMap<>(2)
-            lim.put(type, accelerator.limit)
-            res.limits = lim
+
+        if (type == "nvidia-t4") {
+            requests.put("nvidia.com/gpu", 1)
+            requests.put("cpu", 7)
+            requests.put("memory", "30Gi")
+
+            limits.put("nvidia.com/gpu", 1)
+            limits.put("cpu", 7)
+            limits.put("memory", "30Gi")
+        } else if (type == "nvidia-a10g") {
+            requests.put("nvidia.com/gpu", 1)
+            requests.put("cpu", 31)
+            requests.put("memory", "120Gi")
+
+            limits.put("nvidia.com/gpu", 1)
+            limits.put("cpu", 64)
+            limits.put("memory", "256Gi")
+        } else if (type == "nvidia-v100") {
+            if (accelerator.limit == 1) {
+                requests.put("nvidia.com/gpu", 1)
+                requests.put("cpu", 7)
+                requests.put("memory", "48Gi")
+
+                limits.put("nvidia.com/gpu", 1)
+                limits.put("cpu", 7)
+                limits.put("memory", "48Gi")
+            } else if (accelerator.limit == 4) {
+                requests.put("nvidia.com/gpu", 4)
+                requests.put("cpu", 30)
+                requests.put("memory", "230Gi")
+
+                limits.put("nvidia.com/gpu", 4)
+                limits.put("cpu", 30)
+                limits.put("memory", "230Gi")
+            } else if (accelerator.limit == 8) {
+                requests.put("nvidia.com/gpu", 8)
+                requests.put("cpu", 62)
+                requests.put("memory", "400Gi")
+
+                limits.put("nvidia.com/gpu", 8)
+                limits.put("cpu", 62)
+                limits.put("memory", "400Gi")
+            }
         }
+
+        res.put("requests", requests)
+        res.put("limits", limits)
 
         return res
     }
