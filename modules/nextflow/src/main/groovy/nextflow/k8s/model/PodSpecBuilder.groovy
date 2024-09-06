@@ -656,11 +656,6 @@ class PodSpecBuilder {
         // v100-x4: nvidia-v100 (4)
         // v100-x8: nvidia-v100 (8)
 
-        if (accelerator.type == null) {
-            accelerator.setProperty("type", "nvidia-t4")
-            log.info("No GPU type specified - defaulting to \"nvidia-t4\"")
-        }
-
         if (
             (accelerator.type == "nvidia-t4" && accelerator.limit == 1)
             || (accelerator.type == "nvidia-a10g" && accelerator.limit == 1)
@@ -690,8 +685,16 @@ You provided ${accelerator.type}, ${accelerator.limit}
         final requests = res.get("requests") as Map ?: new LinkedHashMap<>(2)
         final limits = res.get("limits") as Map ?: new LinkedHashMap<>(2)
 
-        validateAccelerator(accelerator)
+        if (accelerator.limit == 0) return;
+
+        if (accelerator.type == null) {
+            accelerator.setProperty("type", "nvidia-t4")
+            log.info("No GPU type specified - defaulting to \"nvidia-t4\"")
+        }
+
         def type = accelerator.type
+
+        validateAccelerator(accelerator)
 
         if (type != null) {
             log.info "GPU Accelerator selected - CPU / RAM settings will be overwritten"
