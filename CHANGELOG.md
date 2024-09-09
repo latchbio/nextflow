@@ -1,5 +1,10 @@
 # Latch SDK Changelog
 
+## 2.0.2 - 2024-09-09
+
+### Changed
+* Always sync written task files to disk. OFS only guarantees that files will be seen by other clients if the file is fsynced to the disk.
+
 ## 2.0.1 - 2024-08-31
 ** NOT YET RELEASED **
 
@@ -41,7 +46,7 @@
 
 ### Fixed
 
-* CopyMoveHelper.java will now attempt to copy files to Latch directly (instead of 
+* CopyMoveHelper.java will now attempt to copy files to Latch directly (instead of
   opening a stream and creating an auxiliary file to upload from)
 
 ## 1.1.1 - 2024-06-25
