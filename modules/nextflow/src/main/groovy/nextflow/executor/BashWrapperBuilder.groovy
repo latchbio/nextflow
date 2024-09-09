@@ -380,7 +380,7 @@ class BashWrapperBuilder {
         int attempt=0
         while( true ) {
             try {
-                try (BufferedWriter writer=Files.newBufferedWriter(path, CREATE, WRITE, TRUNCATE_EXISTING,SYNC)) {
+                try (BufferedWriter writer=Files.newBufferedWriter(path, CREATE, WRITE, TRUNCATE_EXISTING, SYNC)) {
                     writer.write(data)
                     writer.flush()
                 }
