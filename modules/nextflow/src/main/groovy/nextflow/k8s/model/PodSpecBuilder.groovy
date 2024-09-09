@@ -685,10 +685,10 @@ You provided ${accelerator.type}, ${accelerator.limit}
         final requests = res.get("requests") as Map ?: new LinkedHashMap<>(2)
         final limits = res.get("limits") as Map ?: new LinkedHashMap<>(2)
 
-        if (accelerator.limit == 0) return;
+        if (accelerator.limit == 0) return res;
 
         if (accelerator.type == null) {
-            accelerator.setProperty("type", "nvidia-t4")
+            accelerator.type = "nvidia-t4"
             log.info("No GPU type specified - defaulting to \"nvidia-t4\"")
         }
 
