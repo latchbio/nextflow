@@ -32,7 +32,7 @@ class AcceleratorResource {
 
     final Integer request
     final Integer limit
-    final String type
+    String type
     final String runtime
 
     AcceleratorResource( Number value ) {
