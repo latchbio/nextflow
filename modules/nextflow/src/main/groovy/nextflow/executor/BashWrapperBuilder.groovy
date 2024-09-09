@@ -388,7 +388,6 @@ class BashWrapperBuilder {
         binding.fix_ownership = fixOwnership() ? "[ \${NXF_OWNER:=''} ] && (shopt -s extglob; GLOBIGNORE='..'; chown -fR --from root \$NXF_OWNER ${workDir}/{*,.*}) || true" : null
 
         binding.trace_script = isTraceRequired() ? getTraceScript(binding) : null
-        
         return binding
     }
 
@@ -445,8 +444,9 @@ class BashWrapperBuilder {
         int attempt=0
         while( true ) {
             try {
-                try (BufferedWriter writer=Files.newBufferedWriter(path, CREATE,WRITE,TRUNCATE_EXISTING)) {
+                try (BufferedWriter writer=Files.newBufferedWriter(path, CREATE, WRITE, TRUNCATE_EXISTING,SYNC)) {
                     writer.write(data)
+                    writer.flush()
                 }
                 return path
             }
@@ -622,7 +622,6 @@ class BashWrapperBuilder {
     private String copyFileToWorkDir(String fileName) {
         copyFile(fileName, workDir.resolve(fileName))
     }
-    
 
     String getCleanupCmd(String scratch) {
         String result = ''
