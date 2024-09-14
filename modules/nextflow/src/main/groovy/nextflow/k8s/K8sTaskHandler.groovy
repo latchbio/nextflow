@@ -138,7 +138,24 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     protected List<String> classicSubmitCli(TaskRun task) {
         final result = new ArrayList(BashWrapperBuilder.BASH)
-        result.add("${Escape.path(task.workDir)}/${TaskRun.CMD_RUN}".toString())
+        final command = """
+            bash -c '
+            for i in {1..50}; do
+                if [ -f ${Escape.path(task.workDir)}/${TaskRun.CMD_RUN} ]; then
+                    echo "File found, executing command."
+                    exec /bin/bash -ue ${Escape.path(task.workDir)}/${TaskRun.CMD_RUN}
+                    exit 0
+                else
+                    echo "Waiting for file to become available..."
+                    sleep 5
+                fi
+            done
+            echo "File not found after 50 attempts, failing."
+            exit 1
+            '
+        """.stripIndent()
+        result.add("-c".toString().trim())
+        result.add(command.toString().trim())
         return result
     }
 
@@ -224,7 +241,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
         if( SysEnv.containsKey('NXF_DEBUG') )
             builder.withEnv(PodEnv.value('NXF_DEBUG', SysEnv.get('NXF_DEBUG')))
-        
+
         // add computing resources
         final cpus = taskCfg.getCpus()
         final mem = taskCfg.getMemory()
@@ -353,13 +370,24 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
     }
 
     protected int readExitFile() {
-        try {
-            exitFile.text as Integer
+        // If using OFS, files may not be immediately available as mount might be slow
+        int attempts = 0
+        while (attempts < 50) {
+            try {
+                def exitText = exitFile.text
+                if (exitText.trim()) {
+                    log.debug "[K8s] Exit status file has content for task: `$task.name`. Content: $exitText. Exited on attempt $attempts"
+                    return exitText as Integer
+                }
+            }
+            catch (Exception e) {
+                log.warn "[K8s] Cannot read exitstatus for task: `$task.name`. Retrying with attempt $attempts | ${e.message}"
+                sleep(3000) // Wait for 3 seconds before retrying
+                attempts++
+            }
         }
-        catch( Exception e ) {
-            log.debug "[K8s] Cannot read exitstatus for task: `$task.name` | ${e.message}"
-            return Integer.MAX_VALUE
-        }
+        log.warn "[K8s] Failed to read non-empty exitstatus for task: `$task.name` after $attempts attempts"
+        return Integer.MAX_VALUE
     }
 
     /**
