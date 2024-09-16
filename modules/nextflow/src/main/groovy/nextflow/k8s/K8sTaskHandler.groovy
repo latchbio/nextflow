@@ -139,7 +139,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
     protected List<String> classicSubmitCli(TaskRun task) {
         final result = new ArrayList(BashWrapperBuilder.BASH)
         final command = """
-            bash -c '
             for i in {1..50}; do
                 if [ -f ${Escape.path(task.workDir)}/${TaskRun.CMD_RUN} ]; then
                     echo "File found, executing command."
@@ -147,12 +146,11 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                     exit 0
                 else
                     echo "Waiting for file to become available..."
-                    sleep 5
+                    sleep 0.5
                 fi
             done
             echo "File not found after 50 attempts, failing."
             exit 1
-            '
         """.stripIndent()
         result.add("-c".toString().trim())
         result.add(command.toString().trim())
@@ -382,7 +380,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             }
             catch (Exception e) {
                 log.warn "[K8s] Cannot read exitstatus for task: `$task.name`. Retrying with attempt $attempts | ${e.message}"
-                sleep(3000) // Wait for 3 seconds before retrying
+                sleep(500) // Wait for 0.5 seconds before retrying
                 attempts++
             }
         }

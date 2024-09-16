@@ -1,6 +1,6 @@
 # Latch SDK Changelog
 
-## 2.0.4 - 2024-09-14
+## 2.1.0 - 2024-09-14
 
 ### Changed
 * Add explicit fsync of generated files in runtime and task steps
