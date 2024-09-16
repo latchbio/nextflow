@@ -1,6 +1,12 @@
 # Latch SDK Changelog
 
-## 2.0.2 - 2024-09-09
+## 2.1.0 - 2024-09-14
+
+### Changed
+* Add explicit fsync of generated files in runtime and task steps
+* Add polling for files in case the changes in the shared file system are not seen immediately after task start/finish
+
+## 2.0.3 - 2024-09-09
 
 ### Changed
 * Always sync written task files to disk. OFS only guarantees that files will be seen by other clients if the file is fsynced to the disk.

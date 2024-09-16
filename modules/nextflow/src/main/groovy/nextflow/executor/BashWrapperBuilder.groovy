@@ -382,9 +382,13 @@ class BashWrapperBuilder {
         while( true ) {
             try {
                 // note(taras): always sync to disk to ensure that the file is visible to other clients
-                try (BufferedWriter writer=Files.newBufferedWriter(path, CREATE, WRITE, TRUNCATE_EXISTING, SYNC)) {
+                try(
+                    FileOutputStream fos = new FileOutputStream(path.toFile());
+                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(fos))
+                ) {
                     writer.write(data)
                     writer.flush()
+                    fos.getFD().sync()
                 }
                 return path
             }
@@ -534,7 +538,7 @@ class BashWrapperBuilder {
 
     String getSyncCmd() {
         if ( SysEnv.get( 'NXF_ENABLE_FS_SYNC' ) == "true" ) {
-            return 'sync || true'
+            return 'sync *' // OFS will only get fsync if you use sync on a specific file, not a directory
         }
         return null
     }
