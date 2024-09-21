@@ -6,7 +6,7 @@ import java.net.http.HttpResponse
 
 class HttpRetryClient {
 
-    private HttpClient client = HttpClient.newHttpClient()
+    transient private HttpClient client = HttpClient.newHttpClient()
 
     HttpResponse sendHelper(HttpRequest request, boolean stream = false, int retries = 3) {
         if (retries <= 0) {

@@ -297,7 +297,9 @@ class FilePorter {
             if( semaphore )
                 semaphore.acquire()
             try {
+                log.info "staging $source -> $target"
                 stageForeignFile(source, target)
+                log.info "finished $source -> $target"
             }
             finally {
                 if( semaphore )

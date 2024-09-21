@@ -358,7 +358,9 @@ class PublishDir {
 
     protected void safeProcessFile(Path source, Path target) {
         try {
+            log.info "starting publishdir $source -> $target"
             processFile(source, target)
+            log.info "finished publishdir $source -> $target"
         }
         catch( Throwable e ) {
             log.warn "Failed to publish file: ${source.toUriString()}; to: ${target.toUriString()} [${mode.toString().toLowerCase()}] -- See log file for details", e
