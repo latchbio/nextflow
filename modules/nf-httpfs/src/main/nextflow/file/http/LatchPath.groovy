@@ -187,7 +187,7 @@ class LatchPath extends XPath {
         def req =  HttpRequest.newBuilder()
             .uri(url.toURI())
             .header("Range", "bytes=${start}-${end}")
-            .timeout(Duration.ofSeconds(10))
+            .timeout(Duration.ofSeconds(90))
             .GET()
             .build()
 
@@ -212,7 +212,7 @@ class LatchPath extends XPath {
 
         def request =  HttpRequest.newBuilder()
             .uri(url.toURI())
-            .timeout(Duration.ofSeconds(10))
+            .timeout(Duration.ofSeconds(90))
             .header("Range", "bytes=0-0")
             .GET()
             .build()
@@ -296,7 +296,7 @@ class LatchPath extends XPath {
 
         def request =  HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/start-upload"))
-            .timeout(Duration.ofSeconds(10))
+            .timeout(Duration.ofSeconds(90))
             .header("Content-Type", "application/json")
             .header("Authorization", LatchPathUtils.getAuthHeader())
             .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
@@ -344,7 +344,7 @@ class LatchPath extends XPath {
 
                 HttpRequest req =  HttpRequest.newBuilder()
                     .uri(URI.create(chunkUrl))
-                    .timeout(Duration.ofSeconds(10))
+                    .timeout(Duration.ofSeconds(90))
                     .PUT(HttpRequest.BodyPublishers.ofByteArray(arr))
                     .build()
 
@@ -390,7 +390,7 @@ class LatchPath extends XPath {
 
         request = HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/end-upload"))
-            .timeout(Duration.ofSeconds(10))
+            .timeout(Duration.ofSeconds(90))
             .header("Content-Type", "application/json")
             .header("Authorization", LatchPathUtils.getAuthHeader())
             .POST(HttpRequest.BodyPublishers.ofString(endUploadBody))
@@ -405,7 +405,7 @@ class LatchPath extends XPath {
 
         def request =  HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/get-signed-url"))
-            .timeout(Duration.ofSeconds(10))
+            .timeout(Duration.ofSeconds(90))
             .header("Content-Type", "application/json")
             .header("Authorization", LatchPathUtils.getAuthHeader())
             .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))

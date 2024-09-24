@@ -41,7 +41,7 @@ class GQLClient {
 
         HttpRequest.Builder requestBuilder =  HttpRequest.newBuilder()
             .uri(URI.create(this.endpoint))
-            .timeout(Duration.ofSeconds(10))
+            .timeout(Duration.ofSeconds(90))
             .header("Content-Type", "application/json")
             .header("Authorization", LatchPathUtils.getAuthHeader())
         HttpRequest req = requestBuilder.POST(HttpRequest.BodyPublishers.ofString(builder.toString())).build()
