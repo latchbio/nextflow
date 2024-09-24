@@ -1,4 +1,9 @@
-# Latch SDK Changelog
+# Latch Nextflow Changelog
+
+## 2.1.1 - 2024-09-24
+
+### Changed
+* Add explicit timeouts to all HTTP operations to prevent hanging executions
 
 ## 2.1.0 - 2024-09-14
 
