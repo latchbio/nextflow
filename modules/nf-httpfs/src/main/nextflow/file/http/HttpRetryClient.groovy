@@ -3,10 +3,13 @@ package nextflow.file.http
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.time.Duration
 
 class HttpRetryClient {
 
-    private HttpClient client = HttpClient.newHttpClient()
+    transient private HttpClient client = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(10))
+        .build()
 
     HttpResponse sendHelper(HttpRequest request, boolean stream = false, int retries = 3) {
         if (retries <= 0) {
