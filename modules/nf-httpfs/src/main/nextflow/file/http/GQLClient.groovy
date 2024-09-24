@@ -3,6 +3,7 @@ package nextflow.file.http
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.time.Duration
 
 import groovy.json.JsonBuilder
 import groovy.json.JsonSlurper
@@ -40,6 +41,7 @@ class GQLClient {
 
         HttpRequest.Builder requestBuilder =  HttpRequest.newBuilder()
             .uri(URI.create(this.endpoint))
+            .timeout(Duration.ofSeconds(10))
             .header("Content-Type", "application/json")
             .header("Authorization", LatchPathUtils.getAuthHeader())
         HttpRequest req = requestBuilder.POST(HttpRequest.BodyPublishers.ofString(builder.toString())).build()
