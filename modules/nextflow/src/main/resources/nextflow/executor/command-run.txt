@@ -158,10 +158,10 @@ nxf_main() {
     {{after_script}}
 
     if [ -n "$LATCH_LOG_DIR" ]; then
-        workdir_base="$(basename $(dirname $NXF_TASK_WORKDIR))/$(basename $NXF_TASK_WORKDIR)"
+        workdir_base="$(basename "$(dirname "$NXF_TASK_WORKDIR")")/$(basename "$NXF_TASK_WORKDIR")"
         target_log_dir="$LATCH_LOG_DIR/$workdir_base"
         echo "Uploading log files to $target_log_dir"
-        (/opt/latch-env/bin/latch mkdirp $target_log_dir && /opt/latch-env/bin/latch cp $NXF_TASK_WORKDIR/.command.* $target_log_dir --progress=none) >> /root/log.txt || echo "$(cat /root/log.txt)"
+        (/opt/latch-env/bin/latch mkdirp "$target_log_dir" && /opt/latch-env/bin/latch cp "$NXF_TASK_WORKDIR"/.command.* "$target_log_dir" --progress=none) >> /root/log.txt || echo "$(cat /root/log.txt)"
     fi
 }
 
