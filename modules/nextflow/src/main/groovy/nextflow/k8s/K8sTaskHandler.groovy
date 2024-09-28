@@ -141,7 +141,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         final command = """
             for i in {1..50}; do
                 if [ -f ${Escape.path(task.workDir)}/${TaskRun.CMD_RUN} ]; then
-                    echo "File found, executing command."
                     exec /bin/bash -ue ${Escape.path(task.workDir)}/${TaskRun.CMD_RUN}
                     exit 0
                 else
@@ -382,7 +381,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 }
             }
             catch (Exception e) {
-                log.warn "[K8s] Cannot read exitstatus for task: `$task.name`. Retrying with attempt $attempts | ${e.message}"
+                if (attempts % 10 == 0) {
+                    log.warn "[K8s] Cannot read exitstatus for task: `$task.name`. Retrying with attempt $attempts | ${e.message}"
+                }
                 sleep(500) // Wait for 0.5 seconds before retrying
                 attempts++
             }

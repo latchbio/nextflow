@@ -1,4 +1,14 @@
-# Latch SDK Changelog
+# Latch Nextflow Changelog
+
+## 2.1.2 - 2024-09-28
+
+### Changed
+* Print polling loop every 10 attempts and remove an echo
+
+## 2.1.1 - 2024-09-24
+
+### Changed
+* Add explicit timeouts to all HTTP operations to prevent hanging executions
 
 ## 2.1.0 - 2024-09-14
 
