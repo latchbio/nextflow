@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.1.3 - 2024-09-28
+
+### Added
+* If latch logging directory specified, upload .command.* files to LData
+
 ## 2.1.2 - 2024-09-28
 
 ### Changed
