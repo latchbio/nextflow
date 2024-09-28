@@ -378,7 +378,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 }
             }
             catch (Exception e) {
-                log.debug "[K8s] Cannot read exitstatus for task: `$task.name`. Retrying with attempt $attempts | ${e.message}"
+                if (attempts % 10 == 0) {
+                    log.warn "[K8s] Cannot read exitstatus for task: `$task.name`. Retrying with attempt $attempts | ${e.message}"
+                }
                 sleep(500) // Wait for 0.5 seconds before retrying
                 attempts++
             }
