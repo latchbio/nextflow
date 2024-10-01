@@ -170,6 +170,7 @@ class LatchPath extends XPath {
     private final long maxParts = 10000
     private final long maxUploadSize = 5497558138880 // 5 * 1024 * 1024 * 1024 * 1024, cant put this though bc groovy is quirky and integer overflows
 
+    private final int downloadMaxRetries = 3
     private final long downloadPartSize = 100 * 1024 * 1024
     private final long downloadChunkSize = 1 * 1024 * 1024
 
@@ -184,7 +185,7 @@ class LatchPath extends XPath {
     }
 
     private void downloadPart(FileChannel outputStream, URL url, long start, long end) {
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < downloadMaxRetries; i++) {
             def req =  HttpRequest.newBuilder()
                 .uri(url.toURI())
                 .header("Range", "bytes=${start}-${end}")
@@ -205,10 +206,11 @@ class LatchPath extends XPath {
                 }
             } catch (IOException e) {
                 log.debug "(${i + 1}/3) Failed to download part ${e}"
-                if (i == 2) {
+                if (i == downloadMaxRetries) {
                     throw e
                 }
 
+                sleep(2 ** (i + 1) * 5000)
                 continue
             } finally {
                 inputStream.close()
