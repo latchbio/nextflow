@@ -29,7 +29,7 @@ class DispatcherClient {
         )["createNfProcessNodeByExecutionToken"] as Map
 
         if (res == null)
-            throw new RuntimeException("failed to create remote process node")
+            throw new RuntimeException("failed to create remote process node for: processName=${processName}")
 
         return (res.nodeId as String).toInteger()
     }
@@ -104,7 +104,7 @@ class DispatcherClient {
         )["createNfTaskInfo"] as Map
 
         if (res == null)
-            throw new RuntimeException("failed to create remote process task")
+            throw new RuntimeException("failed to create remote process task for: processNodeId=${processNodeId} index=${index}")
 
         return ((res.nfTaskInfo as Map).id as String).toInteger()
     }
@@ -139,7 +139,7 @@ class DispatcherClient {
         )["createNfTaskExecutionInfo"] as Map
 
         if (res == null)
-            throw new RuntimeException("failed to create remote task execution")
+            throw new RuntimeException("failed to create remote task execution for: taskId=${taskId} attempt=${attemptIdx}")
 
         return ((res.nfTaskExecutionInfo as Map).id as String).toInteger()
     }
@@ -205,7 +205,7 @@ class DispatcherClient {
         )["nfTaskExecutionInfo"] as Map
 
         if (res == null)
-            throw new RuntimeException("failed to task execution status")
+            throw new RuntimeException("failed to get task execution status for: taskExecutionId=${taskExecutionId}")
 
         return res
     }
