@@ -184,26 +184,37 @@ class LatchPath extends XPath {
     }
 
     private void downloadPart(FileChannel outputStream, URL url, long start, long end) {
-        def req =  HttpRequest.newBuilder()
-            .uri(url.toURI())
-            .header("Range", "bytes=${start}-${end}")
-            .timeout(Duration.ofSeconds(90))
-            .GET()
-            .build()
+        for (int i = 0; i < 3; i++) {
+            def req =  HttpRequest.newBuilder()
+                .uri(url.toURI())
+                .header("Range", "bytes=${start}-${end}")
+                .timeout(Duration.ofSeconds(90))
+                .GET()
+                .build()
 
-        def resp = client.stream(req)
-        InputStream inputStream = resp.body()
+            def resp = client.stream(req)
+            InputStream inputStream = resp.body()
 
-        try {
-            long bytesWritten = 0
-            byte[] buffer = new byte[downloadChunkSize]
-            int bytesRead
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, 0, bytesRead)
-                bytesWritten += outputStream.write(byteBuffer, start + bytesWritten)
+            try {
+                long bytesWritten = 0
+                byte[] buffer = new byte[downloadChunkSize]
+                int bytesRead
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, 0, bytesRead)
+                    bytesWritten += outputStream.write(byteBuffer, start + bytesWritten)
+                }
+            } catch (IOException e) {
+                log.debug "(${i + 1}/3) Failed to download part ${e}"
+                if (i == 2) {
+                    throw e
+                }
+
+                continue
+            } finally {
+                inputStream.close()
             }
-        } finally {
-            inputStream.close()
+
+            break
         }
     }
 
