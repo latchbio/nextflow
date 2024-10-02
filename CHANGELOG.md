@@ -12,6 +12,10 @@
 ### Added
 * If latch logging directory specified, upload .command.* files to LData
 
+### Changed
+* Add retires on Latch file part download
+* Improved logging for dispatcher failures
+
 ## 2.1.2 - 2024-09-28
 
 ### Changed
