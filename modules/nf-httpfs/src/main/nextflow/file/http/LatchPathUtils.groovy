@@ -48,21 +48,21 @@ class LatchPathUtils {
         if (!wsFile.exists())
             return null
 
-        def wsJson = null
         try {
             JsonSlurper slurper = new JsonSlurper()
             def f = new FileInputStream(wsFile)
-            wsJson = slurper.parse(f)
+            def wsJson = slurper.parse(f)
             f.close()
+
+            try {
+                return wsJson["workspace_id"]
+            } catch (MissingPropertyException ignored) {
+                return wsJson as String
+            }
         } catch (JsonException ignored) {
             return null
         }
 
-        try {
-            return wsJson["workspace_id"]
-        } catch (MissingPropertyException ignored) {
-            return wsJson as String
-        }
     }
 
     private static String getCurrentWorkspaceFromNetwork() {

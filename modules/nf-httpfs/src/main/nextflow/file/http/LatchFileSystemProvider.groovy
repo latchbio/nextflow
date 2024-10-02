@@ -207,7 +207,9 @@ class LatchFileSystemProvider extends XFileSystemProvider {
             query LDataChildren(\$argPath: String!) {
                 ldataResolvePathData(argPath: \$argPath) {
                     finalLinkTarget {
-                        childLdataTreeEdges(filter: { child: { removed: { equalTo: false } } }) {
+                        childLdataTreeEdges(
+                            filter: {child: {removed: {equalTo: false}, pending: {equalTo: false}}}
+                        ) {
                             nodes {
                                 child {
                                     name
@@ -218,6 +220,7 @@ class LatchFileSystemProvider extends XFileSystemProvider {
                     }
                 }
             }
+
         """, ["argPath": lp.toUriString()])["ldataResolvePathData"]
 
         if (res == null) {
@@ -314,8 +317,10 @@ class LatchFileSystemProvider extends XFileSystemProvider {
                         finalLinkTarget {
                             type
                             ldataObjectMeta {
-                                contentSize
+                              contentSize
                             }
+                            pending
+                            removed
                         }
                     }
                 }
@@ -326,6 +331,9 @@ class LatchFileSystemProvider extends XFileSystemProvider {
             throw new NoSuchFileException("Path ${path.toUriString()} does not exist")
 
         Map flt = res["ldataNode"]["finalLinkTarget"] as Map
+
+        if (flt["pending"] || flt["removed"])
+            throw new NoSuchFileException("Path ${path.toUriString()} does not exist")
 
         long size = 0
         if (
