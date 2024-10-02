@@ -199,9 +199,8 @@ class LatchPath extends XPath {
             try {
                 long bytesWritten = 0
                 byte[] buffer = new byte[downloadChunkSize]
-                int bytesRead
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, 0, bytesRead)
+                while ((buffer = inputStream.readNBytes((int)downloadChunkSize)).length != 0) {
+                    ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, 0, buffer.length)
                     bytesWritten += outputStream.write(byteBuffer, start + bytesWritten)
                 }
             } catch (IOException e) {
