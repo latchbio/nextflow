@@ -1,11 +1,11 @@
 # Latch Nextflow Changelog
 
 ## 2.1.4 - 2024-10-02
-** NOT YET RELEASED **
 
 ### Added
 * Report task hash to Latch backend
 * Add retry logging for HttpRetryClient
+* If latch logging directory specified, upload .command.* files to LData
 
 ## 2.1.3 - 2024-10-01
 
