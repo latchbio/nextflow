@@ -12,7 +12,6 @@
 ### Changed
 * Add retires on Latch file part download
 * Improved logging for dispatcher failures
->>>>>>> origin/dynamic-rewrite
 
 ## 2.1.2 - 2024-09-28
 
