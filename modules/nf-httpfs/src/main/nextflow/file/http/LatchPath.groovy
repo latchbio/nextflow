@@ -172,7 +172,7 @@ class LatchPath extends XPath {
 
     private final int downloadMaxRetries = 3
     private final long downloadPartSize = 100 * 1024 * 1024
-    private final long downloadChunkSize = 1 * 1024 * 1024
+    private final int downloadChunkSize = 1 * 1024 * 1024
 
     class CompletedPart {
         long PartNumber
@@ -199,8 +199,10 @@ class LatchPath extends XPath {
             try {
                 long bytesWritten = 0
                 byte[] buffer = new byte[downloadChunkSize]
-                while ((buffer = inputStream.readNBytes((int)downloadChunkSize)).length != 0) {
-                    ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, 0, buffer.length)
+                int bytesRead
+
+                while ((bytesRead = inputStream.readNBytes(buffer, 0, downloadChunkSize)) != 0) {
+                    ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, 0, bytesRead)
                     bytesWritten += outputStream.write(byteBuffer, start + bytesWritten)
                 }
             } catch (IOException e) {
