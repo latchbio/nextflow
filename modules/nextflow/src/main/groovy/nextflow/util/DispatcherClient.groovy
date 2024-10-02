@@ -33,7 +33,7 @@ class DispatcherClient {
         )["createNfProcessNodeByExecutionToken"] as Map
 
         if (res == null)
-            throw new RuntimeException("failed to create remote process node")
+            throw new RuntimeException("failed to create remote process node for: processName=${processName}")
 
         return (res.nodeId as String).toInteger()
     }
@@ -120,23 +120,24 @@ class DispatcherClient {
         )["createNfTaskInfo"] as Map
 
         if (res == null)
-            throw new RuntimeException("failed to create remote process task")
+            throw new RuntimeException("failed to create remote process task for: processNodeId=${processNodeId} index=${index}")
 
         return ((res.nfTaskInfo as Map).id as String).toInteger()
     }
 
-    int createTaskExecution(int taskId, int attemptIdx, String status = null) {
+    int createTaskExecution(int taskId, int attemptIdx, String hash, String status = null) {
         if (System.getenv("LATCH_NF_DEBUG") == "true") {
             return 1
         }
 
         Map res = client.execute("""
-            mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$status: TaskExecutionStatus!) {
+            mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$hash: String!, \$status: TaskExecutionStatus!) {
                 createNfTaskExecutionInfo(
                     input: {
                         nfTaskExecutionInfo: {
                             taskId: \$taskId,
                             attemptIdx: \$attemptIdx,
+                            hash: \$hash,
                             status: \$status,
                             cpuLimitMillicores: "0",
                             memoryLimitBytes: "0",
@@ -154,12 +155,13 @@ class DispatcherClient {
             [
                 taskId: taskId,
                 attemptIdx: attemptIdx,
+                hash: hash,
                 status: status == null ? 'UNDEFINED' : status,
             ]
         )["createNfTaskExecutionInfo"] as Map
 
         if (res == null)
-            throw new RuntimeException("failed to create remote task execution")
+            throw new RuntimeException("failed to create remote task execution for: taskId=${taskId} attempt=${attemptIdx} hash=${hash}")
 
         return ((res.nfTaskExecutionInfo as Map).id as String).toInteger()
     }
@@ -233,7 +235,7 @@ class DispatcherClient {
         )["nfTaskExecutionInfo"] as Map
 
         if (res == null)
-            throw new RuntimeException("failed to get task execution status")
+            throw new RuntimeException("failed to get task execution status for: taskExecutionId=${taskExecutionId}")
 
         return res
     }
