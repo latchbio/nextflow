@@ -3,6 +3,7 @@ package nextflow.file.http
 import java.net.http.HttpRequest
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
@@ -254,6 +255,9 @@ class LatchPath extends XPath {
         FileChannel outputStream = FileChannel.open(local, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
         outputStream.truncate(fileSize)
 
+        Path tempFile = Files.createTempFile("downloadPart", ".tmp")
+        FileChannel tempOutputStream = FileChannel.open(tempFile, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+
         try {
             List<Future> futures = []
 
@@ -262,12 +266,20 @@ class LatchPath extends XPath {
                 long end = Math.min(start + downloadPartSize - 1, fileSize - 1)
 
                 futures << this.fs.provider.downloadExecutor.submit {
-                    downloadPart(outputStream, url, start, end)
+                    downloadPart(tempOutputStream, url, start, end)
                 }
             }
 
             futures.each { it.get() }
         } finally {
+            try (FileChannel inputChannel = FileChannel.open(tempFile, StandardOpenOption.READ)) {
+                long startTime = System.currentTimeMillis();
+                Files.copy(tempFile, local, StandardCopyOption.REPLACE_EXISTING);
+                long endTime = System.currentTimeMillis();
+                log.info "Transfer time: ${endTime - startTime} milliseconds to transfer ${fileSize} bytes";
+            }
+
+            Files.delete(tempFile)
             outputStream.close()
         }
     }
