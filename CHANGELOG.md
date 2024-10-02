@@ -1,5 +1,12 @@
 # Latch Nextflow Changelog
 
+## 2.1.4 - 2024-10-02
+** NOT YET RELEASED **
+
+### Added
+* Report task hash to Latch backend
+* Add retry logging for HttpRetryClient
+
 ## 2.1.3 - 2024-10-01
 
 ### Changed
@@ -28,7 +35,6 @@
 * Always sync written task files to disk. OFS only guarantees that files will be seen by other clients if the file is fsynced to the disk.
 
 ## 2.0.1 - 2024-08-31
-** NOT YET RELEASED **
 
 ### Fixed
 * Fix status for native nextflow processes

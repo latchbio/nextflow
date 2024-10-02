@@ -1,10 +1,13 @@
 package nextflow.file.http
 
+import groovy.util.logging.Slf4j
+
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 
+@Slf4j
 class HttpRetryClient {
 
     transient private HttpClient client = HttpClient.newBuilder()
@@ -21,7 +24,8 @@ class HttpRetryClient {
 
         for (int i = 0; i < retries; i++) {
             if (i != 0) {
-                sleep(2 ** i * 5000)
+                log.debug "[${i}/${retries}] Request to ${request.uri()} failed. Retrying..."
+                sleep(2 ** (i + 1) * 5000)
             }
 
             error = null
