@@ -57,37 +57,40 @@ class LatchFileSystemProvider extends XFileSystemProvider {
         if (fileSystems.containsKey(domain))
             throw new FileSystemAlreadyExistsException()
 
-        LatchFileSystem fs = new LatchFileSystem(this, domain)
-        fileSystems[domain] = fs
-        return fs
+        return new LatchFileSystem(this, domain)
     }
 
     @Override
     FileSystem getFileSystem(URI uri) {
-        String domain = LatchPathUtils.getDomain(uri)
-
-        if (!this.fileSystems.containsKey(domain)) {
-            throw new FileSystemNotFoundException("Latch filesystem not yet created. Use newFileSystem() instead");
-        }
-
-        return this.fileSystems[domain];
+        return getFileSystem(uri, false)
     }
 
     @Override
     FileSystem getFileSystem(URI uri, boolean canCreate) {
-        return getFileSystem(uri)
+        String domain = LatchPathUtils.getDomain(uri)
+
+        if (!canCreate) {
+            if (!this.fileSystems.containsKey(domain)) {
+                throw new FileSystemNotFoundException("Latch filesystem not yet created. Use newFileSystem() instead");
+            }
+
+            return this.fileSystems[domain]
+        }
+
+        synchronized (this.fileSystems) {
+            FileSystem result = this.fileSystems[domain]
+            if( result == null ) {
+                result = newFileSystem(uri, [:])
+                this.fileSystems[domain] = (LatchFileSystem) result
+            }
+
+            return result
+        }
     }
 
     @Override
     Path getPath(URI uri) {
-        FileSystem fs
-        try {
-            fs = getFileSystem(uri)
-        } catch (FileSystemNotFoundException _) {
-            fs = newFileSystem(uri, [:])
-        }
-
-        return fs.getPath(uri.path)
+        return getFileSystem(uri, true).getPath(uri.path)
     }
 
     @Override
