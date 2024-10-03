@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.1.5 - 2024-10-03
+
+### Added
+* Chunk writes when downloading files to optimize write performance
+
 ## 2.1.4 - 2024-10-02
 
 ### Added
