@@ -11,6 +11,10 @@ class DispatcherClient {
     private GQLClient client = new GQLClient()
 
     int createProcessNode(String processName) {
+        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+            return 1
+        }
+
         String executionToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
         if (executionToken == null)
                 throw new RuntimeException("unable to get execution token")
@@ -35,6 +39,10 @@ class DispatcherClient {
     }
 
     void closeProcessNode(int nodeId, int numTasks) {
+        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+            return
+        }
+
         client.execute("""
             mutation CreateTaskInfo(\$nodeId: BigInt!, \$numTasks: BigInt!) {
                 updateNfProcessNode(
@@ -57,6 +65,10 @@ class DispatcherClient {
     }
 
     void createProcessEdge(int from, int to) {
+        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+            return
+        }
+
         client.execute("""
             mutation CreateEdge(\$startNode: BigInt!, \$endNode: BigInt!) {
                 createNfProcessEdge(
@@ -79,6 +91,10 @@ class DispatcherClient {
     }
 
     int createProcessTask(int processNodeId, int index, String tag) {
+        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+            return 1
+        }
+
         Map res = client.execute("""
             mutation CreateTaskInfo(\$processNodeId: BigInt!, \$index: BigInt!, \$tag: String) {
                 createNfTaskInfo(
@@ -109,14 +125,19 @@ class DispatcherClient {
         return ((res.nfTaskInfo as Map).id as String).toInteger()
     }
 
-    int createTaskExecution(int taskId, int attemptIdx, String status = null) {
+    int createTaskExecution(int taskId, int attemptIdx, String hash, String status = null) {
+        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+            return 1
+        }
+
         Map res = client.execute("""
-            mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$status: TaskExecutionStatus!) {
+            mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$hash: String!, \$status: TaskExecutionStatus!) {
                 createNfTaskExecutionInfo(
                     input: {
                         nfTaskExecutionInfo: {
                             taskId: \$taskId,
                             attemptIdx: \$attemptIdx,
+                            hash: \$hash,
                             status: \$status,
                             cpuLimitMillicores: "0",
                             memoryLimitBytes: "0",
@@ -134,12 +155,13 @@ class DispatcherClient {
             [
                 taskId: taskId,
                 attemptIdx: attemptIdx,
+                hash: hash,
                 status: status == null ? 'UNDEFINED' : status,
             ]
         )["createNfTaskExecutionInfo"] as Map
 
         if (res == null)
-            throw new RuntimeException("failed to create remote task execution for: taskId=${taskId} attempt=${attemptIdx}")
+            throw new RuntimeException("failed to create remote task execution for: taskId=${taskId} attempt=${attemptIdx} hash=${hash}")
 
         return ((res.nfTaskExecutionInfo as Map).id as String).toInteger()
     }
@@ -168,6 +190,10 @@ class DispatcherClient {
     }
 
     void updateTaskStatus(int taskExecutionId, String status) {
+        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+            return
+        }
+
         client.execute("""
             mutation UpdateTaskExecution(\$taskExecutionId: BigInt!, \$status: TaskExecutionStatus!) {
                 updateNfTaskExecutionInfo(
@@ -190,6 +216,10 @@ class DispatcherClient {
     }
 
     Map getTaskStatus(int taskExecutionId) {
+        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+            return null
+        }
+
         Map res = client.execute("""
             query GetNfExecutionTaskStatus(\$taskExecutionId: BigInt!) {
                 nfTaskExecutionInfo(id: \$taskExecutionId) {

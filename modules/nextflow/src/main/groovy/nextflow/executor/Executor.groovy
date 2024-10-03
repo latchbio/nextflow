@@ -98,7 +98,7 @@ abstract class Executor {
         }
 
         final handler = createTaskHandler(task)
-        handler.taskExecutionId = dispatcherClient.createTaskExecution(task.taskId, handler.attemptIdx)
+        handler.taskExecutionId = dispatcherClient.createTaskExecution(task.taskId, handler.attemptIdx, task.hash.toString())
 
         /*
          * Add the task to the queue for processing
