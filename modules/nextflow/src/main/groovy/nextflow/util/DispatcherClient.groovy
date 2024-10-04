@@ -222,6 +222,8 @@ class DispatcherClient {
                     id
                     status
                     systemError
+                    runtimeError
+                    exitCode
                 }
             }
             """,
