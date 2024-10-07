@@ -3,6 +3,7 @@
 ## 2.1.6
 
 ## Fixed
+* NullPointerException when relaunching cached tasks
 * Race condition when concurrently creating multiple LatchFileSystem objects
 
 ## 2.1.5 - 2024-10-03
