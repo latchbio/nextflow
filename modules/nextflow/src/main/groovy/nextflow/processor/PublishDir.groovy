@@ -392,9 +392,12 @@ class PublishDir {
                 return
             
             if( overwrite ) {
+                log.warn "Overwriting file at ${destination.toUriString()}"
                 FileHelper.deletePath(destination)
                 processFileImpl(source, destination)
             }
+
+            log.debug "Skipping file. File already exists at ${destination.toUriString()}"
         }
 
         notifyFilePublish(destination, source)

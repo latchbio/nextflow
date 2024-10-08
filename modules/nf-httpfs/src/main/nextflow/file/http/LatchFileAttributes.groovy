@@ -24,10 +24,12 @@ class LatchFileAttributes implements BasicFileAttributes {
         }
     }
 
+    Long nodeId
     LDataNodeType type = null
     Long size
 
-    LatchFileAttributes(String type, Long size) {
+    LatchFileAttributes(Long nodeId, String type, Long size) {
+        this.nodeId = nodeId
         this.type = LDataNodeType.fromString(type)
         this.size = size
     }

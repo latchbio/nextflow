@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.1.7
+
+## Fixed
+* Disable publishDir overwrite when publishing files for a cached task
+
 ## 2.1.6
 
 ## Fixed
