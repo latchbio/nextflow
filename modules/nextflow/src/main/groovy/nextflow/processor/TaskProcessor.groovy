@@ -656,7 +656,7 @@ class TaskProcessor {
 
         // verify that `when` guard, when specified, is satisfied
         if( !checkWhenGuard(task) ) {
-            this.dispatcherClient.createTaskExecution(task.taskId, 0, task.hash.toString(), 'SKIPPED')
+            this.dispatcherClient.createTaskExecution(task.taskId, 0, null, 'SKIPPED')
             return
         }
 
@@ -673,7 +673,7 @@ class TaskProcessor {
         // -- verify if exists a stored result for this case,
         //    if true skip the execution and return the stored data
         if( checkStoredOutput(task) ) {
-            this.dispatcherClient.createTaskExecution(task.taskId, 0, task.hash.toString(),'SKIPPED')
+            this.dispatcherClient.createTaskExecution(task.taskId, 0, null,'SKIPPED')
             return
         }
 
@@ -838,7 +838,7 @@ class TaskProcessor {
                 log.trace "[${safeTaskName(task)}] Cacheable folder=${resumeDir?.toUriString()} -- exists=$exists; try=$tries; shouldTryCache=$shouldTryCache; entry=$entry"
                 final cached = shouldTryCache && exists && entry.trace.isCompleted() && checkCachedOutput(task.clone(), resumeDir, hash, entry)
                 if( cached ) {
-                    this.dispatcherClient.createTaskExecution(task.taskId, 0, task.hash.toString(), 'SKIPPED')
+                    this.dispatcherClient.createTaskExecution(task.taskId, 0, hash != null ? hash.toString() : null, 'SKIPPED')
                     break
                 }
 

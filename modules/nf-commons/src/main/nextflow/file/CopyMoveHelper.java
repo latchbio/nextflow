@@ -166,12 +166,10 @@ public class CopyMoveHelper {
             throw new IOException("Copying of symbolic links not supported");
 
         // delete target if it exists and REPLACE_EXISTING is specified
-        if (!target.getFileSystem().provider().getScheme().equals("latch")) {
-            if (opts.replaceExisting()) {
-                FileHelper.deletePath(target);
-            } else if (Files.exists(target)) {
-                throw new FileAlreadyExistsException(target.toString());
-            }
+        if (opts.replaceExisting()) {
+            FileHelper.deletePath(target);
+        } else if (Files.exists(target)) {
+            throw new FileAlreadyExistsException(target.toString());
         }
 
         // create directory or copy file

@@ -962,7 +962,7 @@ class FileHelper {
                 CopyMoveHelper.copyToForeignTarget(source, target, options)
             }
         }
-        return target;
+        return target
     }
 
     /**

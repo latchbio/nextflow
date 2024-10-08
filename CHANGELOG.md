@@ -1,8 +1,14 @@
 # Latch Nextflow Changelog
 
+## 2.1.7
+
+## Fixed
+* Disable publishDir overwrite when publishing files for a cached task
+
 ## 2.1.6
 
 ## Fixed
+* NullPointerException when relaunching cached tasks
 * Race condition when concurrently creating multiple LatchFileSystem objects
 
 ## 2.1.5 - 2024-10-03
