@@ -3,6 +3,7 @@
 ## 2.1.7
 
 ## Fixed
+* Read exit code from container instead of .exitcode file
 * Disable publishDir overwrite when publishing files for a cached task
 
 ## 2.1.6
