@@ -368,7 +368,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 throw new ProcessFailedException(err)
             } else {
                 // finalize the task
-                task.exitStatus = s.exitCode != null ? (int) s.exitCode : readExitFile()
+                task.exitStatus = s.exitCode != null ? ((String) s.exitCode).toInteger() : readExitFile()
                 task.stdout = outputFile
                 task.stderr = errorFile
             }
