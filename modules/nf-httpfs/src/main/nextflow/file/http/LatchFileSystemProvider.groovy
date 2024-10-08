@@ -11,6 +11,7 @@ import java.nio.file.FileStore
 import java.nio.file.FileSystem
 import java.nio.file.FileSystemAlreadyExistsException
 import java.nio.file.FileSystemNotFoundException
+import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
 import java.nio.file.OpenOption
@@ -246,7 +247,23 @@ class LatchFileSystemProvider extends XFileSystemProvider {
     void createDirectory(Path dir, FileAttribute<?>... attrs) throws IOException {}
 
     @Override
-    void delete(Path path) throws IOException {}
+    void delete(Path path) throws IOException {
+        if (!(path instanceof LatchPath))
+            throw new ProviderMismatchException()
+
+        LatchPath lp = (LatchPath) path
+        LatchFileAttributes attrs = readAttributes(lp, LatchFileAttributes)
+
+        client.execute("""
+             mutation RemoveNode(\$argNodeId: BigInt!) {
+                ldataRmr(input: {argNodeId: \$argNodeId}) {
+                    clientMutationId
+                }
+            }
+            """,
+            ["argNodeId": attrs.nodeId]
+        )
+    }
 
     @Override
     void copy(Path source, Path target, CopyOption... options) throws IOException {
@@ -315,6 +332,7 @@ class LatchFileSystemProvider extends XFileSystemProvider {
                     path
                     ldataNode {
                         finalLinkTarget {
+                            id
                             type
                             ldataObjectMeta {
                                 contentSize
@@ -339,7 +357,9 @@ class LatchFileSystemProvider extends XFileSystemProvider {
             size = Long.parseLong(flt["ldataObjectMeta"]["contentSize"] as String)
         }
 
-        return (A) new LatchFileAttributes((String) flt["type"], size)
+        long nodeId = Long.parseLong(flt["id"] as String)
+
+        return (A) new LatchFileAttributes(nodeId, (String) flt["type"], size)
     }
 
     @Override
