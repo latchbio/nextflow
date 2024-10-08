@@ -434,11 +434,14 @@ class PublishDir {
             // see https://github.com/nextflow-io/nextflow/issues/2177
             if( !sameRealPath && checkSourcePathConflicts(destination))
                 return
-            
-            if( !sameRealPath && shouldOverwrite(source, destination) ) {
+
+            if( overwrite ) {
+                log.warn "Overwriting file at ${destination.toUriString()}"
                 FileHelper.deletePath(destination)
                 processFileImpl(source, destination)
             }
+
+            log.debug "Skipping file. File already exists at ${destination.toUriString()}"
         }
 
         notifyFilePublish(destination, source)
