@@ -252,17 +252,21 @@ class LatchFileSystemProvider extends XFileSystemProvider {
             throw new ProviderMismatchException()
 
         LatchPath lp = (LatchPath) path
-        LatchFileAttributes attrs = readAttributes(lp, LatchFileAttributes)
+        try {
+            LatchFileAttributes attrs = readAttributes(lp, LatchFileAttributes)
 
-        client.execute("""
-             mutation RemoveNode(\$argNodeId: BigInt!) {
-                ldataRmr(input: {argNodeId: \$argNodeId}) {
-                    clientMutationId
+            client.execute("""
+                 mutation RemoveNode(\$argNodeId: BigInt!) {
+                    ldataRmr(input: {argNodeId: \$argNodeId}) {
+                        clientMutationId
+                    }
                 }
-            }
-            """,
-            ["argNodeId": attrs.nodeId]
-        )
+                """,
+                ["argNodeId": attrs.nodeId]
+            )
+        } catch (FileNotFoundException e) {
+            log.warn "Delete failed: ${e.toString()}"
+        }
     }
 
     @Override
