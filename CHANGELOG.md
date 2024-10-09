@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.1.9
+
+## Fixed
+* Fix for downloading empty Latch paths
+
 ## 2.1.8
 
 ## Fixed
