@@ -232,7 +232,7 @@ class LatchPath extends XPath {
             .build()
 
         def response = client.send(request)
-        // rahul: empty files with throw 416 when requesting byte range at 0
+        // rahul: 0 byte files will return 416 status code (Invalid Range) when requesting 0-0 byte range
         if (response.statusCode() == 416) {
             FileChannel.open(local, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING).close()
             return
