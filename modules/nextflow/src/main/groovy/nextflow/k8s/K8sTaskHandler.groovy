@@ -148,7 +148,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                     exit 0
                 else
                     echo "Waiting for file to become available..."
-                    sleep 0.5
+                    sleep 1
                 fi
             done
             echo "File not found after 50 attempts, failing."

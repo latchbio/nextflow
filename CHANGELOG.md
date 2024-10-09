@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.1.8
+
+## Fixed
+* Update .command polling script to use integer sleep times (decimal not always supported by host)
+
 ## 2.1.7
 
 ## Fixed
