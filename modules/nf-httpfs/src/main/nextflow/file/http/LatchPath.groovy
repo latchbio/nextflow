@@ -232,6 +232,11 @@ class LatchPath extends XPath {
             .build()
 
         def response = client.send(request)
+        // rahul: empty files with throw 416 when requesting byte range at 0
+        if (response.statusCode() == 416) {
+            FileChannel.open(local, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING).close()
+            return
+        }
         if (![200, 206].contains(response.statusCode()))
             throw new Exception("Failed to get file size for ${path.toUriString()}: ${response.body()}")
 
