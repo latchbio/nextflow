@@ -2550,8 +2550,8 @@ class TaskProcessor {
                 Path source = task.workDir.resolve(name)
 
                 int parts = source.getNameCount()
-                String subPath = source.subpath(parts - 4, parts).toString()
-                Path target = p.resolve(subPath)
+                String subPath = source.subpath(parts - 3, parts).toString()
+                Path target = p.resolve("work").resolve(subPath)
 
                 FileHelper.copyPath(source, target, StandardCopyOption.REPLACE_EXISTING)
             } catch (NoSuchFileException ignored) {

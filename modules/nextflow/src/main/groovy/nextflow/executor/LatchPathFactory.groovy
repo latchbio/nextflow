@@ -36,7 +36,7 @@ class LatchPathFactory extends FileSystemPathFactory {
 
         LatchPath lp = (LatchPath) path
 
-        return lp.toUri().toString()
+        return lp.toUriString()
     }
 
     @Override
