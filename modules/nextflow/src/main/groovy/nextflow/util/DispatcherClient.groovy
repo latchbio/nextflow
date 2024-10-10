@@ -131,7 +131,7 @@ class DispatcherClient {
         }
 
         Map res = client.execute("""
-            mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$hash: String!, \$status: TaskExecutionStatus!) {
+            mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$hash: String, \$status: TaskExecutionStatus!) {
                 createNfTaskExecutionInfo(
                     input: {
                         nfTaskExecutionInfo: {
