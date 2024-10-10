@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.2.0
+
+## Fixed
+* Allow task hash to be `null` when processes are skipped
+
 ## 2.1.9
 
 ## Fixed
