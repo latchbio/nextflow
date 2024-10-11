@@ -49,6 +49,14 @@ class LatchPath extends XPath {
         return new URI("latch", fs.domain, path.toString(), null, null)
     }
 
+    String toUriString() {
+        if (fs == null || path == null) {
+            return null
+        }
+
+        return "latch://${fs.domain}/${path.toString()}"
+    }
+
     @Override
     Path getRoot() {
         return new LatchPath(fs, "/")
@@ -311,7 +319,7 @@ class LatchPath extends XPath {
         }
 
         JsonBuilder builder = new JsonBuilder()
-        builder(["path": this.toUri().toString(), "part_count": numParts, "content_type": mimeType])
+        builder(["path": this.toUriString(), "part_count": numParts, "content_type": mimeType])
 
         def request =  HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/start-upload"))
@@ -402,7 +410,7 @@ class LatchPath extends XPath {
             }).build()
 
         def endUploadBody = gen.toJson([
-            "path": this.toUri().toString(),
+            "path": this.toUriString(),
             "upload_id": uploadId,
             "parts": parts,
         ])
@@ -420,7 +428,7 @@ class LatchPath extends XPath {
 
     URL getSignedURL() {
         JsonBuilder builder = new JsonBuilder()
-        builder(["path": this.toUri().toString()])
+        builder(["path": this.toUriString()])
 
         def request =  HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/get-signed-url"))

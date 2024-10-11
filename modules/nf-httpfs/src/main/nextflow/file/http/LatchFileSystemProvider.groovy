@@ -347,7 +347,7 @@ class LatchFileSystemProvider extends XFileSystemProvider {
             }
         """, ["argPath": path.toUriString()])["ldataResolvePathToNode"]
 
-        if (res["path"] != null)
+        if (res == null || res["path"] != null)
             throw new NoSuchFileException("Path ${path.toUriString()} does not exist")
 
         Map flt = res["ldataNode"]["finalLinkTarget"] as Map

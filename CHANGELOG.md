@@ -1,5 +1,12 @@
 # Latch Nextflow Changelog
 
+## 2.2.1
+
+## Fixed
+* Move logs file upload to nextflow runtime because process containers may not have all
+  dependencies required to run `latch cp`
+* Support downloading and uploading latch files with spaces in path
+
 ## 2.2.0
 
 ## Fixed
