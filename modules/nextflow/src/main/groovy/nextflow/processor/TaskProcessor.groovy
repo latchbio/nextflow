@@ -2409,7 +2409,7 @@ class TaskProcessor {
 
                 FileHelper.copyPath(source, target, StandardCopyOption.REPLACE_EXISTING)
             } catch (NoSuchFileException e) {
-                log.debug "Failed to upload ${name} for ${safeTaskName(task)}: ${e.toString()}"
+                log.debug "Skipping upload of ${name} for ${safeTaskName(task)}: ${e.toString()}"
             }
         }
     }
