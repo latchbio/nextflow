@@ -50,6 +50,10 @@ class LatchPath extends XPath {
     }
 
     String toUriString() {
+        if (fs == null || path == null) {
+            return null
+        }
+
         return "latch://${fs.domain}/${path.toString()}"
     }
 

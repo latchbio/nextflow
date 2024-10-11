@@ -2375,7 +2375,7 @@ class TaskProcessor {
         isCacheable() && session.resumeMode
     }
 
-    static private void uploadTaskLogs( TaskRun task ) {
+    private void uploadTaskLogs( TaskRun task ) {
         def logDir = System.getenv("LATCH_LOG_DIR")
         if (logDir == null) {
             return
@@ -2386,6 +2386,8 @@ class TaskProcessor {
             log.warn "LATCH_LOG_DIR ${logDir} is not a valid latch directory"
             return
         }
+
+        log.debug "Uploading log files for ${safeTaskName(task)}"
 
         for (String name : [
             TaskRun.CMD_LOG,
@@ -2402,13 +2404,12 @@ class TaskProcessor {
         ]) {
             try {
                 Path source = task.workDir.resolve(name)
-
-                int parts = source.getNameCount()
-                String subPath = source.subpath(parts - 3, parts).toString()
+                Path subPath = session.workDir.relativize(source)
                 Path target = p.resolve("work").resolve(subPath)
 
                 FileHelper.copyPath(source, target, StandardCopyOption.REPLACE_EXISTING)
-            } catch (NoSuchFileException ignored) {
+            } catch (NoSuchFileException e) {
+                log.debug "Failed to upload ${name} for ${safeTaskName(task)}: ${e.toString()}"
             }
         }
     }
