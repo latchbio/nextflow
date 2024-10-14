@@ -108,6 +108,11 @@ class Session implements ISession {
     final Map<String,DataflowWriteChannel> outputs = [:]
 
     /**
+     * Public custom fsync on a file path since some implementations of `sync` in slim distros might not support fsyncing on a path to push file updates to the shared dir
+     */
+    final String CUSTOM_FSYNC_URL = "https://latch-public.s3.us-west-2.amazonaws.com/nextflow-v2/custom_fsync"
+
+    /**
      * Creates process executors
      */
     ExecutorFactory executorFactory
@@ -448,6 +453,9 @@ class Session implements ISession {
         this.statsEnabled = observersV1.any { ob -> ob.enableMetrics() } || observersV2.any { ob -> ob.enableMetrics() }
         this.workflowMetadata = new WorkflowMetadata(this, scriptFile)
 
+        // download custom fsync binary which supports fsyncing of every file in a directory
+        this.downloadCustomFsync()
+
         // configure script params
         binding.setParams( (Map)config.params )
         binding.setArgs( new ScriptRunner.ArgsList(args) )
@@ -455,6 +463,27 @@ class Session implements ISession {
         cache = CacheFactory.create(uniqueId,runName).open()
 
         return this
+    }
+
+    /**
+     * Downloads the custom fsync file from the specified URL.
+     */
+    void downloadCustomFsync() {
+        Path customFsyncPath = workDir.resolve("custom_fsync")
+        if (customFsyncPath.exists()) {
+            log.debug "Custom fsync was already downloaded"
+            return
+        }
+
+        try {
+            URLConnection conn = new URL(CUSTOM_FSYNC_URL).openConnection()
+            conn.connect()
+            Files.copy(conn.inputStream, customFsyncPath)
+            customFsyncPath.setExecutable(true, false)
+            log.info "File downloaded successfully: $customFsyncPath"
+        } catch (IOException e) {
+            log.error "Failed to download file: $CUSTOM_FSYNC_URL", e
+        }
     }
 
     Session setBinding(ScriptBinding binding ) {

@@ -55,6 +55,8 @@ class TaskBean implements Serializable, Cloneable {
 
     Path workDir
 
+    Path sessionWorkDir
+
     Path targetDir
 
     String script
@@ -130,6 +132,7 @@ class TaskBean implements Serializable, Cloneable {
         this.input = task.stdin
         this.scratch = task.scratch
         this.workDir = task.workDir
+        this.sessionWorkDir = task.getProcessor().getSession().workDir
         this.targetDir = task.targetDir
 
         // set the environment
