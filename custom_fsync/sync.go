@@ -34,7 +34,5 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error fsyncing file: %s: %v\n", filePath, err)
 			continue
 		}
-
-		fmt.Printf("File successfully fsynced: %s\n", filePath)
 	}
 }
