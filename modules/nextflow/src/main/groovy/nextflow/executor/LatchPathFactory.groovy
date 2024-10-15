@@ -54,8 +54,6 @@ class LatchPathFactory extends FileSystemPathFactory {
             return null
         }
 
-        def remoteParent = target.resolve(source).parent
-
-        return "/opt/latch-env/bin/latch mkdirp ${target.toUriString()}/\"\$(dirname \"$source\")\"; /opt/latch-env/bin/latch cp --progress=none --verbose ${source} ${target.toUriString()}/$source"
+        return "true"
     }
 }
