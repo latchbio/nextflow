@@ -54,8 +54,6 @@ class LatchPathFactory extends FileSystemPathFactory {
             return null
         }
 
-        String latch = "/opt/latch-env/bin/latch"
-
         return "true"
     }
 }
