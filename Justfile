@@ -34,7 +34,10 @@ upload:
   aws s3 cp --quiet nextflow {{path}}/nextflow
 
 upload-sync:
+  aws s3 rm --quiet {{nextflow_dir}}/custom_fsync
   aws s3 cp --quiet custom_fsync.bin {{nextflow_dir}}/custom_fsync
+
+push-sync: build-sync upload-sync
 
 publish:
   #!/usr/bin/env bash
