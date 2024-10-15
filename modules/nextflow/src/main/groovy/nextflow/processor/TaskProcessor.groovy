@@ -1656,7 +1656,6 @@ class TaskProcessor {
     }
 
     protected void collectOutFiles( TaskRun task, FileOutParam param, Path workDir, Map context ) {
-        log.info "$workDir ${workDir.exists()}"
         if (!workDir.exists()) return;
 
         final List<Path> allFiles = []
