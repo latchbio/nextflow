@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 )
 
 func main() {
@@ -11,28 +13,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	files, err := os.ReadDir(".")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading directory: %v\n", err)
-		os.Exit(1)
-	}
-
-	for _, file := range files {
-		filePath := file.Name()
-		if file.IsDir() {
-			continue
-		}
-
-		f, err := os.OpenFile(filePath, os.O_RDONLY, 0)
+	err := filepath.WalkDir(".", func(path string, di fs.DirEntry, err error) error {
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error opening file: %s: %v\n", filePath, err)
-			continue
+			return err
 		}
+
+		f, err := os.OpenFile(path, os.O_RDONLY, 0)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error opening file: %s: %v\n", path, err)
+			return err
+		}
+
 		defer f.Close()
 
 		if err := f.Sync(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error fsyncing file: %s: %v\n", filePath, err)
-			continue
+			fmt.Fprintf(os.Stderr, "Error fsyncing file: %s: %v\n", path, err)
+			return err
 		}
+
+		return nil
+	})
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error walking directory: %v\n", err)
+		os.Exit(1)
 	}
 }
