@@ -4,6 +4,10 @@ version := `echo $(cat LATCH_VERSION) | tr -d '\n'`
 nextflow_dir := "s3://" + bucket + "/" + subdir
 path := nextflow_dir + "/" + version
 
+build-sync:
+  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -ldflags '-extldflags "-static"' -o custom_fsync.bin custom_fsync/sync.go
+  chmod +x custom_fsync
+
 build:
   #!/usr/bin/env bash
 
@@ -28,6 +32,9 @@ upload:
   aws s3 cp --quiet nextflow.tar.gz {{path}}/nextflow.tar.gz
 
   aws s3 cp --quiet nextflow {{path}}/nextflow
+
+upload-sync:
+  aws s3 cp --quiet custom_fsync.bin {{nextflow_dir}}/custom_fsync
 
 publish:
   #!/usr/bin/env bash

@@ -538,7 +538,7 @@ class BashWrapperBuilder {
 
     String getSyncCmd() {
         if ( SysEnv.get( 'NXF_ENABLE_FS_SYNC' ) == "true" ) {
-            return 'sync *' // OFS will only get fsync if you use sync on a specific file, not a directory
+            return "${this.bean.sessionWorkDir}/custom_fsync"
         }
         return null
     }

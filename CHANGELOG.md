@@ -1,5 +1,14 @@
 # Latch Nextflow Changelog
 
+## 2.3.1
+
+## Added
+* Custom fsync binary which explicitly calls `fsync` syscall on every file in the current directory.
+* Use the custom fsync binary to sync files instead of built-in sync as some distros don't support calling sync explicitly on files.
+
+## Fixed
+* Read exit status file before reading container exit code to ensure that output files are present in OFS mount.
+
 ## 2.2.1
 
 ## Fixed
