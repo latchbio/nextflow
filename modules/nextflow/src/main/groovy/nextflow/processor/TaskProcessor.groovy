@@ -15,7 +15,7 @@
  */
 package nextflow.processor
 
-
+import nextflow.file.http.LatchPath
 import static nextflow.processor.ErrorStrategy.*
 
 import java.lang.reflect.InvocationTargetException
@@ -912,7 +912,7 @@ class TaskProcessor {
             // -- expose task exit status to make accessible as output value
             task.config.exitStatus = TaskConfig.EXIT_ZERO
             // -- check if all output resources are available
-            collectOutputs(task)
+            collectOutputs(task, task.getTargetDir(), task.@stdout, task.context)
             log.info "[skipping] Stored process > ${safeTaskName(task)}"
             // set the exit code in to the task object
             task.exitStatus = TaskConfig.EXIT_ZERO
@@ -1372,6 +1372,43 @@ class TaskProcessor {
         return result
     }
 
+
+    void writeToStoreDir(TaskRun task, Path source, LatchPath storeDir) {
+        Path rel = task.workDir.relativize(source)
+        Path target = storeDir.resolve(rel)
+
+        log.info "Storing output ${target.toUriString()}"
+
+        FileHelper.copyPath(source, target)
+    }
+
+
+    void storeOutputs(TaskRun task) {
+        if (task.cached) return
+
+        Path storeDir = task.config.getStoreDir()
+        if (storeDir == null || storeDir.scheme != "latch") return
+
+        LatchPath lp = (LatchPath) storeDir
+        lp.createDirIfNotExists()
+
+        for( OutParam param : task.outputs.keySet() ) {
+            if (!(param instanceof FileOutParam)) continue
+
+            def outputs = task.outputs[param]
+            log.info "$outputs"
+
+            if (outputs instanceof Path) {
+                writeToStoreDir(task, outputs, lp)
+            } else {
+                for (Path o: outputs as List<Path>) {
+                    writeToStoreDir(task, o, lp)
+                }
+            }
+        }
+
+    }
+
     /**
      * Publish output files to a specified target folder
      *
@@ -1483,7 +1520,7 @@ class TaskProcessor {
                     fairBuffers.remove(0)
                     // increase the index of the next emission
                     currentEmission++
-                    // take the next emissions 
+                    // take the next emissions
                     emissions = fairBuffers[0]
                 }
             }
@@ -1597,7 +1634,7 @@ class TaskProcessor {
                 ? List.of(line,'')
                 : List.of(line.substring(0,p), line.substring(p+1))
     }
-    
+
     /**
      * Collects the process 'std output'
      *
@@ -1619,6 +1656,8 @@ class TaskProcessor {
     }
 
     protected void collectOutFiles( TaskRun task, FileOutParam param, Path workDir, Map context ) {
+        log.info "$workDir ${workDir.exists()}"
+        if (!workDir.exists()) return;
 
         final List<Path> allFiles = []
         // type file parameter can contain a multiple files pattern separating them with a special character
@@ -1706,7 +1745,7 @@ class TaskProcessor {
             FileHelper.visitFiles(opts, workDir, namePattern) { Path it -> files.add(it) }
         }
         catch( NoSuchFileException e ) {
-            throw new MissingFileException("Cannot access directory: '$workDir'", e)
+            throw new MissingFileException("Cannot access directory: '${workDir.toUriString()}'", e)
         }
 
         return files.sort()
@@ -1870,7 +1909,7 @@ class TaskProcessor {
 
         if( obj == null )
             throw new ProcessUnrecoverableException("Path value cannot be null")
-        
+
         if( !(obj instanceof CharSequence) )
             throw new ProcessUnrecoverableException("Not a valid path value type: ${obj.getClass().getName()} ($obj)")
 
@@ -1883,7 +1922,7 @@ class TaskProcessor {
             return FileHelper.asPath(str)
         if( !str )
             throw new ProcessUnrecoverableException("Path value cannot be empty")
-        
+
         throw new ProcessUnrecoverableException("Not a valid path value: '$str'")
     }
 
@@ -2185,7 +2224,7 @@ class TaskProcessor {
         if( modules ) {
             keys.addAll(modules)
         }
-        
+
         final conda = task.getCondaEnv()
         if( conda ) {
             keys.add(conda)
@@ -2349,7 +2388,7 @@ class TaskProcessor {
             // -- expose task exit status to make accessible as output value
             task.config.exitStatus = task.exitStatus
             // -- if it's OK collect results and finalize
-            collectOutputs(task)
+            collectOutputs(task, task.workDir, task.@stdout, task.context)
         }
         catch ( Throwable error ) {
             fault = resumeOrDie(task, error)
@@ -2388,6 +2427,7 @@ class TaskProcessor {
         if( task.canBind ) {
             bindOutputs(task)
             publishOutputs(task)
+            storeOutputs(task)
         }
 
         // increment the number of processes executed
