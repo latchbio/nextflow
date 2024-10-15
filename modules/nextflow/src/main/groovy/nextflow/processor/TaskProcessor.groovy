@@ -1397,7 +1397,6 @@ class TaskProcessor {
             if (!(param instanceof FileOutParam)) continue
 
             def outputs = task.outputs[param]
-            log.info "$outputs"
 
             if (outputs instanceof Path) {
                 writeToStoreDir(task, outputs, lp)
