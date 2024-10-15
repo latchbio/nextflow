@@ -56,6 +56,6 @@ class LatchPathFactory extends FileSystemPathFactory {
 
         String latch = "/opt/latch-env/bin/latch"
 
-        return "$latch mkdirp ${target.toUriString()}/\"\$(dirname \"$source\")\"; $latch cp --progress=none --verbose ${source} ${target.toUriString()}/$source"
+        return "true"
     }
 }
