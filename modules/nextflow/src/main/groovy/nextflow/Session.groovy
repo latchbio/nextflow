@@ -428,7 +428,7 @@ class Session implements ISession {
     }
 
     /**
-     * Downloads the custom fsync file from the specified URL.
+     * Copies the custom fsync file from the image. Expects the binary to be present in the image at /root/custom_fsync
      */
     void copyCustomFsync() {
         Path srcPath = Paths.get("/root/custom_fsync")
