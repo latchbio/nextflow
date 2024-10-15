@@ -16,6 +16,7 @@
 package nextflow.processor
 
 import nextflow.file.http.LatchPath
+import java.nio.file.StandardCopyOption
 import static nextflow.processor.ErrorStrategy.*
 
 import java.lang.reflect.InvocationTargetException
@@ -656,7 +657,7 @@ class TaskProcessor {
 
         // verify that `when` guard, when specified, is satisfied
         if( !checkWhenGuard(task) ) {
-            this.dispatcherClient.createTaskExecution(task.taskId, 0, task.hash.toString(), 'SKIPPED')
+            this.dispatcherClient.createTaskExecution(task.taskId, 0, null, 'SKIPPED')
             return
         }
 
@@ -673,7 +674,7 @@ class TaskProcessor {
         // -- verify if exists a stored result for this case,
         //    if true skip the execution and return the stored data
         if( checkStoredOutput(task) ) {
-            this.dispatcherClient.createTaskExecution(task.taskId, 0, task.hash.toString(),'SKIPPED')
+            this.dispatcherClient.createTaskExecution(task.taskId, 0, null,'SKIPPED')
             return
         }
 
@@ -838,7 +839,7 @@ class TaskProcessor {
                 log.trace "[${safeTaskName(task)}] Cacheable folder=${resumeDir?.toUriString()} -- exists=$exists; try=$tries; shouldTryCache=$shouldTryCache; entry=$entry"
                 final cached = shouldTryCache && exists && entry.trace.isCompleted() && checkCachedOutput(task.clone(), resumeDir, hash, entry)
                 if( cached ) {
-                    this.dispatcherClient.createTaskExecution(task.taskId, 0, task.hash.toString(), 'SKIPPED')
+                    this.dispatcherClient.createTaskExecution(task.taskId, 0, hash != null ? hash.toString() : null, 'SKIPPED')
                     break
                 }
 
@@ -2412,6 +2413,45 @@ class TaskProcessor {
         isCacheable() && session.resumeMode
     }
 
+    private void uploadTaskLogs( TaskRun task ) {
+        def logDir = System.getenv("LATCH_LOG_DIR")
+        if (logDir == null) {
+            return
+        }
+
+        Path p = FileHelper.asPath(logDir)
+        if (p.scheme != 'latch') {
+            log.warn "LATCH_LOG_DIR ${logDir} is not a valid latch directory"
+            return
+        }
+
+        log.debug "Uploading log files for ${safeTaskName(task)}"
+
+        for (String name : [
+            TaskRun.CMD_LOG,
+            TaskRun.CMD_SCRIPT,
+            TaskRun.CMD_INFILE,
+            TaskRun.CMD_OUTFILE,
+            TaskRun.CMD_ERRFILE,
+            TaskRun.CMD_EXIT,
+            TaskRun.CMD_START,
+            TaskRun.CMD_RUN,
+            TaskRun.CMD_STAGE,
+            TaskRun.CMD_TRACE,
+            TaskRun.CMD_ENV
+        ]) {
+            try {
+                Path source = task.workDir.resolve(name)
+                Path subPath = session.workDir.relativize(source)
+                Path target = p.resolve("work").resolve(subPath)
+
+                FileHelper.copyPath(source, target, StandardCopyOption.REPLACE_EXISTING)
+            } catch (NoSuchFileException e) {
+                log.debug "Skipping upload of ${name} for ${safeTaskName(task)}: ${e.toString()}"
+            }
+        }
+    }
+
     /**
      * Finalize the task execution, checking the exit status
      * and binding output values accordingly
@@ -2421,6 +2461,12 @@ class TaskProcessor {
      */
     private void finalizeTask0( TaskRun task ) {
         log.trace "Finalize process > ${safeTaskName(task)}"
+
+        try {
+            uploadTaskLogs(task)
+        } catch (Exception e) {
+            log.warn "Failed to upload log files for ${safeTaskName(task)}: ${e.toString()}\n${e.printStackTrace()}"
+        }
 
         // -- bind output (files)
         if( task.canBind ) {

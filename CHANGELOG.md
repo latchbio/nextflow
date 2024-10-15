@@ -1,5 +1,44 @@
 # Latch Nextflow Changelog
 
+## 2.2.1
+
+## Fixed
+* Move logs file upload to nextflow runtime because process containers may not have all
+  dependencies required to run `latch cp`
+* Support downloading and uploading latch files with spaces in path
+
+## 2.2.0
+
+## Fixed
+* Allow task hash to be `null` when processes are skipped
+
+## 2.1.9
+
+## Fixed
+* Fix for downloading empty Latch paths
+
+## 2.1.8
+
+## Fixed
+* Update .command polling script to use integer sleep times (decimal not always supported by host)
+
+## 2.1.7
+
+## Fixed
+* Read exit code from container instead of .exitcode file
+* Disable publishDir overwrite when publishing files for a cached task
+
+## 2.1.6
+
+## Fixed
+* NullPointerException when relaunching cached tasks
+* Race condition when concurrently creating multiple LatchFileSystem objects
+
+## 2.1.5 - 2024-10-03
+
+### Added
+* Chunk writes when downloading files to optimize write performance
+
 ## 2.1.4 - 2024-10-02
 
 ### Added

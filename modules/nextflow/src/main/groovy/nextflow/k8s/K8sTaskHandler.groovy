@@ -16,6 +16,9 @@
 
 package nextflow.k8s
 
+import nextflow.exception.K8sOutOfCpuException
+import nextflow.exception.K8sOutOfMemoryException
+import nextflow.exception.ProcessFailedException
 import nextflow.k8s.client.K8sResponseException
 import nextflow.k8s.client.PodUnschedulableException
 import nextflow.util.DispatcherClient
@@ -145,7 +148,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                     exit 0
                 else
                     echo "Waiting for file to become available..."
-                    sleep 0.5
+                    sleep 1
                 fi
             done
             echo "File not found after 50 attempts, failing."
@@ -220,9 +223,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         if (System.getenv("LATCH_NF_DEBUG") != "true") {
             def execId = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
             builder.withEnv(PodEnv.value("FLYTE_INTERNAL_EXECUTION_ID", execId))
-
-            def logDir = System.getenv("LATCH_LOG_DIR")
-            builder.withEnv(PodEnv.value("LATCH_LOG_DIR", logDir))
         }
 
         // when `entrypointOverride` is false the launcher is run via `args` instead of `command`
@@ -354,9 +354,18 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             if (s.status == 'FAILED' && s.systemError != null) {
                 task.error = new PodUnschedulableException((String) s.systemError, new Exception("failed to launch pod"))
                 task.aborted = true
+            } else if (s.status == 'FAILED' && s.runtimeError != null) {
+                String err = (String) s.runtimeError
+                if (err.contains('OutOfcpu')) {
+                    throw new K8sOutOfCpuException(err)
+                } else if (err.contains('OutOfmemory')) {
+                    throw new K8sOutOfMemoryException(err)
+                }
+
+                throw new ProcessFailedException(err)
             } else {
                 // finalize the task
-                task.exitStatus = readExitFile()
+                task.exitStatus = s.exitCode != null ? ((String) s.exitCode).toInteger() : readExitFile()
                 task.stdout = outputFile
                 task.stderr = errorFile
             }

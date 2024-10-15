@@ -11,6 +11,7 @@ import java.nio.file.FileStore
 import java.nio.file.FileSystem
 import java.nio.file.FileSystemAlreadyExistsException
 import java.nio.file.FileSystemNotFoundException
+import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
 import java.nio.file.OpenOption
@@ -57,37 +58,40 @@ class LatchFileSystemProvider extends XFileSystemProvider {
         if (fileSystems.containsKey(domain))
             throw new FileSystemAlreadyExistsException()
 
-        LatchFileSystem fs = new LatchFileSystem(this, domain)
-        fileSystems[domain] = fs
-        return fs
+        return new LatchFileSystem(this, domain)
     }
 
     @Override
     FileSystem getFileSystem(URI uri) {
-        String domain = LatchPathUtils.getDomain(uri)
-
-        if (!this.fileSystems.containsKey(domain)) {
-            throw new FileSystemNotFoundException("Latch filesystem not yet created. Use newFileSystem() instead");
-        }
-
-        return this.fileSystems[domain];
+        return getFileSystem(uri, false)
     }
 
     @Override
     FileSystem getFileSystem(URI uri, boolean canCreate) {
-        return getFileSystem(uri)
+        String domain = LatchPathUtils.getDomain(uri)
+
+        if (!canCreate) {
+            if (!this.fileSystems.containsKey(domain)) {
+                throw new FileSystemNotFoundException("Latch filesystem not yet created. Use newFileSystem() instead");
+            }
+
+            return this.fileSystems[domain]
+        }
+
+        synchronized (this.fileSystems) {
+            FileSystem result = this.fileSystems[domain]
+            if( result == null ) {
+                result = newFileSystem(uri, [:])
+                this.fileSystems[domain] = (LatchFileSystem) result
+            }
+
+            return result
+        }
     }
 
     @Override
     Path getPath(URI uri) {
-        FileSystem fs
-        try {
-            fs = getFileSystem(uri)
-        } catch (FileSystemNotFoundException _) {
-            fs = newFileSystem(uri, [:])
-        }
-
-        return fs.getPath(uri.path)
+        return getFileSystem(uri, true).getPath(uri.path)
     }
 
     @Override
@@ -246,7 +250,27 @@ class LatchFileSystemProvider extends XFileSystemProvider {
     void createDirectory(Path dir, FileAttribute<?>... attrs) throws IOException {}
 
     @Override
-    void delete(Path path) throws IOException {}
+    void delete(Path path) throws IOException {
+        if (!(path instanceof LatchPath))
+            throw new ProviderMismatchException()
+
+        LatchPath lp = (LatchPath) path
+        try {
+            LatchFileAttributes attrs = readAttributes(lp, LatchFileAttributes)
+
+            client.execute("""
+                 mutation RemoveNode(\$argNodeId: BigInt!) {
+                    ldataRmr(input: {argNodeId: \$argNodeId}) {
+                        clientMutationId
+                    }
+                }
+                """,
+                ["argNodeId": attrs.nodeId]
+            )
+        } catch (FileNotFoundException e) {
+            log.warn "Delete failed: ${e.toString()}"
+        }
+    }
 
     @Override
     void copy(Path source, Path target, CopyOption... options) throws IOException {
@@ -315,6 +339,7 @@ class LatchFileSystemProvider extends XFileSystemProvider {
                     path
                     ldataNode {
                         finalLinkTarget {
+                            id
                             type
                             ldataObjectMeta {
                               contentSize
@@ -327,7 +352,7 @@ class LatchFileSystemProvider extends XFileSystemProvider {
             }
         """, ["argPath": path.toUriString()])["ldataResolvePathToNode"]
 
-        if (res["path"] != null)
+        if (res == null || res["path"] != null)
             throw new NoSuchFileException("Path ${path.toUriString()} does not exist")
 
         Map flt = res["ldataNode"]["finalLinkTarget"] as Map
@@ -344,7 +369,9 @@ class LatchFileSystemProvider extends XFileSystemProvider {
             size = Long.parseLong(flt["ldataObjectMeta"]["contentSize"] as String)
         }
 
-        return (A) new LatchFileAttributes((String) flt["type"], size)
+        long nodeId = Long.parseLong(flt["id"] as String)
+
+        return (A) new LatchFileAttributes(nodeId, (String) flt["type"], size)
     }
 
     @Override
