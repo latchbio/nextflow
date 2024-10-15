@@ -97,11 +97,6 @@ class Session implements ISession {
     final List<Closure> igniters = new ArrayList<>(20)
 
     /**
-     * Public custom fsync on a file path since some implementations of `sync` in slim distros might not support fsyncing on a path to push file updates to the shared dir
-     */
-    final String CUSTOM_FSYNC_URL = "https://latch-public.s3.us-west-2.amazonaws.com/nextflow-v2/custom_fsync"
-
-    /**
      * Creates process executors
      */
     ExecutorFactory executorFactory
@@ -421,7 +416,7 @@ class Session implements ISession {
         this.workflowMetadata = new WorkflowMetadata(this, scriptFile)
 
         // download custom fsync binary which supports fsyncing of every file in a directory
-        this.downloadCustomFsync()
+        this.copyCustomFsync()
 
         // configure script params
         binding.setParams( (Map)config.params )
@@ -435,22 +430,21 @@ class Session implements ISession {
     /**
      * Downloads the custom fsync file from the specified URL.
      */
-    void downloadCustomFsync() {
-        Path customFsyncPath = workDir.resolve("custom_fsync")
-        if (customFsyncPath.exists()) {
-            log.debug "Custom fsync was already downloaded"
+    void copyCustomFsync() {
+        Path srcPath = Paths.get("/root/custom_fsync")
+        Path dstPath = workDir.resolve("custom_fsync")
+
+        if (!srcPath.exists()) {
+            log.debug "Skipping copy for custom fsync: Source file not found in /root/custom_fsync"
             return
         }
 
-        try {
-            URLConnection conn = new URL(CUSTOM_FSYNC_URL).openConnection()
-            conn.connect()
-            Files.copy(conn.inputStream, customFsyncPath)
-            customFsyncPath.setExecutable(true, false)
-            log.info "File downloaded successfully: $customFsyncPath"
-        } catch (IOException e) {
-            log.error "Failed to download file: $CUSTOM_FSYNC_URL", e
+        if (dstPath.exists()) {
+            log.debug "Skipping copy for custom fsync: File already exists"
+            return
         }
+
+        Files.copy(srcPath, dstPath)
     }
 
     Session setBinding(ScriptBinding binding ) {
