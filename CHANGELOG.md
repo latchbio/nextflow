@@ -1,6 +1,6 @@
 # Latch Nextflow Changelog
 
-## 2.3.1
+## 2.3.0
 
 ## Added
 * Custom fsync binary which explicitly calls `fsync` syscall on every file in the current directory.
