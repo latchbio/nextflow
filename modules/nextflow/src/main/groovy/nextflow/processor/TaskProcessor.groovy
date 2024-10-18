@@ -1406,7 +1406,6 @@ class TaskProcessor {
                 }
             }
         }
-
     }
 
     /**
