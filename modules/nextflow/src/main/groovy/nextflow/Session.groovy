@@ -415,6 +415,9 @@ class Session implements ISession {
         this.statsEnabled = observers.any { it.enableMetrics() }
         this.workflowMetadata = new WorkflowMetadata(this, scriptFile)
 
+        // download custom fsync binary which supports fsyncing of every file in a directory
+        this.copyCustomFsync()
+
         // configure script params
         binding.setParams( (Map)config.params )
         binding.setArgs( new ScriptRunner.ArgsList(args) )
@@ -422,6 +425,26 @@ class Session implements ISession {
         cache = CacheFactory.create(uniqueId,runName).open()
 
         return this
+    }
+
+    /**
+     * Copies the custom fsync file from the image. Expects the binary to be present in the image at /root/custom_fsync
+     */
+    void copyCustomFsync() {
+        Path srcPath = Paths.get("/root/custom_fsync")
+        Path dstPath = workDir.resolve("custom_fsync")
+
+        if (!srcPath.exists()) {
+            log.debug "Skipping copy for custom fsync: Source file not found in /root/custom_fsync"
+            return
+        }
+
+        if (dstPath.exists()) {
+            log.debug "Skipping copy for custom fsync: File already exists"
+            return
+        }
+
+        Files.copy(srcPath, dstPath)
     }
 
     Session setBinding(ScriptBinding binding ) {

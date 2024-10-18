@@ -365,7 +365,11 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 throw new ProcessFailedException(err)
             } else {
                 // finalize the task
-                task.exitStatus = s.exitCode != null ? ((String) s.exitCode).toInteger() : readExitFile()
+                // note(taras): need to read exitFile first to wait for the files to be available from OFS
+                task.exitStatus = readExitFile()
+                if (task.exitStatus == Integer.MAX_VALUE && s.exitCode != null) {
+                    task.exitStatus = ((String) s.exitCode).toInteger()
+                }
                 task.stdout = outputFile
                 task.stderr = errorFile
             }
@@ -391,7 +395,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             }
             catch (Exception e) {
                 if (attempts % 10 == 0) {
-                    log.warn "[K8s] Cannot read exitstatus for task: `$task.name`. Retrying with attempt $attempts | ${e.message}"
+                    log.debug "[K8s] Cannot read exitstatus for task: `$task.name`. Retrying with attempt $attempts | ${e.message}"
                 }
                 sleep(500) // Wait for 0.5 seconds before retrying
                 attempts++
