@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.3.2
+
+## Changed
+* `storeDir` now performs uploads from within the Nextflow runtime directly (as opposed to from within the process environment)
+
 ## 2.3.0
 
 ## Added
