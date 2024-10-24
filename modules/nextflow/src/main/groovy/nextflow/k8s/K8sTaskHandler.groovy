@@ -16,10 +16,6 @@
 
 package nextflow.k8s
 
-import nextflow.exception.K8sOutOfCpuException
-import nextflow.exception.K8sOutOfMemoryException
-import nextflow.exception.ProcessFailedException
-import nextflow.k8s.client.K8sResponseException
 import nextflow.k8s.client.PodUnschedulableException
 import nextflow.util.DispatcherClient
 
@@ -354,15 +350,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             if (s.status == 'FAILED' && s.systemError != null) {
                 task.error = new PodUnschedulableException((String) s.systemError, new Exception("failed to launch pod"))
                 task.aborted = true
-            } else if (s.status == 'FAILED' && s.runtimeError != null) {
-                String err = (String) s.runtimeError
-                if (err.contains('OutOfcpu')) {
-                    throw new K8sOutOfCpuException(err)
-                } else if (err.contains('OutOfmemory')) {
-                    throw new K8sOutOfMemoryException(err)
-                }
-
-                throw new ProcessFailedException(err)
             } else {
                 // finalize the task
                 // note(taras): need to read exitFile first to wait for the files to be available from OFS
@@ -370,8 +357,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 if (task.exitStatus == Integer.MAX_VALUE && s.exitCode != null) {
                     task.exitStatus = ((String) s.exitCode).toInteger()
                 }
+
                 task.stdout = outputFile
-                task.stderr = errorFile
+                task.stderr = s.runtimeError != null ? (String) s.runtimeError : errorFile
             }
 
             status = TaskStatus.COMPLETED
