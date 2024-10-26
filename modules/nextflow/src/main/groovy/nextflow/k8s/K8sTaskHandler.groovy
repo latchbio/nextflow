@@ -216,6 +216,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             .withLabels(getLabels(task))
             .withAnnotations(getAnnotations())
             .withPodOptions(getPodOptions())
+            .withFsSize(executor.getSession().fsSize)
             .withHostMount("/opt/latch-env", "/opt/latch-env")
 
         builder.withEnv(PodEnv.value("LATCH_NO_CRASH_REPORT", "1"))

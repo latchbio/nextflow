@@ -127,6 +127,11 @@ class Session implements ISession {
     Path workDir
 
     /**
+     * The size of the filesystem to use for the work directory
+     */
+    int fsSize
+
+    /**
      * Bucket work directory for cloud based executors
      */
     Path bucketDir
@@ -374,6 +379,15 @@ class Session implements ISession {
         // -- file porter config
         this.filePorter = new FilePorter(this)
 
+        // -- fsSize
+        try {
+            this.fsSize = config.fsSize ? Integer.parseInt(config.fsSize.toString()) : 1
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid file system size: ${config.fsSize}", e)
+        }
+        if (this.fsSize < 0) {
+            throw new IllegalArgumentException("File system size cannot be negative")
+        }
     }
 
     protected Path cloudCachePath(Map cloudcache, Path workDir) {

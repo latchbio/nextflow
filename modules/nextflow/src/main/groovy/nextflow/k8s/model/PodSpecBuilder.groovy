@@ -78,6 +78,8 @@ class PodSpecBuilder {
 
     String memory
 
+    int fsSize
+
     String disk
 
     String serviceAccount
@@ -134,6 +136,11 @@ class PodSpecBuilder {
 
     PodSpecBuilder withImageName(String name) {
         this.imageName = name
+        return this
+    }
+
+    PodSpecBuilder withFsSize(int size) {
+        this.fsSize = size
         return this
     }
 
@@ -275,7 +282,7 @@ class PodSpecBuilder {
     PodSpecBuilder withEmptyDir( PodMountEmptyDir emptyDir ) {
         this.emptyDirs.add(emptyDir)
         return this
-    } 
+    }
 
     PodSpecBuilder withSecrets( Collection<PodMountSecret> secrets ) {
         this.secrets.addAll(secrets)
@@ -344,7 +351,7 @@ class PodSpecBuilder {
         // -- secrets
         if( opts.getMountSecrets() )
             secrets.addAll( opts.getMountSecrets() )
-        // -- volume claims 
+        // -- volume claims
         if( opts.getVolumeClaims() )
             volumeClaims.addAll( opts.getVolumeClaims() )
         // -- labels
@@ -445,6 +452,10 @@ class PodSpecBuilder {
 
         if( affinity )
             spec.affinity = affinity
+
+        if (fsSize)
+            spec.runtimeClassName = fsSize.toString()
+            labels.put('latch-nf/fs-size', fsSize.toString())
 
         if( this.serviceAccount )
             spec.serviceAccountName = this.serviceAccount
@@ -794,7 +805,7 @@ You provided ${accelerator.type}, ${accelerator.limit}
 
     protected String sanitizeKey(String value, MetaType kind) {
         final parts = value.tokenize('/')
-        
+
         if (parts.size() == 2) {
             return "${sanitizeValue(parts[0], kind, SegmentType.PREFIX)}/${sanitizeValue(parts[1], kind, SegmentType.NAME)}"
         }
