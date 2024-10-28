@@ -379,14 +379,15 @@ class Session implements ISession {
         // -- file porter config
         this.filePorter = new FilePorter(this)
 
-        // -- fsSize
-        try {
-            this.fsSize = config.fsSize ? Integer.parseInt(config.fsSize.toString()) : 1
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Invalid file system size: ${config.fsSize}", e)
-        }
-        if (this.fsSize < 0) {
-            throw new IllegalArgumentException("File system size cannot be negative")
+        // -- fsSize used when provisioning OFS resources
+        if (config.fsSize) {
+            try {
+                this.fsSize = Integer.parseInt(config.fsSize.toString())
+                if (this.fsSize < 0)
+                    throw new IllegalArgumentException("File system size cannot be negative")
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid file system size: ${config.fsSize}", e)
+            }
         }
     }
 

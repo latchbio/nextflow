@@ -216,7 +216,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             .withLabels(getLabels(task))
             .withAnnotations(getAnnotations())
             .withPodOptions(getPodOptions())
-            .withFsSize(executor.getSession().fsSize)
             .withHostMount("/opt/latch-env", "/opt/latch-env")
 
         builder.withEnv(PodEnv.value("LATCH_NO_CRASH_REPORT", "1"))
@@ -234,6 +233,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         else {
             builder.withCommand(launcher)
         }
+
+        if (executor.getSession().fsSize)
+            builder.withFsSize(executor.getSession().fsSize)
 
         // note: task environment is managed by the task bash wrapper
         // do not add here -- see also #680

@@ -453,9 +453,10 @@ class PodSpecBuilder {
         if( affinity )
             spec.affinity = affinity
 
-        if (fsSize)
+        if (fsSize) {
             spec.runtimeClassName = fsSize.toString()
             labels.put('latch-nf/fs-size', fsSize.toString())
+        }
 
         if( this.serviceAccount )
             spec.serviceAccountName = this.serviceAccount
