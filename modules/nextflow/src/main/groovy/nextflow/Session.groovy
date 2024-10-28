@@ -380,9 +380,9 @@ class Session implements ISession {
         this.filePorter = new FilePorter(this)
 
         // -- fsSize used when provisioning OFS resources
-        if (config.fsSize) {
+        if (config.fsSizeTb) {
             try {
-                this.fsSize = Integer.parseInt(config.fsSize.toString())
+                this.fsSize = Integer.parseInt(config.fsSizeTb.toString())
                 if (this.fsSize < 0)
                     throw new IllegalArgumentException("File system size cannot be negative")
             } catch (NumberFormatException e) {
