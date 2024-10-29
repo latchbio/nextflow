@@ -352,8 +352,8 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 task.aborted = true
             } else {
                 // finalize the task
-                if (s.runtimeError != null) {
-                    task.exitStatus = s.exitCode != null ? ((String) s.exitCode).toInteger() : null
+                if (s.status == 'FAILED' && s.runtimeError != null) {
+                    task.exitStatus = s.exitCode != null ? ((String) s.exitCode).toInteger() : Integer.MAX_VALUE
                     task.stderr = (String) s.runtimeError
                 } else {
                     // note(taras): need to read exitFile first to wait for the files to be available from OFS
