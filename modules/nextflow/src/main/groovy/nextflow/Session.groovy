@@ -386,7 +386,7 @@ class Session implements ISession {
                 if (this.fsSize < 0)
                     throw new IllegalArgumentException("File system size cannot be negative")
             } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("Invalid file system size: ${config.fsSize}", e)
+                throw new IllegalArgumentException("Invalid file system size. Expected an integer size in TBs, got: ${config.fsSizeTb}", e)
             }
         }
     }
