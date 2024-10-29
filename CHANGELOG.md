@@ -1,5 +1,11 @@
 # Latch Nextflow Changelog
 
+## 2.4.0
+
+## Added
+* Add an fsSizeTb config option to specify an expected file system size
+* Add `latch-nf/fs-size` label to the pod with the expected fs size
+
 ## 2.3.3
 
 ## Fixed
