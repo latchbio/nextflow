@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.3.3
+
+## Fixed
+* Gracefully handle k8s runtime errors (OOM/Deadline Exceeded) instead of throwing exception.
+
 ## 2.3.2
 
 ## Changed
