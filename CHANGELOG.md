@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.3.4
+
+## Fixed
+* Fix NullPointerException when upload task logs for skipped tasks
+
 ## 2.3.3
 
 ## Fixed
