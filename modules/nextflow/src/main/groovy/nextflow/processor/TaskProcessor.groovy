@@ -2520,6 +2520,10 @@ class TaskProcessor {
     }
 
     private void uploadTaskLogs( TaskRun task ) {
+        if (task.workDir == null) {
+            return
+        }
+
         def logDir = System.getenv("LATCH_LOG_DIR")
         if (logDir == null) {
             return
