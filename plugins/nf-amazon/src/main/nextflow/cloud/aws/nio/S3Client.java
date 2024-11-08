@@ -128,6 +128,7 @@ public class S3Client {
 				.withCredentials(new AWSStaticCredentialsProvider(creds))
 				.withClientConfiguration(config)
 				.withRegion(region)
+				.withDualstackEnabled(true)
 				.build();
 	}
 
