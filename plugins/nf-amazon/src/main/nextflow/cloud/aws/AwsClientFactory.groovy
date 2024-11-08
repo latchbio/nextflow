@@ -250,6 +250,7 @@ class AwsClientFactory {
                 .standard()
                 .withPathStyleAccessEnabled(config.s3Config.pathStyleAccess)
                 .withForceGlobalBucketAccessEnabled(global)
+                .withDualstackEnabled(true)
 
         final endpoint = config.s3Config.endpoint
         if( endpoint )
