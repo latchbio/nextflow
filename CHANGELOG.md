@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.3.5
+
+## Fixed
+* Enable dualstack for AWS clients
+
 ## 2.3.4
 
 ## Fixed
