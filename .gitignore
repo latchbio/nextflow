@@ -40,3 +40,4 @@ plugins-prod
 sandbox
 wave-tests
 nextflow.tar.gz
+x/*

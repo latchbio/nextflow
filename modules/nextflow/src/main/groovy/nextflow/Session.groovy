@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2023, Seqera Labs
+ * Copyright 2013-2024, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,6 @@ package nextflow
 
 import nextflow.file.http.LatchFileSystemProvider
 
-import static nextflow.Const.*
-
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -34,6 +32,7 @@ import groovy.transform.Memoized
 import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
 import groovyx.gpars.GParsConfig
+import groovyx.gpars.dataflow.DataflowWriteChannel
 import groovyx.gpars.dataflow.operator.DataflowProcessor
 import nextflow.cache.CacheDB
 import nextflow.cache.CacheFactory
@@ -50,8 +49,6 @@ import nextflow.executor.ExecutorFactory
 import nextflow.extension.CH
 import nextflow.file.FileHelper
 import nextflow.file.FilePorter
-import nextflow.util.Threads
-import nextflow.util.ThreadPoolManager
 import nextflow.plugin.Plugins
 import nextflow.processor.ErrorStrategy
 import nextflow.processor.TaskFault
@@ -76,6 +73,9 @@ import nextflow.util.ConfigHelper
 import nextflow.util.Duration
 import nextflow.util.HistoryFile
 import nextflow.util.NameGenerator
+import nextflow.util.SysHelper
+import nextflow.util.ThreadPoolManager
+import nextflow.util.Threads
 import nextflow.util.VersionNumber
 import org.apache.commons.lang.exception.ExceptionUtils
 import sun.misc.Signal
@@ -95,6 +95,8 @@ class Session implements ISession {
     final Collection<DataflowProcessor> allOperators = new ConcurrentLinkedQueue<>()
 
     final List<Closure> igniters = new ArrayList<>(20)
+
+    final Map<DataflowWriteChannel,String> publishTargets = [:]
 
     /**
      * Creates process executors
@@ -120,6 +122,11 @@ class Session implements ISession {
      * whenever it has been launched in resume mode
      */
     boolean resumeMode
+
+    /**
+     * The folder where workflow outputs are stored
+     */
+    Path outputDir
 
     /**
      * The folder where tasks temporary files are stored
@@ -155,6 +162,11 @@ class Session implements ISession {
      * Enable stub run mode
      */
     boolean stubRun
+
+    /**
+     * Enable preview mode
+     */
+    boolean preview
 
     /**
      * Folder(s) containing libs and classes to be added to the classpath
@@ -216,6 +228,8 @@ class Session implements ISession {
     private Barrier processesBarrier = new Barrier()
 
     private Barrier monitorsBarrier = new Barrier()
+
+    private volatile boolean failOnIgnore
 
     private volatile boolean cancelled
 
@@ -348,6 +362,9 @@ class Session implements ISession {
         // -- dry run
         this.stubRun = config.stubRun
 
+        // -- preview
+        this.preview = config.preview
+
         // -- normalize taskConfig object
         if( config.process == null ) config.process = [:]
         if( config.env == null ) config.env = [:]
@@ -364,8 +381,11 @@ class Session implements ISession {
         // -- DAG object
         this.dag = new DAG()
 
+        // -- init output dir
+        this.outputDir = FileHelper.toCanonicalPath(config.outputDir ?: 'results')
+
         // -- init work dir
-        this.workDir = ((config.workDir ?: 'work') as Path).complete()
+        this.workDir = FileHelper.toCanonicalPath(config.workDir ?: 'work')
         this.setLibDir( config.libDir as String )
 
         // -- init cloud cache path
@@ -513,10 +533,6 @@ class Session implements ISession {
     void fireDataflowNetwork(boolean preview=false) {
         checkConfig()
         notifyFlowBegin()
-
-        if( !NextflowMeta.instance.isDsl2() ) {
-            return
-        }
 
         // bridge any dataflow queue into a broadcast channel
         CH.broadcast()
@@ -695,8 +711,9 @@ class Session implements ISession {
     void destroy() {
         try {
             log.trace "Session > destroying"
-            // shutdown publish dir executor
-            publishPoolManager.shutdown(aborted)
+            // shutdown thread pools
+            finalizePoolManager?.shutdown(aborted)
+            publishPoolManager?.shutdown(aborted)
             // invoke shutdown callbacks
             shutdown0()
             log.trace "Session > after cleanup"
@@ -712,9 +729,6 @@ class Session implements ISession {
 
             // -- close db
             cache?.close()
-
-            // -- shutdown plugins
-            Plugins.stop()
 
             // -- cleanup script classes dir
             classesDir?.deleteDir()
@@ -808,6 +822,8 @@ class Session implements ISession {
             def status = dumpNetworkStatus()
             if( status )
                 log.debug(status)
+            // dump threads status
+            log.debug(SysHelper.dumpThreads())
             // force termination
             notifyError(null)
             ansiLogObserver?.forceTermination()
@@ -844,7 +860,13 @@ class Session implements ISession {
 
     boolean isCancelled() { cancelled }
 
-    boolean isSuccess() { !aborted && !cancelled }
+    boolean isSuccess() { !aborted && !cancelled && !failOnIgnore }
+
+    boolean canSubmitTasks() {
+        // tasks should be submitted even when 'failOnIgnore' is set to true
+        // https://github.com/nextflow-io/nextflow/issues/5291
+        return !aborted && !cancelled
+    }
 
     void processRegister(TaskProcessor process) {
         log.trace ">>> barrier register (process: ${process.name})"
@@ -881,11 +903,15 @@ class Session implements ISession {
     }
 
     boolean enableModuleBinaries() {
-        config.navigate('nextflow.enable.moduleBinaries', false) as boolean
+        NF.isModuleBinariesEnabled()
+    }
+
+    boolean failOnIgnore() {
+        config.navigate('workflow.failOnIgnore', false) as boolean
     }
 
     @PackageScope VersionNumber getCurrentVersion() {
-        new VersionNumber(APP_VER)
+        new VersionNumber(BuildInfo.version)
     }
 
     @PackageScope void checkVersion() {
@@ -907,11 +933,11 @@ class Session implements ISession {
     }
 
     @PackageScope void showVersionError(String ver) {
-        throw new AbortOperationException("Nextflow version $Const.APP_VER does not match workflow required version: $ver")
+        throw new AbortOperationException("Nextflow version $BuildInfo.version does not match workflow required version: $ver")
     }
 
     @PackageScope void showVersionWarning(String ver) {
-        log.warn "Nextflow version $Const.APP_VER does not match workflow required version: $ver -- Execution will continue, but things may break!"
+        log.warn "Nextflow version $BuildInfo.version does not match workflow required version: $ver -- Execution will continue, but things may break!"
     }
 
     /**
@@ -1067,6 +1093,12 @@ class Session implements ISession {
         final trace = handler.safeTraceRecord()
         cache.putTaskAsync(handler, trace)
 
+        // set the pipeline to return non-exit code if specified
+        if( handler.task.errorAction == ErrorStrategy.IGNORE && failOnIgnore() ) {
+            log.debug "Setting fail-on-ignore flag due to ignored task '${handler.task.lazyName()}'"
+            failOnIgnore = true
+        }
+
         // notify the event to the observers
         for( int i=0; i<observers.size(); i++ ) {
             final observer = observers.get(i)
@@ -1107,11 +1139,26 @@ class Session implements ISession {
     }
 
     void notifyFlowBegin() {
-        observers.each { trace -> trace.onFlowBegin() }
+        for( TraceObserver trace : observers ) {
+            trace.onFlowBegin()
+        }
     }
 
     void notifyFlowCreate() {
-        observers.each { trace -> trace.onFlowCreate(this) }
+        for( TraceObserver trace : observers ) {
+            trace.onFlowCreate(this)
+        }
+    }
+
+    void notifyWorkflowPublish(Object value) {
+        for( final observer : observers ) {
+            try {
+                observer.onWorkflowPublish(value)
+            }
+            catch( Exception e ) {
+                log.error "Failed to invoke observer on workflow publish: $observer", e
+            }
+        }
     }
 
     void notifyFilePublish(Path destination, Path source=null) {
@@ -1458,10 +1505,25 @@ class Session implements ISession {
         ansiLogObserver ? ansiLogObserver.appendInfo(file.text) : Files.copy(file, System.out)
     }
 
-    private ThreadPoolManager publishPoolManager = new ThreadPoolManager('PublishDir')
+    private volatile ThreadPoolManager finalizePoolManager
+
+    @Memoized
+    synchronized ExecutorService taskFinalizerExecutorService() {
+        finalizePoolManager = new ThreadPoolManager('TaskFinalizer')
+        return finalizePoolManager
+                .withConfig(config)
+                .withShutdownMessage(
+                    "Waiting for remaining tasks to complete (%d tasks)",
+                    "Exiting before some tasks were completed"
+                )
+                .create()
+    }
+
+    private volatile ThreadPoolManager publishPoolManager
 
     @Memoized
     synchronized ExecutorService publishDirExecutorService() {
+        publishPoolManager = new ThreadPoolManager('PublishDir')
         return publishPoolManager
                 .withConfig(config)
                 .create()

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2023, Seqera Labs
+ * Copyright 2013-2024, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 package nextflow.executor.local
 
 import nextflow.util.DispatcherClient
+import java.lang.reflect.InvocationTargetException
 
 import java.util.concurrent.Callable
 import java.util.concurrent.Future
@@ -99,12 +100,18 @@ class NativeTaskHandler extends TaskHandler {
     boolean checkIfCompleted() {
         if( isRunning() && result.isDone() ) {
             status = TaskStatus.COMPLETED
-            if( result.get() instanceof Throwable ) {
+            final ret = result.get()
+            if( ret instanceof InvocationTargetException ) {
                 dispatcherClient.updateTaskStatus(taskExecutionId, 'FAILED')
-                task.error = (Throwable)result.get()
-            } else {
+                task.error = ret.cause
+            }
+            else if( ret instanceof Throwable ) {
+                dispatcherClient.updateTaskStatus(taskExecutionId, 'FAILED')
+                task.error = (Throwable)ret
+            }
+            else {
                 dispatcherClient.updateTaskStatus(taskExecutionId, 'SUCCEEDED')
-                task.stdout = result.get()
+                task.stdout = ret
             }
             return true
         }
