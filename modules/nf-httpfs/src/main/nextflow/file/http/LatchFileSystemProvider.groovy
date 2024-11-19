@@ -357,7 +357,7 @@ class LatchFileSystemProvider extends XFileSystemProvider {
 
         Map flt = res["ldataNode"]["finalLinkTarget"] as Map
 
-        if (flt["pending"] || flt["removed"])
+        if (flt["removed"])
             throw new NoSuchFileException("Path ${path.toUriString()} does not exist")
 
         long size = 0

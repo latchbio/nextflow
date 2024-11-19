@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.3.6
+
+## Fixed
+* Remove "pending" check on Latch File when reading file attributes
+
 ## 2.3.5
 
 ## Fixed
