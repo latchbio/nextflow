@@ -1,5 +1,11 @@
 # Latch Nextflow Changelog
 
+## 2.3.6
+
+## Fixed
+* Temporarily remove "pending" check when fetching Latch file attributes. Prevents "file not found"
+when fetching a file that was recently uploaded.
+
 ## 2.3.5
 
 ## Fixed
