@@ -32,7 +32,7 @@ dependencies {
     api "ch.qos.logback:logback-classic:1.4.14"
     api "org.apache.groovy:groovy:4.0.24"
     api "org.apache.groovy:groovy-nio:4.0.23"
-    api "org.codehaus.groovy:groovy-json:3.0.19"
+    api "org.apache.groovy:groovy-json:4.0.23"
     api "com.graphql-java:graphql-java:22.0"
     api("com.esotericsoftware.kryo:kryo:2.24.0") { exclude group: 'com.esotericsoftware.minlog', module: 'minlog' }
 
