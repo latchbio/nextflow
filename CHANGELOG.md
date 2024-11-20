@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.4.0
+
+## Updated
+* Update Nextflow base version to 24.10.1
+
 ## 2.3.5
 
 ## Fixed
