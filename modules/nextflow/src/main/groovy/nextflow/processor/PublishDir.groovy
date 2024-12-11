@@ -16,6 +16,11 @@
 
 package nextflow.processor
 
+import nextflow.file.CopyOptions
+
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+
 import static nextflow.util.CacheHelper.*
 
 import java.nio.file.CopyOption
@@ -435,10 +440,16 @@ class PublishDir {
 
             if ( overwrite ) {
                 log.warn "Overwriting file at ${destination.toUriString()}"
-                FileHelper.deletePath(destination)
-                processFileImpl(source, destination)
+
+                if (destination.getFileSystem().provider().getScheme().equals("latch")) {
+                    processFileImpl(source, destination, true)
+                } else {
+                    FileHelper.deletePath(destination)
+                    processFileImpl(source, destination)
+                }
+
             } else {
-                log.debug "Skipping file. File already exists at ${destination.toUriString()}"
+                log.debug "Skipping upload. File already exists at ${destination.toUriString()}"
             }
         }
 
@@ -508,7 +519,7 @@ class PublishDir {
         return sourceHash != targetHash
     }
 
-    protected void processFileImpl( Path source, Path destination ) {
+    protected void processFileImpl( Path source, Path destination, boolean overwrite = false ) {
         log.trace "publishing file: $source -[$mode]-> $destination"
 
         if( !mode || mode == Mode.SYMLINK ) {
@@ -522,10 +533,18 @@ class PublishDir {
             FilesEx.mklink(source, [hard:true], destination)
         }
         else if( mode == Mode.MOVE ) {
-            FileHelper.movePath(source, destination, copyOpts())
+            if (overwrite) {
+                FileHelper.movePath(source, destination, StandardCopyOption.REPLACE_EXISTING)
+            } else {
+                FileHelper.movePath(source, destination)
+            }
         }
         else if( mode == Mode.COPY ) {
-            FileHelper.copyPath(source, destination, copyOpts())
+            if (overwrite) {
+                FileHelper.copyPath(source, destination, StandardCopyOption.REPLACE_EXISTING)
+            } else {
+                FileHelper.copyPath(source, destination)
+            }
         }
         else if( mode == Mode.COPY_NO_FOLLOW ) {
             FileHelper.copyPath(source, destination, copyOpts(LinkOption.NOFOLLOW_LINKS))
