@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.4.1
+
+## Fixed
+* Remove deletion of latch files when overwriting
+
 ## 2.4.0
 
 ## Updated
