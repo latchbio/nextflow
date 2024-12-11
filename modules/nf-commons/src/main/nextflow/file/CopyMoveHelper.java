@@ -167,7 +167,10 @@ public class CopyMoveHelper {
 
         // delete target if it exists and REPLACE_EXISTING is specified
         if (opts.replaceExisting()) {
-            FileHelper.deletePath(target);
+            // rahul: latch paths can be overridden and do not require explicit delete
+            if (!target.getFileSystem().provider().getScheme().equals("latch")) {
+                FileHelper.deletePath(target);
+            }
         } else if (Files.exists(target)) {
             throw new FileAlreadyExistsException(target.toString());
         }

@@ -24,6 +24,7 @@ import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.PathMatcher
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.ExecutorService
 import java.util.regex.Pattern
 
@@ -42,6 +43,7 @@ import nextflow.file.FileHelper
 import nextflow.file.TagAwareFile
 import nextflow.fusion.FusionHelper
 import nextflow.util.PathTrie
+
 /**
  * Implements the {@code publishDir} directory. It create links or copies the output
  * files of a given task to a user specified directory.
@@ -393,10 +395,15 @@ class PublishDir {
             
             if ( overwrite ) {
                 log.warn "Overwriting file at ${destination.toUriString()}"
-                FileHelper.deletePath(destination)
-                processFileImpl(source, destination)
+
+                if (destination.getFileSystem().provider().getScheme().equals("latch")) {
+                    processFileImpl(source, destination, true)
+                } else {
+                    FileHelper.deletePath(destination)
+                    processFileImpl(source, destination)
+                }
             } else {
-                log.debug "Skipping file. File already exists at ${destination.toUriString()}"
+                log.debug "Skipping upload. File already exists at ${destination.toUriString()}"
             }
         }
 
@@ -478,7 +485,7 @@ class PublishDir {
         return !mode || mode == Mode.SYMLINK || mode == Mode.RELLINK
     }
 
-    protected void processFileImpl( Path source, Path destination ) {
+    protected void processFileImpl( Path source, Path destination, boolean overwrite = false ) {
         log.trace "publishing file: $source -[$mode]-> $destination"
 
         if( !mode || mode == Mode.SYMLINK ) {
@@ -492,10 +499,18 @@ class PublishDir {
             FilesEx.mklink(source, [hard:true], destination)
         }
         else if( mode == Mode.MOVE ) {
-            FileHelper.movePath(source, destination)
+            if (overwrite) {
+                FileHelper.movePath(source, destination, StandardCopyOption.REPLACE_EXISTING)
+            } else {
+                FileHelper.movePath(source, destination)
+            }
         }
         else if( mode == Mode.COPY ) {
-            FileHelper.copyPath(source, destination)
+            if (overwrite) {
+                FileHelper.copyPath(source, destination, StandardCopyOption.REPLACE_EXISTING)
+            } else {
+                FileHelper.copyPath(source, destination)
+            }
         }
         else if( mode == Mode.COPY_NO_FOLLOW ) {
             FileHelper.copyPath(source, destination, LinkOption.NOFOLLOW_LINKS)
