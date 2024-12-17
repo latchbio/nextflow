@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.5.0
+
+## Changed
+* Do not delete files when overwriting a Latch path
+
 ## 2.3.5
 
 ## Fixed
