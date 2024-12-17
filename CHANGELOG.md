@@ -1,5 +1,9 @@
 # Latch Nextflow Changelog
 
+## 3.0.0
+
+* Release new major version for Nextflow 24.10.1
+
 ## 2.4.1
 
 ## Fixed
