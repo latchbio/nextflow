@@ -69,11 +69,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     private DispatcherClient dispatcherClient
 
-    @Lazy
-    static private final String SHARED_DIR = {
-
-    }
-
     private BashWrapperBuilder builder
 
     private Path outputFile

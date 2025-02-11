@@ -462,7 +462,6 @@ class BashWrapperBuilder {
                         fos.getFD().sync()
                     }
                 }
-
                 return path
             }
             catch (Exception e) {
