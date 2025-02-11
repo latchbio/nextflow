@@ -1,7 +1,5 @@
 package nextflow.file.http
 
-import groovy.time.*
-
 import java.net.http.HttpRequest
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
@@ -232,8 +230,6 @@ class LatchPath extends XPath {
     }
 
     void download(Path local) {
-        def timeStart = new Date()
-
         def url = getSignedURL()
 
         def request =  HttpRequest.newBuilder()
@@ -288,11 +284,6 @@ class LatchPath extends XPath {
         } finally {
             outputStream.close()
         }
-
-        def timeStop = new Date()
-        TimeDuration duration = TimeCategory.minus(timeStop, timeStart)
-        log.info "$path: Finished downloading ${local.toUriString()} in $duration sec"
-
     }
 
     void upload(Path local) {

@@ -40,7 +40,7 @@ class LatchFileSystemProvider extends XFileSystemProvider {
     private final Map<String, LatchFileSystem> fileSystems = new HashMap<String, LatchFileSystem>()
 
     static ExecutorService uploadExecutor = Executors.newFixedThreadPool(20)
-    static ExecutorService downloadExecutor = Executors.newFixedThreadPool(5)
+    static ExecutorService downloadExecutor = Executors.newFixedThreadPool(20)
 
     static void shutdown() {
         uploadExecutor.shutdown()

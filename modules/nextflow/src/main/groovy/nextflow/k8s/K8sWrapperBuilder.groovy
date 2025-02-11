@@ -19,6 +19,7 @@ package nextflow.k8s
 
 import groovy.transform.CompileStatic
 import nextflow.executor.BashWrapperBuilder
+import nextflow.executor.ScriptFileCopyStrategy
 import nextflow.processor.TaskBean
 import nextflow.processor.TaskRun
 import nextflow.util.Escape
@@ -31,25 +32,28 @@ import nextflow.util.Escape
 @CompileStatic
 class K8sWrapperBuilder extends BashWrapperBuilder {
 
-    K8sWrapperBuilder(TaskBean bean) {
-        super(bean, new K8sFileCopyStrategy(bean))
+    K8sWrapperBuilder(TaskBean bean, ScriptFileCopyStrategy strategy) {
+        super(bean, strategy)
 
-        // enable the copying of output file to the S3 work dir
-        if( scratch==null )
-            scratch = true
-        // include task script as an input to force its staging in the container work directory
-        bean.inputFiles[TaskRun.CMD_SCRIPT] = bean.workDir.resolve(TaskRun.CMD_SCRIPT)
-        // add the wrapper file when stats are enabled
-        // NOTE: this must match the logic that uses the run script in BashWrapperBuilder
-        if( isTraceRequired() ) {
-            bean.inputFiles[TaskRun.CMD_RUN] = bean.workDir.resolve(TaskRun.CMD_RUN)
-        }
-        // include task stdin file
-        if( bean.input != null ) {
-            bean.inputFiles[TaskRun.CMD_INFILE] = bean.workDir.resolve(TaskRun.CMD_INFILE)
+        if (System.getenv('LATCH_WORKDIR_TYPE') == "object_store") {
+            // enable the copying of output file to the S3 work dir
+            if (scratch == null)
+                scratch = true
+            // include task script as an input to force its staging in the container work directory
+            bean.inputFiles[TaskRun.CMD_SCRIPT] = bean.workDir.resolve(TaskRun.CMD_SCRIPT)
+            // add the wrapper file when stats are enabled
+            // NOTE: this must match the logic that uses the run script in BashWrapperBuilder
+            if (isTraceRequired()) {
+                bean.inputFiles[TaskRun.CMD_RUN] = bean.workDir.resolve(TaskRun.CMD_RUN)
+            }
+            // include task stdin file
+            if (bean.input != null) {
+                bean.inputFiles[TaskRun.CMD_INFILE] = bean.workDir.resolve(TaskRun.CMD_INFILE)
+            }
+            return
         }
 
-        // this.headerScript = "NXF_CHDIR=${Escape.path(task.workDir)}"
+        this.headerScript = "NXF_CHDIR=${Escape.path(bean.workDir)}"
     }
 
     /**

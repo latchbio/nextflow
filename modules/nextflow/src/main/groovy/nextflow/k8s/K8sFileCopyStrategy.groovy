@@ -43,6 +43,7 @@ class K8sFileCopyStrategy extends SimpleFileCopyStrategy {
         if( path )
             copy.remove('PATH')
 
+        // rahul: the AWS Batch code had this so including here in case we need to add support for remote bin directories
         /*
         if( opts.remoteBinDir ) {
             result << "${opts.getAwsCli()} s3 cp --recursive --only-show-errors s3:/${opts.remoteBinDir} \$PWD/nextflow-bin\n"

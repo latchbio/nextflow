@@ -445,13 +445,24 @@ class BashWrapperBuilder {
         while( true ) {
             try {
                 // note(taras): always sync to disk to ensure that the file is visible to other clients
-                try(
-                    BufferedWriter writer=Files.newBufferedWriter(path, CREATE, WRITE, TRUNCATE_EXISTING)
-                ) {
-                    writer.write(data)
-                    writer.flush()
-                    //fos.getFD().sync()
+                if (System.getenv('LATCH_WORKDIR_TYPE') == "object_store") {
+                    try(
+                        BufferedWriter writer=Files.newBufferedWriter(path, CREATE, WRITE, TRUNCATE_EXISTING)
+                    ) {
+                        writer.write(data)
+                        writer.flush()
+                    }
+                } else {
+                    try(
+                        FileOutputStream fos = new FileOutputStream(path.toFile());
+                        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(fos))
+                    ) {
+                        writer.write(data)
+                        writer.flush()
+                        fos.getFD().sync()
+                    }
                 }
+
                 return path
             }
             catch (Exception e) {
@@ -463,7 +474,6 @@ class BashWrapperBuilder {
                 if( isLocalFS || ++attempt>=writeMaxAttempts )
                     throw new ProcessException("Unable to create file ${path.toUriString()}", e)
                 // use an exponential delay before making another attempt
-                log.info "${e.toString()}"
                 final delay = (Math.pow(writeBackOffBase, attempt) as long) * writeBackOffDelay
                 log.debug "Unexpected error writing '${path.toUriString()}'; attempt: $attempt - cause: ${e.message}"
                 Thread.sleep(delay)

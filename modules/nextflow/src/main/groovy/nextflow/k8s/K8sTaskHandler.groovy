@@ -17,6 +17,7 @@
 package nextflow.k8s
 
 import nextflow.k8s.client.PodUnschedulableException
+import nextflow.processor.TaskBean
 import nextflow.util.DispatcherClient
 
 import java.nio.file.Path
@@ -67,6 +68,11 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
     private K8sClient client
 
     private DispatcherClient dispatcherClient
+
+    @Lazy
+    static private final String SHARED_DIR = {
+
+    }
 
     private BashWrapperBuilder builder
 
@@ -130,23 +136,40 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
     }
 
     protected BashWrapperBuilder createBashWrapper(TaskRun task) {
+        TaskBean bean = task.toTaskBean()
         return fusionEnabled()
                 ? fusionLauncher()
-                : new K8sWrapperBuilder(task.toTaskBean())
+                : new K8sWrapperBuilder(
+                    bean,
+                    System.getenv('LATCH_WORKDIR_TYPE') == "object_store" ? new K8sFileCopyStrategy(bean) : null
+                )
     }
 
     protected List<String> classicSubmitCli(TaskRun task) {
         final result = new ArrayList(BashWrapperBuilder.BASH)
+        final command = System.getenv('LATCH_WORKDIR_TYPE') == "object_store" ?
+            """
+                aws s3 cp ${task.workDir.toUriString()}/${TaskRun.CMD_RUN} ${TaskRun.CMD_RUN}
+                exec /bin/bash -ue ${TaskRun.CMD_RUN}
+                exit 0
+            """ :
+            """
+                for i in {1..50}; do
+                    if [ -f ${Escape.path(task.workDir)}/${TaskRun.CMD_RUN} ]; then
+                        exec /bin/bash -ue ${Escape.path(task.workDir)}/${TaskRun.CMD_RUN}
+                        exit 0
+                    else
+                        echo "Waiting for file to become available..."
+                        sleep 1
+                    fi
+                done
+                echo "File not found after 50 attempts, failing."
+                exit 1
+            """
 
-        final command = """
-            bash -c '
-            aws s3 cp ${task.workDir.toUriString()}/${TaskRun.CMD_RUN} ${TaskRun.CMD_RUN}
-            exec /bin/bash -ue ${TaskRun.CMD_RUN}
-            exit 0
-            '
-        """.stripIndent()
+
         result.add("-c".toString().trim())
-        result.add(command.toString().trim())
+        result.add(command.stripIndent().toString().trim())
 
         return result
     }
