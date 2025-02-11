@@ -31,10 +31,9 @@ import nextflow.util.Escape
 @CompileStatic
 class K8sWrapperBuilder extends BashWrapperBuilder {
 
-    K8sWrapperBuilder(TaskRun task) {
-        super(task.toTaskBean(), new K8sFileCopyStrategy(task.toTaskBean()))
+    K8sWrapperBuilder(TaskBean bean) {
+        super(bean, new K8sFileCopyStrategy(bean))
 
-        TaskBean bean = task.toTaskBean()
         // enable the copying of output file to the S3 work dir
         if( scratch==null )
             scratch = true

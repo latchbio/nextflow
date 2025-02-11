@@ -132,7 +132,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
     protected BashWrapperBuilder createBashWrapper(TaskRun task) {
         return fusionEnabled()
                 ? fusionLauncher()
-                : new K8sWrapperBuilder(task)
+                : new K8sWrapperBuilder(task.toTaskBean())
     }
 
     protected List<String> classicSubmitCli(TaskRun task) {
