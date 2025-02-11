@@ -137,21 +137,17 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     protected List<String> classicSubmitCli(TaskRun task) {
         final result = new ArrayList(BashWrapperBuilder.BASH)
+
         final command = """
-            for i in {1..50}; do
-                if [ -f ${Escape.path(task.workDir)}/${TaskRun.CMD_RUN} ]; then
-                    exec /bin/bash -ue ${Escape.path(task.workDir)}/${TaskRun.CMD_RUN}
-                    exit 0
-                else
-                    echo "Waiting for file to become available..."
-                    sleep 1
-                fi
-            done
-            echo "File not found after 50 attempts, failing."
-            exit 1
+            bash -c '
+            aws s3 cp ${task.workDir.toUriString()}/${TaskRun.CMD_RUN} ${TaskRun.CMD_RUN}
+            exec /bin/bash -ue ${TaskRun.CMD_RUN}
+            exit 0
+            '
         """.stripIndent()
         result.add("-c".toString().trim())
         result.add(command.toString().trim())
+
         return result
     }
 
