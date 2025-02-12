@@ -7,7 +7,7 @@ import groovy.transform.CompileStatic
  */
 @CompileStatic
 class LatchBashLib extends BashFunLib<LatchBashLib> {
-    final private String cli = "latch"
+    final private String cli = "/opt/latch-env/bin/latch"
 
     /**
      * Implement LData upload/download helper using `latch cp` CLI tool

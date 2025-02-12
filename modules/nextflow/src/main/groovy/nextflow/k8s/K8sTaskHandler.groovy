@@ -65,8 +65,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     private ResourceType resourceType = ResourceType.Pod
 
-    private K8sClient client
-
     private DispatcherClient dispatcherClient
 
     private BashWrapperBuilder builder
@@ -83,7 +81,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         super(task)
 
         this.executor = executor
-        this.client = executor.client
         this.dispatcherClient = executor.dispatcherClient
         this.outputFile = task.workDir.resolve(TaskRun.CMD_OUTFILE)
         this.errorFile = task.workDir.resolve(TaskRun.CMD_ERRFILE)
@@ -221,12 +218,9 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         final launcher = getSubmitCommand(task)
         final taskCfg = task.getConfig()
 
-        final clientConfig = client.config
         final builder = new PodSpecBuilder()
             .withImageName(imageName)
             .withPodName(getSyntheticPodName(task))
-            .withNamespace(clientConfig.namespace)
-            .withServiceAccount(clientConfig.serviceAccount)
             .withLabels(getLabels(task))
             .withAnnotations(getAnnotations())
             .withPodOptions(getPodOptions())
