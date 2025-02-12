@@ -73,7 +73,7 @@ class K8sFileCopyStrategy extends SimpleFileCopyStrategy {
     @Override
     String stageInputFile( Path path, String targetName ) {
         // third param should not be escaped, because it's used in the grep match rule
-        def stage_cmd = "downloads+=(\"nxf_cp_retry nxf_s3_download s3:/${Escape.path(path)} ${Escape.path(targetName)}\")"
+        def stage_cmd = "downloads+=(\"nxf_cp_retry nxf_latch_download latch://${Escape.path(path)} ${Escape.path(targetName)}\")"
         return stage_cmd
     }
 
@@ -98,7 +98,7 @@ class K8sFileCopyStrategy extends SimpleFileCopyStrategy {
             uploads=()
             IFS=\$'\\n'
             for name in \$(eval "ls -1d ${escape.join(' ')}" | sort | uniq); do
-                uploads+=("nxf_s3_upload '\$name' s3:/${Escape.path(targetDir)}")
+                uploads+=("nxf_latch_upload '\$name' latch://${Escape.path(targetDir)}")
             done
             unset IFS
             nxf_parallel "\${uploads[@]}"
@@ -110,7 +110,7 @@ class K8sFileCopyStrategy extends SimpleFileCopyStrategy {
      */
     @Override
     String touchFile( Path file ) {
-        "echo start | nxf_s3_upload - s3:/${Escape.path(file)}"
+        "echo start | nxf_latch_upload - latch://${Escape.path(file)}"
     }
 
     /**
@@ -126,18 +126,18 @@ class K8sFileCopyStrategy extends SimpleFileCopyStrategy {
      */
     @Override
     String copyFile( String name, Path target ) {
-        "nxf_s3_upload ${Escape.path(name)} s3:/${Escape.path(target.getParent())}"
+        "nxf_latch_upload ${Escape.path(name)} latch://${Escape.path(target.getParent())}"
     }
 
     static String uploadCmd( String source, Path target ) {
-        "nxf_s3_upload ${Escape.path(source)} s3:/${Escape.path(target)}"
+        "nxf_latch_upload ${Escape.path(source)} latch://${Escape.path(target)}"
     }
 
     /**
      * {@inheritDoc}
      */
     String exitFile( Path path ) {
-        "| nxf_s3_upload - s3:/${Escape.path(path)} || true"
+        "| nxf_latch_upload - latch://${Escape.path(path)} || true"
     }
 
     /**
