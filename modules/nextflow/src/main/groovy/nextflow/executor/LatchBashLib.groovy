@@ -25,9 +25,9 @@ class LatchBashLib extends BashFunLib<LatchBashLib> {
 
             if [[ "\$name" == - ]]; then
               cat > "\$temp_file"
-              $cli cp "\$temp_file" "\$latch_path"
+              $cli cp --progress total "\$temp_file" "\$latch_path"
             else
-              $cli cp "\$name" "\$latch_path/\$name"
+              $cli cp --progress total "\$name" "\$latch_path/\$name"
             fi
             
             rm -f "\$temp_file"
@@ -36,7 +36,7 @@ class LatchBashLib extends BashFunLib<LatchBashLib> {
         nxf_latch_download() {
             local source=\$1
             local target=\$2
-            $cli cp "\$source" "\$target"
+            $cli cp --progress total "\$source" "\$target"
         }
         """.stripIndent(true)
     }
