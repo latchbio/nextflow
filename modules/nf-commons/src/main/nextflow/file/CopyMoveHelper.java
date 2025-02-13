@@ -30,6 +30,7 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.spi.FileSystemProvider;
 import java.util.EnumSet;
 
 import nextflow.extension.FilesEx;
@@ -90,13 +91,15 @@ public class CopyMoveHelper {
             return;
         }
 
-        if (target.getFileSystem().provider().getScheme().equals("latch")) {
-            target.getFileSystem().provider().copy(source, target, options);
+        FileSystemProvider sourceProvider = source.getFileSystem().provider();
+        FileSystemProvider targetProvider = target.getFileSystem().provider();
+        if (targetProvider.getScheme().equals("latch") && sourceProvider.getScheme().equals("file")) {
+            targetProvider.copy(source, target, options);
             return;
         }
 
-        if (source.getFileSystem().provider().getScheme().equals("latch")) {
-            source.getFileSystem().provider().copy(source, target, options);
+        if (sourceProvider.getScheme().equals("latch") && targetProvider.getScheme().equals("file")) {
+            sourceProvider.copy(source, target, options);
             return;
         }
 

@@ -288,6 +288,8 @@ class LatchFileSystemProvider extends XFileSystemProvider {
             return
         }
 
+        // todo(rahul): improve performance by adding support for latch -> latch copy
+
         throw new RuntimeException("Copy failed: either source or target must be Latch path")
     }
 

@@ -141,7 +141,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         final result = new ArrayList(BashWrapperBuilder.BASH)
         final command = System.getenv('LATCH_WORKDIR_TYPE') == "object_store" ?
             """
-                latch cp ${task.workDir.toUriString()}/${TaskRun.CMD_RUN} ${TaskRun.CMD_RUN}
+                /opt/latch-env/bin/latch cp ${task.workDir.toUriString()}/${TaskRun.CMD_RUN} ${TaskRun.CMD_RUN}
                 exec /bin/bash -ue ${TaskRun.CMD_RUN}
                 exit 0
             """ :
