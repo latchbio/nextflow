@@ -18,8 +18,10 @@ package nextflow.k8s
 
 import groovy.transform.CompileStatic
 import groovy.transform.Memoized
+import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
 import nextflow.executor.Executor
+import nextflow.extension.FilesEx
 import nextflow.fusion.FusionHelper
 import nextflow.k8s.client.K8sClient
 import nextflow.processor.TaskHandler
@@ -28,6 +30,9 @@ import nextflow.processor.TaskPollingMonitor
 import nextflow.processor.TaskRun
 import nextflow.util.Duration
 import nextflow.util.ServiceName
+
+import java.nio.file.Path
+
 /**
  * Implement the Kubernetes executor
  *
@@ -37,6 +42,10 @@ import nextflow.util.ServiceName
 @CompileStatic
 @ServiceName('k8s')
 class K8sExecutor extends Executor {
+    /**
+     * A Latch path where executable scripts need to be uploaded
+     */
+    private Path remoteBinDir = null
 
     /**
      * @return The `k8s` configuration scope in the nextflow configuration object
@@ -52,6 +61,7 @@ class K8sExecutor extends Executor {
     @Override
     protected void register() {
         super.register()
+        uploadBinDir()
     }
 
     /**
@@ -91,5 +101,21 @@ class K8sExecutor extends Executor {
     @Override
     boolean isFusionEnabled() {
         return FusionHelper.isFusionEnabled(session)
+    }
+
+    @PackageScope
+    Path getRemoteBinDir() {
+        remoteBinDir
+    }
+
+    protected void uploadBinDir() {
+        /*
+         * upload local binaries
+         */
+        if( session.binDir && !session.binDir.empty() && !session.disableRemoteBinDir ) {
+            def path = getTempDir()
+            log.info "Uploading local `bin` scripts folder to ${path.toUriString()}/bin"
+            this.remoteBinDir = FilesEx.copyTo(session.binDir, path)
+        }
     }
 }

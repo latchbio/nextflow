@@ -18,8 +18,11 @@ import nextflow.util.Escape
 @CompileStatic
 class K8sFileCopyStrategy extends SimpleFileCopyStrategy {
 
-    K8sFileCopyStrategy(TaskBean task) {
+    private Path remoteBinDir
+
+    K8sFileCopyStrategy(TaskBean task, Path remoteBinDir) {
         super(task)
+        this.remoteBinDir = remoteBinDir
     }
 
     String getBeforeStartScript() {
@@ -43,14 +46,12 @@ class K8sFileCopyStrategy extends SimpleFileCopyStrategy {
         if( path )
             copy.remove('PATH')
 
-        // rahul: the AWS Batch code had this so including here in case we need to add support for remote bin directories
-        /*
-        if( opts.remoteBinDir ) {
-            result << "${opts.getAwsCli()} s3 cp --recursive --only-show-errors s3:/${opts.remoteBinDir} \$PWD/nextflow-bin\n"
+        if( remoteBinDir ) {
+            result << "nxf_cp_retry nxf_latch_download latch://${remoteBinDir} \$PWD/nextflow-bin\n"
             result << "chmod +x \$PWD/nextflow-bin/* || true\n"
             result << "export PATH=\$PWD/nextflow-bin:\$PATH\n"
         }
-        */
+
 
         // finally render the environment
         final envSnippet = super.getEnvScript(copy,false)

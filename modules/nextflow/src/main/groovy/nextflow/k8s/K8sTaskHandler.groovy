@@ -133,7 +133,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 ? fusionLauncher()
                 : new K8sWrapperBuilder(
                     bean,
-                    System.getenv('LATCH_WORKDIR_TYPE') == "object_store" ? new K8sFileCopyStrategy(bean) : null
+                    System.getenv('LATCH_WORKDIR_TYPE') == "object_store" ? new K8sFileCopyStrategy(bean, this.executor.remoteBinDir) : null
                 )
     }
 
@@ -141,7 +141,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         final result = new ArrayList(BashWrapperBuilder.BASH)
         final command = System.getenv('LATCH_WORKDIR_TYPE') == "object_store" ?
             """
-                /opt/latch-env/bin/latch cp ${task.workDir.toUriString()}/${TaskRun.CMD_RUN} ${TaskRun.CMD_RUN}
+                latch cp ${task.workDir.toUriString()}/${TaskRun.CMD_RUN} ${TaskRun.CMD_RUN}
                 exec /bin/bash -ue ${TaskRun.CMD_RUN}
                 exit 0
             """ :
