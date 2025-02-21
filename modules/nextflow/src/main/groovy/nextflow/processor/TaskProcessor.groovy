@@ -1141,6 +1141,11 @@ class TaskProcessor {
                     dumpStackTrace = true
             }
 
+            def runtime_dir = System.getenv("latch_runtime_info_dir")
+            if (runtime_dir != null) {
+                Paths.get("$runtime_dir/traceback.txt").write(message.join("\n"))
+            }
+
             if( dumpStackTrace )
                 log.error(message.join('\n'), error)
             else
