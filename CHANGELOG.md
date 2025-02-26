@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.5.1
+
+## Changed
+* Bump max queue size to 1000
+
 ## 2.5.0
 
 ## Changed
