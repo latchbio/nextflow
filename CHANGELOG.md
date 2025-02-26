@@ -1,5 +1,9 @@
 # Latch Nextflow Changelog
 
+## 3.0.1
+
+* Bump max queue size to 1000
+
 ## 3.0.0
 
 * Release new major version for Nextflow 24.10.1
