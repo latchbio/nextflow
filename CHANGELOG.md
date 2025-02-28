@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.5.2
+
+## Changed
+* Revert changes in 2.5.1
+
 ## 2.5.1
 
 ## Changed
