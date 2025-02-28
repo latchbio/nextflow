@@ -1,5 +1,9 @@
 # Latch Nextflow Changelog
 
+## 3.0.2
+
+* Revert changes from 3.0.1
+
 ## 3.0.1
 
 * Bump max queue size to 1000
