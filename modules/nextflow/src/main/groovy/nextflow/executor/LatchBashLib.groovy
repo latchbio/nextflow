@@ -27,7 +27,9 @@ class LatchBashLib extends BashFunLib<LatchBashLib> {
               cat > "\$temp_file"
               $cli cp --progress total "\$temp_file" "\$latch_path"
             else
-              $cli cp --progress total "\$name" "\$latch_path/\$name"
+              local target_path="\$latch_path/\$name"
+              $cli mkdirp "\$(dirname "\$target_path")"
+              $cli cp --progress total "\$name" "\$target_path"
             fi
             
             rm -f "\$temp_file"
