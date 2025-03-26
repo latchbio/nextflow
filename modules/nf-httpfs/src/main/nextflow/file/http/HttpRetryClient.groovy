@@ -14,20 +14,24 @@ class HttpRetryClient {
         .connectTimeout(Duration.ofSeconds(10))
         .build()
 
-    HttpResponse sendHelper(HttpRequest request, boolean stream = false, int retries = 3) {
+    transient private Random random = new Random();
+
+    HttpResponse sendHelper(HttpRequest request, boolean stream = false, int retries = 5) {
         if (retries <= 0) {
             throw new RuntimeException("failed to submit request, retries must be > 0")
         }
 
         Exception error
         HttpResponse response
+        int statusCode = -1
 
         for (int i = 0; i < retries; i++) {
             if (i != 0) {
-                log.debug "[${i}/${retries}] Request to ${request.uri()} failed. Retrying..."
-                sleep(2 ** (i + 1) * 5000)
+                log.debug "[${i}/${retries}] Request to ${request.uri()} failed statusCode=${statusCode} error=${error != null ? error.toString() : "None"}. Retrying..."
+                sleep(2 ** (i + 1) * 5000 + random.nextInt( 3000 ))
             }
 
+            statusCode = -1
             error = null
             try {
                 response = client.send(request, stream ? HttpResponse.BodyHandlers.ofInputStream() : HttpResponse.BodyHandlers.ofString())
@@ -36,7 +40,7 @@ class HttpRetryClient {
                 continue
             }
 
-            def statusCode = response.statusCode()
+            statusCode = response.statusCode()
             if (statusCode == 429 || statusCode >= 500)
                 continue
 
