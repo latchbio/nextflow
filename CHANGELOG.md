@@ -1,5 +1,11 @@
 # Latch Nextflow Changelog
 
+## 2.5.3
+
+## Changed
+* Add jitter to HTTPRetryClient sleep interval
+* Ignore errors on duplicate task info and task execution info
+
 ## 2.5.2
 
 ## Changed

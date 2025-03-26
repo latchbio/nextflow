@@ -1,9 +1,9 @@
 package nextflow.util
 
 import groovy.json.JsonOutput
-import groovy.json.JsonSlurper
 import groovy.util.logging.Slf4j
 import nextflow.file.http.GQLClient
+import nextflow.file.http.GQLClient.GQLQueryException
 
 @Slf4j
 class DispatcherClient {
@@ -95,34 +95,58 @@ class DispatcherClient {
             return 1
         }
 
-        Map res = client.execute("""
-            mutation CreateTaskInfo(\$processNodeId: BigInt!, \$index: BigInt!, \$tag: String) {
-                createNfTaskInfo(
-                    input: {
-                        nfTaskInfo: {
-                            processNodeId: \$processNodeId,
-                            index: \$index,
-                            tag: \$tag
+        try {
+            Map res = client.execute("""
+                mutation CreateTaskInfo(\$processNodeId: BigInt!, \$index: BigInt!, \$tag: String) {
+                    createNfTaskInfo(
+                        input: {
+                            nfTaskInfo: {
+                                processNodeId: \$processNodeId,
+                                index: \$index,
+                                tag: \$tag
+                            }
+                        }
+                    ) {
+                        nfTaskInfo {
+                            id
                         }
                     }
-                ) {
-                    nfTaskInfo {
-                        id
-                    }
+                }
+                """,
+                [
+                    processNodeId: processNodeId,
+                    index: index,
+                    tag: tag,
+                ]
+            )["createNfTaskInfo"] as Map
+
+            if (res == null)
+                throw new RuntimeException("failed to create remote process task for: processNodeId=${processNodeId} index=${index}")
+
+            return ((res.nfTaskInfo as Map).id as String).toInteger()
+        } catch (GQLQueryException e) {
+            if (!e.message.contains("duplicate key value violates unique constraint")) {
+                throw e
+            }
+        }
+
+        Map res = client.execute("""
+            query GetNfTaskInfo(\$index: BigInt!, \$processNodeId: BigInt!) {
+                nfTaskInfoByProcessNodeIdAndIndex(index: \$index, processNodeId: \$processNodeId) {
+                    id
                 }
             }
             """,
             [
                 processNodeId: processNodeId,
                 index: index,
-                tag: tag,
             ]
-        )["createNfTaskInfo"] as Map
+        )["nfTaskInfoByProcessNodeIdAndIndex"] as Map
 
         if (res == null)
-            throw new RuntimeException("failed to create remote process task for: processNodeId=${processNodeId} index=${index}")
+            throw new RuntimeException("failed to get task id for: processNodeId=${processNodeId} index=${index}")
 
-        return ((res.nfTaskInfo as Map).id as String).toInteger()
+        return (res.id as String).toInteger()
     }
 
     int createTaskExecution(int taskId, int attemptIdx, String hash, String status = null) {
@@ -130,40 +154,67 @@ class DispatcherClient {
             return 1
         }
 
-        Map res = client.execute("""
-            mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$hash: String, \$status: TaskExecutionStatus!) {
-                createNfTaskExecutionInfo(
-                    input: {
-                        nfTaskExecutionInfo: {
-                            taskId: \$taskId,
-                            attemptIdx: \$attemptIdx,
-                            hash: \$hash,
-                            status: \$status,
-                            cpuLimitMillicores: "0",
-                            memoryLimitBytes: "0",
-                            ephemeralStorageLimitBytes: "0",
-                            gpuLimit: "0"
+        try {
+            Map res = client.execute("""
+                mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$hash: String, \$status: TaskExecutionStatus!) {
+                    createNfTaskExecutionInfo(
+                        input: {
+                            nfTaskExecutionInfo: {
+                                taskId: \$taskId,
+                                attemptIdx: \$attemptIdx,
+                                hash: \$hash,
+                                status: \$status,
+                                cpuLimitMillicores: "0",
+                                memoryLimitBytes: "0",
+                                ephemeralStorageLimitBytes: "0",
+                                gpuLimit: "0"
+                            }
+                        }
+                    ) {
+                        nfTaskExecutionInfo {
+                            id
                         }
                     }
-                ) {
-                    nfTaskExecutionInfo {
-                        id
-                    }
+                }
+                """,
+                [
+                    taskId: taskId,
+                    attemptIdx: attemptIdx,
+                    hash: hash,
+                    status: status == null ? 'UNDEFINED' : status,
+                ]
+            )["createNfTaskExecutionInfo"] as Map
+
+            if (res == null)
+                throw new RuntimeException("failed to create remote task execution for: taskId=${taskId} attempt=${attemptIdx} hash=${hash}")
+
+            return ((res.nfTaskExecutionInfo as Map).id as String).toInteger()
+        } catch (GQLQueryException e) {
+
+            // note(rahul): the gql client uses the HTTP Retry Client. As a result, it may retry a request after
+            // successfully committing the row to the DB (for example, if the connection fails)
+            if (!e.message.contains("duplicate key value violates unique constraint")) {
+                throw e
+            }
+        }
+
+        Map res = client.execute("""
+            query GetNfTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!) {
+                nfTaskExecutionInfoByTaskIdAndAttemptIdx(attemptIdx: \$attemptIdx, taskId: \$taskId) {
+                    id
                 }
             }
             """,
             [
                 taskId: taskId,
                 attemptIdx: attemptIdx,
-                hash: hash,
-                status: status == null ? 'UNDEFINED' : status,
             ]
-        )["createNfTaskExecutionInfo"] as Map
+        )["nfTaskExecutionInfoByTaskIdAndAttemptIdx"] as Map
 
         if (res == null)
-            throw new RuntimeException("failed to create remote task execution for: taskId=${taskId} attempt=${attemptIdx} hash=${hash}")
+            throw new RuntimeException("failed to get task execution id for: taskId=${taskId} attemptIdx=${attemptIdx}")
 
-        return ((res.nfTaskExecutionInfo as Map).id as String).toInteger()
+        return (res.id as String).toInteger()
     }
 
     void submitPod(int taskExecutionId, Map pod) {
