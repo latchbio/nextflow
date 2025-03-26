@@ -123,7 +123,7 @@ class DispatcherClient {
             if (res == null)
                 throw new RuntimeException("failed to create remote process task for: processNodeId=${processNodeId} index=${index}")
 
-            //return ((res.nfTaskInfo as Map).id as String).toInteger()
+            return ((res.nfTaskInfo as Map).id as String).toInteger()
         } catch (GQLQueryException e) {
             if (!e.message.contains("duplicate key value violates unique constraint")) {
                 throw e
@@ -188,7 +188,7 @@ class DispatcherClient {
             if (res == null)
                 throw new RuntimeException("failed to create remote task execution for: taskId=${taskId} attempt=${attemptIdx} hash=${hash}")
 
-            //return ((res.nfTaskExecutionInfo as Map).id as String).toInteger()
+            return ((res.nfTaskExecutionInfo as Map).id as String).toInteger()
         } catch (GQLQueryException e) {
 
             // note(rahul): the gql client uses the HTTP Retry Client. As a result, it may retry a request after
