@@ -658,7 +658,7 @@ class TaskProcessor {
         final values = (List) args[1]
 
         // create and initialize the task instance to be executed
-        log.debug "Invoking task > $name with params=$params; values=$values"
+        log.trace "Invoking task > $name with params=$params; values=$values"
 
         // -- create the task run instance
         final task = createTaskRun(params)
