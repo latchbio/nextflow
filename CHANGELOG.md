@@ -5,7 +5,7 @@
 ## Changed
 * Add jitter to HTTPRetryClient sleep interval
 * Ignore errors on duplicate task info and task execution info
-* Demote 'Invoking Task' log to trace
+* Demote "Invoking Task" log from debug to trace
 
 ## 3.0.2
 
