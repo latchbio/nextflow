@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.5.4
+
+## Changed
+* Demote "Invoking Task" log from debug to trace
+
 ## 2.5.3
 
 ## Changed
