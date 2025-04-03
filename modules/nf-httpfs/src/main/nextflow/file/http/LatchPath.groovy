@@ -30,6 +30,11 @@ class LatchPath extends XPath {
     private static String cluster = System.getenv("LATCH_SDK_DOMAIN") ?: "latch.bio"
     private static String host = "https://nucleus.${cluster}"
 
+    /*
+    * Only needed to prevent serialization issues - see https://github.com/nextflow-io/nextflow/issues/5208
+    */
+    protected LatchPath(){}
+
     LatchPath(LatchFileSystem fs, String path) {
         super(fs, path)
 
