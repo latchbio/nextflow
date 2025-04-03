@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 3.0.4
+
+## Fixed
+* Fix serialization error on LatchPath when resuming an execution
+
 ## 3.0.3
 
 ## Changed
