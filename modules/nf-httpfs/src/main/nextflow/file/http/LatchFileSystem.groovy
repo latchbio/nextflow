@@ -9,6 +9,11 @@ class LatchFileSystem extends XFileSystem {
     LatchFileSystemProvider provider
     String domain
 
+    /*
+    * Only needed to prevent serialization issues - see https://github.com/nextflow-io/nextflow/issues/5208
+    */
+    protected LatchFileSystem() {}
+
     LatchFileSystem(LatchFileSystemProvider provider, String domain) {
         super(provider, new URI("latch", domain, "/", null, null))
 
