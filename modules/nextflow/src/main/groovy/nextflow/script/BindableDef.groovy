@@ -40,8 +40,9 @@ abstract class BindableDef extends ComponentDef {
         // use this instance an workflow template, therefore clone it
         final String prefix = ExecutionStack.workflow()?.name
         final fqName = prefix ? prefix+SCOPE_SEP+name : name
+        log.debug("bindable fqName: $fqName")
         if( this instanceof ProcessDef && !invocations.add(fqName) ) {
-            log.debug "Bindable invocations=$invocations"
+            log.debug "Bindable invocations=$invocations, ${this.toString()}"
             final msg = "Process '$name' has been already used -- If you need to reuse the same component, include it with a different name or include it in a different workflow context"
             throw new DuplicateProcessInvocation(msg)
         }

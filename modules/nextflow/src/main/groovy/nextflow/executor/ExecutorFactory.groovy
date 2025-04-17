@@ -22,6 +22,7 @@ import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
 import nextflow.Session
 import nextflow.executor.local.LocalExecutor
+import nextflow.forch.ForchExecutor
 import nextflow.k8s.K8sExecutor
 import nextflow.script.BodyDef
 import nextflow.script.ProcessConfig
@@ -61,7 +62,8 @@ class ExecutorFactory {
             'nqsii': NqsiiExecutor,
             'moab': MoabExecutor,
             'oar': OarExecutor,
-            'hq': HyperQueueExecutor
+            'hq': HyperQueueExecutor,
+            'forch': ForchExecutor,
     ]
 
     @PackageScope Map<String, Class<? extends Executor>> executorsMap

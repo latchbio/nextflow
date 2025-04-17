@@ -33,7 +33,7 @@ class MemoryUnit implements Comparable<MemoryUnit>, Serializable, Cloneable {
 
     final static public MemoryUnit ZERO = new MemoryUnit(0)
 
-    final static private Pattern FORMAT = ~/([0-9\.]+)\s*(\S)?B?/
+    final static private Pattern FORMAT = ~/([0-9\.]+)\s*(\S)?i?B?/
 
     final static public List UNITS = [ "B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB" ]
 

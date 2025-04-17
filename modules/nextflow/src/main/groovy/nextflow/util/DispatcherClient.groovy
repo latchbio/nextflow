@@ -10,14 +10,16 @@ class DispatcherClient {
 
     private GQLClient client = new GQLClient()
 
+    public boolean debug = System.getenv("LATCH_NF_DEBUG") == "true"
+
     int createProcessNode(String processName) {
-        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+        if (debug) {
             return 1
         }
 
         String executionToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
         if (executionToken == null)
-                throw new RuntimeException("unable to get execution token")
+            throw new RuntimeException("unable to get execution token")
 
         Map res = client.execute("""
             mutation CreateNode(\$executionToken: String!, \$name: String!) {
@@ -39,7 +41,7 @@ class DispatcherClient {
     }
 
     void closeProcessNode(int nodeId, int numTasks) {
-        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+        if (debug) {
             return
         }
 
@@ -65,7 +67,7 @@ class DispatcherClient {
     }
 
     void createProcessEdge(int from, int to) {
-        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+        if (debug) {
             return
         }
 
@@ -91,7 +93,7 @@ class DispatcherClient {
     }
 
     int createProcessTask(int processNodeId, int index, String tag) {
-        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+        if (debug) {
             return 1
         }
 
@@ -150,7 +152,7 @@ class DispatcherClient {
     }
 
     int createTaskExecution(int taskId, int attemptIdx, String hash, String status = null) {
-        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+        if (debug) {
             return 1
         }
 
@@ -241,7 +243,7 @@ class DispatcherClient {
     }
 
     void updateTaskStatus(int taskExecutionId, String status) {
-        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+        if (debug) {
             return
         }
 
@@ -267,7 +269,7 @@ class DispatcherClient {
     }
 
     Map getTaskStatus(int taskExecutionId) {
-        if (System.getenv("LATCH_NF_DEBUG") == "true") {
+        if (debug) {
             return null
         }
 

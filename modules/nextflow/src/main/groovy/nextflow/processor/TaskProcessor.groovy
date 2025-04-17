@@ -17,6 +17,8 @@ package nextflow.processor
 
 import nextflow.file.http.LatchPath
 import java.nio.file.StandardCopyOption
+
+import nextflow.k8s.K8sExecutor
 import nextflow.trace.TraceRecord
 
 import static nextflow.processor.ErrorStrategy.*
@@ -332,6 +334,7 @@ class TaskProcessor {
 
         this.numTasks = 0
         this.dispatcherClient = new DispatcherClient()
+        this.dispatcherClient.debug = !(executor instanceof K8sExecutor)
 
         this.maxForks = config.maxForks && config.maxForks>0 ? config.maxForks as int : 0
         this.forksCount = maxForks ? new LongAdder() : null

@@ -671,7 +671,7 @@ class PodSpecBuilder {
 
 
     @PackageScope
-    void validateAccelerator(AcceleratorResource accelerator) {
+    static void validateAccelerator(AcceleratorResource accelerator) {
         // gpu-small: nvidia-t4 (1)
         // gpu-large: nvidia-a10g (1)
         // v100-x1: nvidia-v100 (1)
@@ -687,15 +687,15 @@ class PodSpecBuilder {
         }
 
         throw new VerifyError("""\
-Invalid GPU configuration. Latch only allows the following combinations:
-    - accelerator 1, type: "nvidia-t4"
-    - accelerator 1, type: "nvidia-a10g"
-    - accelerator 1, type: "nvidia-v100"
-    - accelerator 4, type: "nvidia-v100"
-    - accelerator 8, type: "nvidia-v100"
-
-You provided ${accelerator.type}, ${accelerator.limit}
-        """)
+            Invalid GPU configuration. Latch only allows the following combinations:
+                - accelerator 1, type: "nvidia-t4"
+                - accelerator 1, type: "nvidia-a10g"
+                - accelerator 1, type: "nvidia-v100"
+                - accelerator 4, type: "nvidia-v100"
+                - accelerator 8, type: "nvidia-v100"
+            
+            You provided ${accelerator.type}, ${accelerator.limit}
+        """.stripIndent().trim())
 
     }
 
