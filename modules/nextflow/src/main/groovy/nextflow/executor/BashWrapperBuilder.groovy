@@ -444,14 +444,8 @@ class BashWrapperBuilder {
         int attempt=0
         while( true ) {
             try {
-                // note(taras): always sync to disk to ensure that the file is visible to other clients
-                try(
-                    FileOutputStream fos = new FileOutputStream(path.toFile());
-                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(fos))
-                ) {
+                try (BufferedWriter writer=Files.newBufferedWriter(path, CREATE,WRITE,TRUNCATE_EXISTING)) {
                     writer.write(data)
-                    writer.flush()
-                    fos.getFD().sync()
                 }
                 return path
             }

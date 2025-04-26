@@ -146,6 +146,35 @@ async def get_task_status(task_id: int):
     return await db_work()
 
 
+@dataclass
+class TaskExitCode:
+    exit_status: int | None
+
+
+async def get_task_exit_code(task_id: int):
+    @with_conn_retry
+    async def db_work(conn: LatchAsyncConnection):
+        return await conn.query1(
+            TaskExitCode,
+            sqlq(
+                """
+                select
+                    teced.exit_status
+                from
+                    forch_pub.task_events te
+                inner join
+                    forch_pub.task_event_container_exited_data teced
+                    on teced.id = te.id
+                where
+                    te.task_id = %(task_id)s
+                """,
+            ),
+            task_id=task_id,
+        )
+
+    return await db_work()
+
+
 async def main():
     await pool.open()
     args = sys.argv[1:]
@@ -161,6 +190,10 @@ async def main():
         task_id = int(args[1])
         res = await get_task_status(task_id)
         print(res.status)
+    elif args[0] == "exitcode":
+        task_id = int(args[1])
+        res = await get_task_exit_code(task_id)
+        print(res.exit_status)
 
 
 if __name__ == "__main__":
