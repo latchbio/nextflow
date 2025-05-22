@@ -3,13 +3,14 @@ package nextflow.forch
 import java.nio.file.Path
 
 import nextflow.executor.BashWrapperBuilder
+import nextflow.executor.SimpleFileCopyStrategy
 import nextflow.processor.TaskBean
 import nextflow.processor.TaskRun
 
 class ForchTaskWrapperBuilder extends BashWrapperBuilder {
     // entirely lifted from AWS Batch Wrapper
     ForchTaskWrapperBuilder(TaskBean bean) {
-        super(bean, new ForchFileCopyStrategy())
+        super(bean, new SimpleFileCopyStrategy())
         // enable the copying of output file to the S3 work dir
         if( scratch==null )
             scratch = true

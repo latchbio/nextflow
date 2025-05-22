@@ -41,7 +41,7 @@ class LatchPathFactory extends FileSystemPathFactory {
 
     @Override
     protected String getBashLib(Path target) {
-        if (target.scheme != "latch") {
+        if (target == null || target.scheme != "latch") {
             return null
         }
 

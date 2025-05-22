@@ -95,17 +95,18 @@ class ForchTaskHandler extends TaskHandler {
         // AcceleratorResource acc = task.config.getAccelerator()
 
         String cmd = """\
-            trap "{ ret=\$?; s5cmd cp ${TaskRun.CMD_LOG} ${task.workDir.toUriString()}/${TaskRun.CMD_LOG}||true; exit \$ret; }" EXIT; 
-            s5cmd --no-verify-ssl cat ${task.workDir.toUriString()}/${TaskRun.CMD_RUN} | bash 2>&1 | tee ${TaskRun.CMD_LOG}
+            trap "{ ret=\$?; cp ${TaskRun.CMD_LOG} ${task.workDir}/${TaskRun.CMD_LOG}||true; exit \$ret; }" EXIT; 
+            cat ${task.workDir}/${TaskRun.CMD_RUN} | bash 2>&1 | tee ${TaskRun.CMD_LOG}
         """.stripIndent().trim()
 
         if (remoteBinDir != null) {
             cmd = """\
-                s5cmd --no-verify-ssl cp s3:/${remoteBinDir}/* /nextflow-bin
-                chmod +x /nextflow-bin/* || true
+                mkdir -p /nextflow-bin
+                cp ${remoteBinDir}/* /nextflow-bin
+                chmod +x /nextflow-bin/*
                 export PATH=/nextflow-bin:\$PATH
                 
-            """ + cmd
+            """.stripIndent() + cmd
         }
 
         builder([
