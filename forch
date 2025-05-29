@@ -1,4 +1,4 @@
-#!/Users/ayush/Desktop/core/nucleus-workflows/.venv/bin/python
+#!/opt/conda/envs/workflow/bin/python
 
 import asyncio
 import json
@@ -15,10 +15,17 @@ from latch_postgres.postgres import (
     sqlq,
 )
 
-config = read_config(PostgresConnectionConfig, "db_")
 
-pool = get_pool(config, "nextflow_forch_test", read_only=False)
-with_conn_retry = get_with_conn_retry(pool, config)
+@dataclass
+class AppConfig:
+    db: PostgresConnectionConfig
+    nfs_server_task_id: int
+
+
+config = read_config(AppConfig)
+
+pool = get_pool(config.db, "nextflow_forch_test", read_only=False)
+with_conn_retry = get_with_conn_retry(pool, config.db)
 
 
 @dataclass
@@ -44,30 +51,49 @@ async def create_task(payload: CreateTaskInput):
             TaskInfo,
             sqlq(
                 """
+                with
+                    task as (
+                        insert into
+                            forch_pub.tasks(
+                                display_name,
+                                container_image,
+                                container_entrypoint,
+                                dedicated_cpuset_size,
+                                dedicated_memory_bytes,
+                                allow_internet_egress,
+                                dedicated_gpu_type,
+                                dedicated_gpu_count
+                            )
+                        values
+                            (
+                                %(display_name)s,
+                                %(container_image)s,
+                                %(container_entrypoint)s,
+                                %(cpus)s,
+                                %(memory_bytes)s,
+                                true,
+                                %(gpu_type)s,
+                                %(gpus)s
+                            )
+                        returning
+                            id
+                    )
                 insert into
-                    forch_pub.tasks(
-                        display_name,
-                        container_image,
-                        container_entrypoint,
-                        dedicated_cpuset_size,
-                        dedicated_memory_bytes,
-                        allow_internet_egress,
-                        dedicated_gpu_type,
-                        dedicated_gpu_count
+                    forch_pub.nfs_shares(
+                        client_task_id,
+                        server_task_id,
+                        container_mount_path,
+                        host_mountpoint_subpath
                     )
-                values
-                    (
-                        %(display_name)s,
-                        %(container_image)s,
-                        %(container_entrypoint)s,
-                        %(cpus)s,
-                        %(memory_bytes)s,
-                        true,
-                        %(gpu_type)s,
-                        %(gpus)s
-                    )
+                select
+                    id,
+                    %(nfs_server_task_id)s,
+                    '/nf-workdir'::bytea,
+                    'nfs/work'::bytea
+                from
+                    task
                 returning
-                    id
+                    client_task_id as id
                 """,
             ),
             display_name=payload.display_name,
@@ -77,6 +103,7 @@ async def create_task(payload: CreateTaskInput):
             memory_bytes=payload.memory_bytes,
             gpu_type=payload.gpu_type,
             gpus=payload.gpus,
+            nfs_server_task_id=config.nfs_server_task_id,
         )
 
     return await db_work()
