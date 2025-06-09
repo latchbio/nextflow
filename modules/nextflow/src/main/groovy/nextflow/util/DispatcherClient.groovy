@@ -303,7 +303,14 @@ class DispatcherClient {
         int cpus,
         long memoryBytes
     ) {
-        // todo(rahul): get resource/billing groups from env
+        String resourceGroup = System.getenv("FORCH_RESOURCE_GROUP_ID")
+        if (resourceGroup == null)
+            throw new RuntimeException("unable to get resource group")
+
+        String billingGroup = System.getenv("FORCH_BILLING_GROUP_ID")
+        if (billingGroup == null)
+            throw new RuntimeException("unable to get billing group")
+
         Map res = client.execute("""
             mutation CreateForchTask(
                 \$displayName: String!,
@@ -312,7 +319,9 @@ class DispatcherClient {
                 \$cpus: Int!,
                 \$memoryBytes: BigInt!,
                 \$dedicatedGpuType: String,
-                \$dedicatedGpuCount: Int!
+                \$dedicatedGpuCount: Int!,
+                \$groupId: BigInt!,
+                \$billedTo: BigInt!
             ) {
                 createTask(
                     input: {
@@ -324,7 +333,9 @@ class DispatcherClient {
                             dedicatedMemoryBytes: \$memoryBytes,
                             allowInternetEgress: true,
                             dedicatedGpuType: \$gpuType,
-                            dedicatedGpuCount: \$gpus
+                            dedicatedGpuCount: \$gpus,
+                            groupId: \$groupId,
+                            billedTo: \$billedTo
                         } 
                     }
                 ) {
@@ -342,6 +353,8 @@ class DispatcherClient {
                 "memoryBytes" : memoryBytes,
                 "gpuType" : null,
                 "gpus" : 0,
+                "groupId": resourceGroup.toInteger(),
+                "billedTo": billingGroup.toInteger()
             ]
         )["createTask"] as Map
 
