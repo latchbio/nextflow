@@ -1,20 +1,17 @@
 package nextflow.forch
 
+import nextflow.file.http.GQLClient
+import nextflow.util.DispatcherClient
+
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
 import groovy.json.JsonBuilder
 import groovy.util.logging.Slf4j
-import nextflow.exception.ProcessException
-import nextflow.exception.ProcessUnrecoverableException
-import nextflow.executor.BashWrapperBuilder
-import nextflow.executor.res.AcceleratorResource
-import nextflow.file.FileHelper
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskRun
 import nextflow.processor.TaskStatus
 import nextflow.script.ProcessConfig
-import nextflow.util.Escape
 import nextflow.util.MemoryUnit
 
 @Slf4j
@@ -26,28 +23,20 @@ class ForchTaskHandler extends TaskHandler {
 
     Path remoteBinDir = null
 
+    private DispatcherClient dispatcherClient
 
-    ForchTaskHandler(TaskRun task, Path remoteBinDir) {
+    ForchTaskHandler(TaskRun task, DispatcherClient client, Path remoteBinDir) {
         super(task)
 
         this.processConfig = task.processor.config
         this.remoteBinDir = remoteBinDir
-    }
-
-    private String subprocess(String command) {
-        StringBuilder stdout = new StringBuilder(), stderr = new StringBuilder();
-        Process proc = command.execute()
-
-        proc.consumeProcessOutput(stdout, stderr)
-        proc.waitFor(5, TimeUnit.SECONDS)
-
-        return stdout.toString().trim()
+        this.dispatcherClient = client
     }
 
     private String getCurrentStatus() {
         if (this.forchTaskId == null) return
 
-        return subprocess("forch status ${forchTaskId}")
+        return this.dispatcherClient.forchGetTaskStatus(this.forchTaskId)
     }
 
     @Override
@@ -64,8 +53,7 @@ class ForchTaskHandler extends TaskHandler {
         if (cur != "succeeded" && cur != "failed") return false
 
         // todo(ayush): single query
-        def exitStatus = subprocess("forch exitcode ${forchTaskId}")
-        task.exitStatus = Integer.parseInt(exitStatus)
+        task.exitStatus = this.dispatcherClient.forchGetExitCode(this.forchTaskId)
 
         // todo(ayush): logs, retries
         task.stdout = ""
@@ -86,8 +74,6 @@ class ForchTaskHandler extends TaskHandler {
 
     @Override
     void submit() {
-        JsonBuilder builder = new JsonBuilder()
-
         int cpus = task.config.getCpus()
         MemoryUnit memory = task.config.getMemory() ?: MemoryUnit.of("2GiB")
 
@@ -109,29 +95,16 @@ class ForchTaskHandler extends TaskHandler {
             """.stripIndent() + cmd
         }
 
-        builder([
-            "display_name": this.task.name,
-            "container_image": this.task.container,
-            "container_entrypoint": [
+        this.forchTaskId = this.dispatcherClient.forchSubmitTask(
+            this.task.name,
+            this.task.container,
+            [
                 "/bin/bash",
                 "-c",
                 cmd,
             ],
-            "cpus": cpus,
-            "memory_bytes": memory.bytes,
-            "gpu_type": null,
-            "gpus": 0,
-        ])
-
-        List<String> command = ["forch", "create", builder.toString()]
-        StringBuilder stdout = new StringBuilder(), stderr = new StringBuilder();
-        Process proc = command.execute()
-
-        proc.consumeProcessOutput(stdout, stderr)
-        proc.waitFor(5, TimeUnit.SECONDS)
-
-        log.debug("${task.name} taskExecutionId: $stdout, err: $stderr")
-
-        this.forchTaskId = Integer.parseInt(stdout.toString().trim())
+            cpus,
+            memory.bytes
+        )
     }
 }

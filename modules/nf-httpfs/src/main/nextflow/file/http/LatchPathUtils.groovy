@@ -8,6 +8,10 @@ class LatchPathUtils {
     static class UnauthenticatedException extends Exception {}
 
     static String getAuthHeader() {
+        def forchToken = System.getenv("FORCH_AUTH_TOKEN")
+        if (forchToken != null)
+            return "Forch-Auth-Token $forchToken"
+
         def flyteToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
         if (flyteToken != null)
             return "Latch-Execution-Token $flyteToken"

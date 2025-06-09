@@ -294,4 +294,133 @@ class DispatcherClient {
 
         return res
     }
+
+
+    int forchSubmitTask(
+        String displayName,
+        String image,
+        List<String> entrypoint,
+        int cpus,
+        long memoryBytes
+    ) {
+        // todo(rahul): get resource/billing groups from env
+        Map res = client.execute("""
+            mutation CreateForchTask(
+                \$displayName: String!,
+                \$containerImage: String!,
+                \$containerEntrypoint: [String]!,
+                \$cpus: Int!,
+                \$memoryBytes: BigInt!,
+                \$dedicatedGpuType: String,
+                \$dedicatedGpuCount: Int!
+            ) {
+                createTask(
+                    input: {
+                        task: {
+                            displayName: \$displayName,
+                            containerImage: \$containerImage,
+                            containerEntrypoint: \$containerEntrypoint,
+                            dedicatedCpusetSize: \$cpus,
+                            dedicatedMemoryBytes: \$memoryBytes,
+                            allowInternetEgress: true,
+                            dedicatedGpuType: \$gpuType,
+                            dedicatedGpuCount: \$gpus
+                        } 
+                    }
+                ) {
+                    task {
+                        id
+                    }
+                }
+            }
+            """,
+            [
+                "displayName" : displayName,
+                "containerImage" : image,
+                "containerEntrypoint" : entrypoint,
+                "cpus" : cpus,
+                "memoryBytes" : memoryBytes,
+                "gpuType" : null,
+                "gpus" : 0,
+            ]
+        )["createTask"] as Map
+
+        if (res == null)
+            throw new RuntimeException("failed to create forch task")
+
+        return ((res.task as Map).id as String).toInteger()
+    }
+
+    String forchGetTaskStatus(int forchTaskId) {
+        List<Map> res = client.execute("""
+            query GetTaskStatus(\$taskId: BigInt!) {
+                taskEvents(condition: {taskId: \$taskId}, orderBy: TIME_DESC, first: 1) {
+                    id
+                    type
+                    taskEventContainerExitedDatumById {
+                        id
+                        exitStatus
+                    }
+                }
+            }
+            """,
+            [
+                taskId: forchTaskId
+            ]
+        )["taskEvents"] as List<Map>
+
+        if (res == null)
+            throw new RuntimeException("failed to get task events for ${forchTaskId}")
+
+        if (res.size() == 0)
+            return "queued"
+
+        // todo(rahul): might be a good idea to throw this logic into a vac function so that we can easily update
+        String eventType = res[0]["type"]
+        if (eventType == "node-assigned")
+            return "submitted"
+        if (eventType == "container-created")
+            return "running"
+        if (eventType == "container-exited") {
+            if ((res[0]["taskEventContainerExitedDatumById"]["exitStatus"] as int) == 0) {
+                return "succeeded"
+            } else {
+                return "failed"
+            }
+        }
+
+        return "queued"
+    }
+
+    int forchGetExitCode(int forchTaskId) {
+        List<Map> res = client.execute("""
+            query GetTaskExitCode(\$taskId: BigInt!) {
+                taskEvents(
+                    condition: {taskId: \$taskId},
+                    filter: {taskEventContainerExitedDatumByIdExists: true},
+                    orderBy: TIME_DESC,
+                    first: 1
+                ) {
+                    id
+                    type
+                    taskEventContainerExitedDatumById {
+                        id
+                        exitStatus
+                    }
+                }
+            }
+            """,
+            [
+                taskId: forchTaskId
+            ]
+        )["taskEvents"] as List<Map>
+
+        if (res == null)
+            throw new RuntimeException("failed to get exit code for ${forchTaskId}")
+
+        if (res.size() == 0)
+            return -1
+
+        return res[0]["taskEventContainerExitedDatumById"]["exitStatus"] as int
+    }
 }
