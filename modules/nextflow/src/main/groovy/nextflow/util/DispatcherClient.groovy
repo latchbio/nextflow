@@ -318,8 +318,8 @@ class DispatcherClient {
                 \$containerEntrypoint: [String]!,
                 \$cpus: Int!,
                 \$memoryBytes: BigInt!,
-                \$dedicatedGpuType: String,
-                \$dedicatedGpuCount: Int!,
+                \$gpuType: String,
+                \$gpus: Int!,
                 \$groupId: BigInt!,
                 \$billedTo: BigInt!
             ) {
@@ -335,7 +335,8 @@ class DispatcherClient {
                             dedicatedGpuType: \$gpuType,
                             dedicatedGpuCount: \$gpus,
                             groupId: \$groupId,
-                            billedTo: \$billedTo
+                            billedTo: \$billedTo,
+                            debugTag: "rahul",
                         } 
                     }
                 ) {
@@ -365,14 +366,16 @@ class DispatcherClient {
     }
 
     String forchGetTaskStatus(int forchTaskId) {
-        List<Map> res = client.execute("""
+        Map res = client.execute("""
             query GetTaskStatus(\$taskId: BigInt!) {
                 taskEvents(condition: {taskId: \$taskId}, orderBy: TIME_DESC, first: 1) {
-                    id
-                    type
-                    taskEventContainerExitedDatumById {
+                    nodes {
                         id
-                        exitStatus
+                        type
+                        taskEventContainerExitedDatumById {
+                            id
+                            exitStatus
+                        }
                     }
                 }
             }
@@ -380,22 +383,23 @@ class DispatcherClient {
             [
                 taskId: forchTaskId
             ]
-        )["taskEvents"] as List<Map>
+        )["taskEvents"] as Map
 
         if (res == null)
             throw new RuntimeException("failed to get task events for ${forchTaskId}")
 
-        if (res.size() == 0)
+        List<Map> nodes = res["nodes"] as List<Map>
+        if (nodes == null || nodes.size() == 0)
             return "queued"
 
         // todo(rahul): might be a good idea to throw this logic into a vac function so that we can easily update
-        String eventType = res[0]["type"]
+        String eventType = nodes[0]["type"]
         if (eventType == "node-assigned")
             return "submitted"
         if (eventType == "container-created")
             return "running"
         if (eventType == "container-exited") {
-            if ((res[0]["taskEventContainerExitedDatumById"]["exitStatus"] as int) == 0) {
+            if ((nodes[0]["taskEventContainerExitedDatumById"]["exitStatus"] as int) == 0) {
                 return "succeeded"
             } else {
                 return "failed"
@@ -406,7 +410,7 @@ class DispatcherClient {
     }
 
     int forchGetExitCode(int forchTaskId) {
-        List<Map> res = client.execute("""
+        Map res = client.execute("""
             query GetTaskExitCode(\$taskId: BigInt!) {
                 taskEvents(
                     condition: {taskId: \$taskId},
@@ -414,11 +418,13 @@ class DispatcherClient {
                     orderBy: TIME_DESC,
                     first: 1
                 ) {
-                    id
-                    type
-                    taskEventContainerExitedDatumById {
+                    nodes {
                         id
-                        exitStatus
+                        type
+                        taskEventContainerExitedDatumById {
+                            id
+                            exitStatus
+                        }
                     }
                 }
             }
@@ -426,14 +432,15 @@ class DispatcherClient {
             [
                 taskId: forchTaskId
             ]
-        )["taskEvents"] as List<Map>
+        )["taskEvents"] as Map
 
         if (res == null)
             throw new RuntimeException("failed to get exit code for ${forchTaskId}")
 
-        if (res.size() == 0)
+        List<Map> nodes = res["nodes"] as List<Map>
+        if (nodes == null || nodes.size() == 0)
             return -1
 
-        return res[0]["taskEventContainerExitedDatumById"]["exitStatus"] as int
+        return nodes[0]["taskEventContainerExitedDatumById"]["exitStatus"] as int
     }
 }
