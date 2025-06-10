@@ -335,8 +335,7 @@ class DispatcherClient {
                             dedicatedGpuType: \$gpuType,
                             dedicatedGpuCount: \$gpus,
                             groupId: \$groupId,
-                            billedTo: \$billedTo,
-                            debugTag: "rahul",
+                            billedTo: \$billedTo
                         } 
                     }
                 ) {
