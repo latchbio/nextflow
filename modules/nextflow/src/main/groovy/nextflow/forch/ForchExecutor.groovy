@@ -5,7 +5,6 @@ import java.nio.file.Path
 import groovy.util.logging.Slf4j
 import nextflow.executor.Executor
 import nextflow.extension.FilesEx
-import nextflow.file.FileHelper
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskMonitor
 import nextflow.processor.TaskPollingMonitor
@@ -35,7 +34,7 @@ class ForchExecutor extends Executor {
 
     @Override
     TaskHandler createTaskHandler(TaskRun task) {
-        return new ForchTaskHandler(task, this.forchClient, remoteBinDir)
+        return new ForchTaskHandler(task, this.forchClient, remoteBinDir, session)
     }
 
     protected void uploadBinDir() {
