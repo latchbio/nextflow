@@ -33,7 +33,7 @@ class ForchExecutor extends Executor {
 
     @Override
     TaskHandler createTaskHandler(TaskRun task) {
-        return new ForchTaskHandler(task, remoteBinDir)
+        return new ForchTaskHandler(task, remoteBinDir, session)
     }
 
     protected void uploadBinDir() {
