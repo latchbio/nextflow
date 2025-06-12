@@ -1,12 +1,9 @@
 package nextflow.forch
 
-import nextflow.file.http.GQLClient
-import nextflow.util.DispatcherClient
+import nextflow.util.ForchClient
 
 import java.nio.file.Path
-import java.util.concurrent.TimeUnit
 
-import groovy.json.JsonBuilder
 import groovy.util.logging.Slf4j
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskRun
@@ -23,20 +20,20 @@ class ForchTaskHandler extends TaskHandler {
 
     Path remoteBinDir = null
 
-    private DispatcherClient dispatcherClient
+    private ForchClient forchClient
 
-    ForchTaskHandler(TaskRun task, DispatcherClient client, Path remoteBinDir) {
+    ForchTaskHandler(TaskRun task, ForchClient client, Path remoteBinDir) {
         super(task)
 
         this.processConfig = task.processor.config
         this.remoteBinDir = remoteBinDir
-        this.dispatcherClient = client
+        this.forchClient = client
     }
 
     private String getCurrentStatus() {
         if (this.forchTaskId == null) return
 
-        return this.dispatcherClient.forchGetTaskStatus(this.forchTaskId)
+        return this.forchClient.getTaskStatus(this.forchTaskId)
     }
 
     @Override
@@ -53,7 +50,7 @@ class ForchTaskHandler extends TaskHandler {
         if (cur != "succeeded" && cur != "failed") return false
 
         // todo(ayush): single query
-        task.exitStatus = this.dispatcherClient.forchGetExitCode(this.forchTaskId)
+        task.exitStatus = this.forchClient.getTaskExitCode(this.forchTaskId)
 
         // todo(ayush): logs, retries
         task.stdout = ""
@@ -95,7 +92,7 @@ class ForchTaskHandler extends TaskHandler {
             """.stripIndent() + cmd
         }
 
-        this.forchTaskId = this.dispatcherClient.forchSubmitTask(
+        this.forchTaskId = this.forchClient.submitTask(
             this.task.name,
             this.task.container,
             [
