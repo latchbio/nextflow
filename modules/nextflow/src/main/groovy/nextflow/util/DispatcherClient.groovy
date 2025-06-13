@@ -180,6 +180,67 @@ class DispatcherClient {
             return 1
         }
 
+        String forchExecutionId = System.getenv("FORCH_EXECUTION_ID")
+        if (forchExecutionId != null) {
+            try {
+                Map res = client.execute("""
+                    mutation CreateForchTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$hash: String, \$status: TaskExecutionStatus!) {
+                        createNfForchTaskExecutionInfo(
+                            input: {
+                                nfForchTaskExecutionInfo: {
+                                    taskId: \$taskId,
+                                    attemptIdx: \$attemptIdx,
+                                    hash: \$hash,
+                                    statusOverride: \$status
+                                }
+                            }
+                        ) {
+                            nfForchTaskExecutionInfo {
+                                id
+                            }
+                        }
+                    }
+                    """,
+                    [
+                        taskId: taskId,
+                        attemptIdx: attemptIdx,
+                        hash: hash,
+                        status: status,
+                    ]
+                )["createNfForchTaskExecutionInfo"] as Map
+
+                if (res == null)
+                    throw new RuntimeException("failed to create remote task execution for: taskId=${taskId} attempt=${attemptIdx} hash=${hash}")
+
+                return ((res.nfForchTaskExecutionInfo as Map).id as String).toInteger()
+            } catch (GQLQueryException e) {
+
+                // note(rahul): the gql client uses the HTTP Retry Client. As a result, it may retry a request after
+                // successfully committing the row to the DB (for example, if the connection fails)
+                if (!e.message.contains("duplicate key value violates unique constraint")) {
+                    throw e
+                }
+            }
+
+            Map res = client.execute("""
+                query GetNfForchTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!) {
+                    nfForchTaskExecutionInfoByTaskIdAndAttemptIdx(attemptIdx: \$attemptIdx, taskId: \$taskId) {
+                        id
+                    }
+                }
+                """,
+                [
+                    taskId: taskId,
+                    attemptIdx: attemptIdx,
+                ]
+            )["nfForchTaskExecutionInfoByTaskIdAndAttemptIdx"] as Map
+
+            if (res == null)
+                throw new RuntimeException("failed to get forch task execution id for: taskId=${taskId} attemptIdx=${attemptIdx}")
+
+            return (res.id as String).toInteger()
+        }
+
         try {
             Map res = client.execute("""
                 mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$hash: String, \$status: TaskExecutionStatus!) {
@@ -244,6 +305,8 @@ class DispatcherClient {
     }
 
     void submitPod(int taskExecutionId, Map pod) {
+        if (debug) return
+
         client.execute("""
             mutation UpdateTaskExecution(\$taskExecutionId: BigInt!, \$podSpec: String!) {
                 updateNfTaskExecutionInfo(
