@@ -205,7 +205,7 @@ class DispatcherClient {
                         taskId: taskId,
                         attemptIdx: attemptIdx,
                         hash: hash,
-                        status: status,
+                        status: status == null ? 'UNDEFINED' : status,
                     ]
                 )["createNfForchTaskExecutionInfo"] as Map
 

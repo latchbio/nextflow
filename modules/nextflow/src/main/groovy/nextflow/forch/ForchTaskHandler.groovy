@@ -81,6 +81,8 @@ class ForchTaskHandler extends TaskHandler {
         // AcceleratorResource acc = task.config.getAccelerator()
 
         def serverIp = System.getenv("latch_internal_nfs_server_ip")
+        if (serverIp == null)
+            throw new RuntimeException("failed to get server ip")
 
         String cmd = """\
             if [[ "\$(command -v apt-get)" ]]; then

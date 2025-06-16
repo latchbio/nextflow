@@ -23,6 +23,10 @@ class ForchClient {
         if (billingGroup == null)
             throw new RuntimeException("unable to get billing group")
 
+        String nfsServerTaskId = System.getenv("nfs_server_task_id")
+        if (nfsServerTaskId == null)
+            throw new RuntimeException("unable to get NFS server task id")
+
         Map res = client.execute("""
             mutation CreateForchTask(
                 \$displayName: String!,
@@ -33,27 +37,24 @@ class ForchClient {
                 \$gpuType: String,
                 \$gpus: Int!,
                 \$groupId: BigInt!,
-                \$billedTo: BigInt!
+                \$billedTo: BigInt!,
+                \$nfsServerTaskId: BigInt!
             ) {
-                createTask(
+                nfCreateForchTask(
                     input: {
-                        task: {
-                            displayName: \$displayName,
-                            containerImage: \$containerImage,
-                            containerEntrypoint: \$containerEntrypoint,
-                            dedicatedCpusetSize: \$cpus,
-                            dedicatedMemoryBytes: \$memoryBytes,
-                            allowInternetEgress: true,
-                            dedicatedGpuType: \$gpuType,
-                            dedicatedGpuCount: \$gpus,
-                            groupId: \$groupId,
-                            billedTo: \$billedTo
-                        } 
+                        argDisplayName: \$displayName,
+                        argContainerImage: \$containerImage,
+                        argContainerEntrypoint: \$containerEntrypoint,
+                        argCpus: \$cpus,
+                        argMemoryBytes: \$memoryBytes,
+                        argGpuType: \$gpuType,
+                        argGpus: \$gpus,
+                        argGroupId: \$groupId,
+                        argBilledTo: \$billedTo,
+                        argNfsServerTaskId: \$nfsServerTaskId
                     }
                 ) {
-                    task {
-                        id
-                    }
+                    resTaskId
                 }
             }
             """,
@@ -66,14 +67,15 @@ class ForchClient {
                 "gpuType" : null,
                 "gpus" : 0,
                 "groupId": resourceGroup.toInteger(),
-                "billedTo": billingGroup.toInteger()
+                "billedTo": billingGroup.toInteger(),
+                "nfsServerTaskId": nfsServerTaskId,
             ]
-        )["createTask"] as Map
+        )["nfCreateForchTask"] as Map
 
         if (res == null)
             throw new RuntimeException("failed to create forch task")
 
-        return ((res.task as Map).id as String).toInteger()
+        return (res.resTaskId as String).toInteger()
     }
 
     String getTaskStatus(int forchTaskId) {
