@@ -34,7 +34,7 @@ class ForchExecutor extends Executor {
 
     @Override
     TaskHandler createTaskHandler(TaskRun task) {
-        return new ForchTaskHandler(task, this.forchClient, remoteBinDir, session)
+        return new ForchTaskHandler(task, remoteBinDir, session, this.forchClient, this.dispatcherClient)
     }
 
     protected void uploadBinDir() {

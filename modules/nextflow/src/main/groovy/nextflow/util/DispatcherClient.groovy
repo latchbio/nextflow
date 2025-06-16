@@ -381,4 +381,30 @@ class DispatcherClient {
 
         return res
     }
+
+    void updateForchTaskId(int taskExecutionId, int forchTaskId) {
+        if (debug) {
+            return
+        }
+
+        client.execute("""
+            mutation UpdateTaskExecution(\$taskExecutionId: BigInt!, \$forchTaskId: BigInt!) {
+                updateNfForchTaskExecutionInfo(
+                    input: {
+                        id: \$taskExecutionId,
+                        patch: {
+                            forchTaskId: \$forchTaskId
+                        },
+                    }
+                ) {
+                    clientMutationId
+                }
+            }
+            """,
+            [
+                taskExecutionId: taskExecutionId,
+                forchTaskId: forchTaskId
+            ]
+        )
+    }
 }

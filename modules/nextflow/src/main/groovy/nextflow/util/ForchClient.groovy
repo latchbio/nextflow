@@ -2,7 +2,6 @@ package nextflow.util
 
 import groovy.util.logging.Slf4j
 import nextflow.file.http.GQLClient
-import nextflow.file.http.GQLClient.GQLQueryException
 
 @Slf4j
 class ForchClient {

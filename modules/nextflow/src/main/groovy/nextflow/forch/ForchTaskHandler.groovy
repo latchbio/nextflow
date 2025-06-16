@@ -1,5 +1,6 @@
 package nextflow.forch
 
+import nextflow.util.DispatcherClient
 import nextflow.util.ForchClient
 
 import java.nio.file.Path
@@ -21,14 +22,16 @@ class ForchTaskHandler extends TaskHandler {
     Integer forchTaskId
     Path remoteBinDir = null
     private ForchClient forchClient
+    private DispatcherClient dispatcherClient
     Session session
 
-    ForchTaskHandler(TaskRun task, ForchClient client, Path remoteBinDir, Session session) {
+    ForchTaskHandler(TaskRun task, Path remoteBinDir, Session session, ForchClient forchClient, DispatcherClient dispatcherClient) {
         super(task)
 
         this.processConfig = task.processor.config
         this.remoteBinDir = remoteBinDir
-        this.forchClient = client
+        this.forchClient = forchClient
+        this.dispatcherClient = dispatcherClient
 
         this.session = session
     }
@@ -126,6 +129,13 @@ class ForchTaskHandler extends TaskHandler {
             ],
             cpus,
             memory.bytes
+        )
+
+        // note(rahul): this is not crash safe, but the forch task will still be billed to the proper
+        // account. It just wont be associated with a task execution info
+        this.dispatcherClient.updateForchTaskId(
+            this.taskExecutionId,
+            this.forchTaskId
         )
     }
 }
