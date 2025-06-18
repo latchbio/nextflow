@@ -38,11 +38,11 @@ class DispatcherClient {
             return (res.nodeId as String).toInteger()
         }
 
-        String forchExecutionId = System.getenv("forch_execution_id")
-        if (forchExecutionId != null) {
+        String executionId = System.getenv("forch_execution_id")
+        if (executionId != null) {
             Map res = client.execute("""
-                mutation CreateNode(\$forchExecutionId: BigInt!, \$name: String!) {
-                    createNfProcessNode(input: {nfProcessNode: {forchExecutionId: \$forchExecutionId, name: \$name } }) {
+                mutation CreateNode(\$executionId: BigInt!, \$name: String!) {
+                    createNfProcessNode(input: {nfProcessNode: {executionId: \$executionId, name: \$name } }) {
                         nfProcessNode {
                             id
                         }
@@ -50,7 +50,7 @@ class DispatcherClient {
                 }
                 """,
                 [
-                    forchExecutionId: forchExecutionId,
+                    executionId: executionId,
                     name: processName,
                 ]
             )["createNfProcessNode"] as Map
