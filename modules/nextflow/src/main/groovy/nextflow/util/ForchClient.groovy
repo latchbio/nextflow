@@ -14,11 +14,11 @@ class ForchClient {
         int cpus,
         long memoryBytes
     ) {
-        String resourceGroup = System.getenv("FORCH_RESOURCE_GROUP_ID")
+        String resourceGroup = System.getenv("forch_resource_group_id")
         if (resourceGroup == null)
             throw new RuntimeException("unable to get resource group")
 
-        String billingGroup = System.getenv("FORCH_BILLING_GROUP_ID")
+        String billingGroup = System.getenv("forch_billing_group_id")
         if (billingGroup == null)
             throw new RuntimeException("unable to get billing group")
 
@@ -80,45 +80,18 @@ class ForchClient {
     String getTaskStatus(int forchTaskId) {
         Map res = client.execute("""
             query GetTaskStatus(\$taskId: BigInt!) {
-                taskEvents(condition: {taskId: \$taskId}, orderBy: TIME_DESC, first: 1) {
-                    nodes {
-                        id
-                        type
-                        taskEventContainerExitedDatumById {
-                            id
-                            exitStatus
-                        }
-                    }
-                }
+                nfForchTaskStatus(argTaskId: \$taskId)
             }
             """,
             [
                 taskId: forchTaskId
             ]
-        )["taskEvents"] as Map
+        ) as Map
 
         if (res == null)
-            throw new RuntimeException("failed to get task events for ${forchTaskId}")
+            throw new RuntimeException("failed to get task status for ${forchTaskId}")
 
-        List<Map> nodes = res["nodes"] as List<Map>
-        if (nodes == null || nodes.size() == 0)
-            return "queued"
-
-        // todo(rahul): might be a good idea to throw this logic into a vac function so that we can easily update
-        String eventType = nodes[0]["type"]
-        if (eventType == "node-assigned")
-            return "submitted"
-        if (eventType == "container-created")
-            return "running"
-        if (eventType == "container-exited") {
-            if ((nodes[0]["taskEventContainerExitedDatumById"]["exitStatus"] as int) == 0) {
-                return "succeeded"
-            } else {
-                return "failed"
-            }
-        }
-
-        return "queued"
+        return res["nfForchTaskStatus"]
     }
 
     int getTaskExitCode(int forchTaskId) {

@@ -9,7 +9,7 @@ class LatchPathUtils {
 
     static String getAuthHeader(boolean useForchAuth = false) {
         if (useForchAuth) {
-            def forchToken = System.getenv("FORCH_AUTH_TOKEN")
+            def forchToken = System.getenv("forch_auth_token")
             if (forchToken != null)
                 return "Forch-Auth-Token $forchToken"
         } else {

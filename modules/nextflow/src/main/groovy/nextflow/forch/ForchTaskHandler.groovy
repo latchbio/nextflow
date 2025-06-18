@@ -44,7 +44,7 @@ class ForchTaskHandler extends TaskHandler {
 
     @Override
     boolean checkIfRunning() {
-        def running =  this.currentStatus == 'running'
+        def running =  this.currentStatus == 'RUNNING'
         if (running)
             status = TaskStatus.RUNNING
         return running
@@ -53,7 +53,7 @@ class ForchTaskHandler extends TaskHandler {
     @Override
     boolean checkIfCompleted() {
         def cur = this.currentStatus
-        if (cur != "succeeded" && cur != "failed") return false
+        if (cur != "SUCCEEDED" && cur != "FAILED") return false
 
         // todo(ayush): single query
         task.exitStatus = this.forchClient.getTaskExitCode(this.forchTaskId)
@@ -131,8 +131,7 @@ class ForchTaskHandler extends TaskHandler {
             memory.bytes
         )
 
-        // note(rahul): this is not crash safe, but the forch task will still be billed to the proper
-        // account. It just wont be associated with a task execution info
+        // todo(rahul): put this in a single transaction with submitTask
         this.dispatcherClient.updateForchTaskId(
             this.taskExecutionId,
             this.forchTaskId

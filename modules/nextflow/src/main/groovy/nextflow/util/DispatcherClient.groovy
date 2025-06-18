@@ -38,7 +38,7 @@ class DispatcherClient {
             return (res.nodeId as String).toInteger()
         }
 
-        String forchExecutionId = System.getenv("FORCH_EXECUTION_ID")
+        String forchExecutionId = System.getenv("forch_execution_id")
         if (forchExecutionId != null) {
             Map res = client.execute("""
                 mutation CreateNode(\$forchExecutionId: BigInt!, \$name: String!) {
@@ -180,7 +180,7 @@ class DispatcherClient {
             return 1
         }
 
-        String forchExecutionId = System.getenv("FORCH_EXECUTION_ID")
+        String forchExecutionId = System.getenv("forch_execution_id")
         if (forchExecutionId != null) {
             try {
                 Map res = client.execute("""
