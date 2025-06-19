@@ -184,14 +184,14 @@ class DispatcherClient {
         if (forchExecutionId != null) {
             try {
                 Map res = client.execute("""
-                    mutation CreateForchTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$hash: String, \$status: TaskExecutionStatus!) {
+                    mutation CreateForchTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$cached: Boolean!, \$hash: String) {
                         createNfForchTaskExecutionInfo(
                             input: {
                                 nfForchTaskExecutionInfo: {
                                     taskId: \$taskId,
                                     attemptIdx: \$attemptIdx,
-                                    hash: \$hash,
-                                    statusOverride: \$status
+                                    cached: \$cached,
+                                    hash: \$hash
                                 }
                             }
                         ) {
@@ -204,8 +204,8 @@ class DispatcherClient {
                     [
                         taskId: taskId,
                         attemptIdx: attemptIdx,
+                        cached: status == 'SKIPPED',
                         hash: hash,
-                        status: status == null ? 'UNDEFINED' : status,
                     ]
                 )["createNfForchTaskExecutionInfo"] as Map
 

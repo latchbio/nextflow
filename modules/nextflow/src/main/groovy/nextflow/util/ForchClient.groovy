@@ -80,7 +80,7 @@ class ForchClient {
     String getTaskStatus(int forchTaskId) {
         Map res = client.execute("""
             query GetTaskStatus(\$taskId: BigInt!) {
-                nfForchTaskStatus(argTaskId: \$taskId)
+                taskStatus(argTaskId: \$taskId)
             }
             """,
             [
