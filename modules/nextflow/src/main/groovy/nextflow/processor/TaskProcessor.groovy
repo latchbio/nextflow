@@ -334,7 +334,6 @@ class TaskProcessor {
 
         this.numTasks = 0
         this.dispatcherClient = new DispatcherClient()
-        this.dispatcherClient.debug = !(executor instanceof K8sExecutor)
 
         this.maxForks = config.maxForks && config.maxForks>0 ? config.maxForks as int : 0
         this.forksCount = maxForks ? new LongAdder() : null

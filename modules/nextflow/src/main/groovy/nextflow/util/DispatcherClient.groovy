@@ -18,26 +18,50 @@ class DispatcherClient {
         }
 
         String executionToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
-        if (executionToken == null)
-            throw new RuntimeException("unable to get execution token")
-
-        Map res = client.execute("""
-            mutation CreateNode(\$executionToken: String!, \$name: String!) {
-                createNfProcessNodeByExecutionToken(input: {argExecutionToken: \$executionToken, argName: \$name}) {
-                    nodeId
+        if (executionToken != null) {
+            Map res = client.execute("""
+                mutation CreateNode(\$executionToken: String!, \$name: String!) {
+                    createNfProcessNodeByExecutionToken(input: {argExecutionToken: \$executionToken, argName: \$name}) {
+                        nodeId
+                    }
                 }
-            }
-            """,
-            [
-                executionToken: executionToken,
-                name: processName,
-            ]
-        )["createNfProcessNodeByExecutionToken"] as Map
+                """,
+                [
+                    executionToken: executionToken,
+                    name: processName,
+                ]
+            )["createNfProcessNodeByExecutionToken"] as Map
 
-        if (res == null)
-            throw new RuntimeException("failed to create remote process node for: processName=${processName}")
+            if (res == null)
+                throw new RuntimeException("failed to create remote process node for: processName=${processName}")
 
-        return (res.nodeId as String).toInteger()
+            return (res.nodeId as String).toInteger()
+        }
+
+        String executionId = System.getenv("forch_execution_id")
+        if (executionId != null) {
+            Map res = client.execute("""
+                mutation CreateNode(\$executionId: BigInt!, \$name: String!) {
+                    createNfProcessNode(input: {nfProcessNode: {executionId: \$executionId, name: \$name } }) {
+                        nfProcessNode {
+                            id
+                        }
+                    }
+                }
+                """,
+                [
+                    executionId: executionId,
+                    name: processName,
+                ]
+            )["createNfProcessNode"] as Map
+
+            if (res == null || res["nfProcessNode"] == null)
+                throw new RuntimeException("failed to create remote process node for: processName=${processName}")
+
+            return (res["nfProcessNode"]["id"] as String).toInteger()
+        }
+
+        throw new RuntimeException("failed to create process node: unable to get source execution")
     }
 
     void closeProcessNode(int nodeId, int numTasks) {
@@ -46,7 +70,7 @@ class DispatcherClient {
         }
 
         client.execute("""
-            mutation CreateTaskInfo(\$nodeId: BigInt!, \$numTasks: BigInt!) {
+            mutation UpdateTaskInfo(\$nodeId: BigInt!, \$numTasks: BigInt!) {
                 updateNfProcessNode(
                     input: {
                         id: \$nodeId,
@@ -156,6 +180,67 @@ class DispatcherClient {
             return 1
         }
 
+        String forchExecutionId = System.getenv("forch_execution_id")
+        if (forchExecutionId != null) {
+            try {
+                Map res = client.execute("""
+                    mutation CreateForchTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$cached: Boolean!, \$hash: String) {
+                        createNfForchTaskExecutionInfo(
+                            input: {
+                                nfForchTaskExecutionInfo: {
+                                    taskId: \$taskId,
+                                    attemptIdx: \$attemptIdx,
+                                    cached: \$cached,
+                                    hash: \$hash
+                                }
+                            }
+                        ) {
+                            nfForchTaskExecutionInfo {
+                                id
+                            }
+                        }
+                    }
+                    """,
+                    [
+                        taskId: taskId,
+                        attemptIdx: attemptIdx,
+                        cached: status == 'SKIPPED',
+                        hash: hash,
+                    ]
+                )["createNfForchTaskExecutionInfo"] as Map
+
+                if (res == null)
+                    throw new RuntimeException("failed to create remote task execution for: taskId=${taskId} attempt=${attemptIdx} hash=${hash}")
+
+                return ((res.nfForchTaskExecutionInfo as Map).id as String).toInteger()
+            } catch (GQLQueryException e) {
+
+                // note(rahul): the gql client uses the HTTP Retry Client. As a result, it may retry a request after
+                // successfully committing the row to the DB (for example, if the connection fails)
+                if (!e.message.contains("duplicate key value violates unique constraint")) {
+                    throw e
+                }
+            }
+
+            Map res = client.execute("""
+                query GetNfForchTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!) {
+                    nfForchTaskExecutionInfoByTaskIdAndAttemptIdx(attemptIdx: \$attemptIdx, taskId: \$taskId) {
+                        id
+                    }
+                }
+                """,
+                [
+                    taskId: taskId,
+                    attemptIdx: attemptIdx,
+                ]
+            )["nfForchTaskExecutionInfoByTaskIdAndAttemptIdx"] as Map
+
+            if (res == null)
+                throw new RuntimeException("failed to get forch task execution id for: taskId=${taskId} attemptIdx=${attemptIdx}")
+
+            return (res.id as String).toInteger()
+        }
+
         try {
             Map res = client.execute("""
                 mutation CreateTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$hash: String, \$status: TaskExecutionStatus!) {
@@ -220,6 +305,8 @@ class DispatcherClient {
     }
 
     void submitPod(int taskExecutionId, Map pod) {
+        if (debug) return
+
         client.execute("""
             mutation UpdateTaskExecution(\$taskExecutionId: BigInt!, \$podSpec: String!) {
                 updateNfTaskExecutionInfo(
@@ -293,5 +380,31 @@ class DispatcherClient {
             throw new RuntimeException("failed to get task execution status for: taskExecutionId=${taskExecutionId}")
 
         return res
+    }
+
+    void updateForchTaskId(int taskExecutionId, int forchTaskId) {
+        if (debug) {
+            return
+        }
+
+        client.execute("""
+            mutation UpdateTaskExecution(\$taskExecutionId: BigInt!, \$forchTaskId: BigInt!) {
+                updateNfForchTaskExecutionInfo(
+                    input: {
+                        id: \$taskExecutionId,
+                        patch: {
+                            forchTaskId: \$forchTaskId
+                        },
+                    }
+                ) {
+                    clientMutationId
+                }
+            }
+            """,
+            [
+                taskExecutionId: taskExecutionId,
+                forchTaskId: forchTaskId
+            ]
+        )
     }
 }

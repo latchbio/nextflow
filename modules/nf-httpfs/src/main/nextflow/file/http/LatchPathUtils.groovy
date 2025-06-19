@@ -7,15 +7,21 @@ class LatchPathUtils {
 
     static class UnauthenticatedException extends Exception {}
 
-    static String getAuthHeader() {
-        def flyteToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
-        if (flyteToken != null)
-            return "Latch-Execution-Token $flyteToken"
+    static String getAuthHeader(boolean useForchAuth = false) {
+        if (useForchAuth) {
+            def forchToken = System.getenv("forch_auth_token")
+            if (forchToken != null)
+                return "Forch-Auth-Token $forchToken"
+        } else {
+            def flyteToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
+            if (flyteToken != null)
+                return "Latch-Execution-Token $flyteToken"
 
-        String home = System.getProperty("user.home")
-        File tokenFile = new File("$home/.latch/token")
-        if (tokenFile.exists())
-            return "Latch-SDK-Token ${tokenFile.text.strip()}"
+            String home = System.getProperty("user.home")
+            File tokenFile = new File("$home/.latch/token")
+            if (tokenFile.exists())
+                return "Latch-SDK-Token ${tokenFile.text.strip()}"
+        }
 
         throw new UnauthenticatedException()
     }

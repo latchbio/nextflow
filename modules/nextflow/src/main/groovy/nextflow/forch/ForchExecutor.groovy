@@ -5,18 +5,19 @@ import java.nio.file.Path
 import groovy.util.logging.Slf4j
 import nextflow.executor.Executor
 import nextflow.extension.FilesEx
-import nextflow.file.FileHelper
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskMonitor
 import nextflow.processor.TaskPollingMonitor
 import nextflow.processor.TaskRun
 import nextflow.util.DispatcherClient
+import nextflow.util.ForchClient
 import nextflow.util.Duration
 
 @Slf4j
 class ForchExecutor extends Executor {
 
     Path remoteBinDir = null
+    private ForchClient forchClient
 
     @Override
     protected TaskMonitor createTaskMonitor() {
@@ -27,13 +28,13 @@ class ForchExecutor extends Executor {
     protected void register() {
         // todo(ayush): decouple dispatcher and executor
         this.dispatcherClient = new DispatcherClient()
-        this.dispatcherClient.debug = true
+        this.forchClient = new ForchClient()
         uploadBinDir()
     }
 
     @Override
     TaskHandler createTaskHandler(TaskRun task) {
-        return new ForchTaskHandler(task, remoteBinDir, session)
+        return new ForchTaskHandler(task, remoteBinDir, session, this.forchClient, this.dispatcherClient)
     }
 
     protected void uploadBinDir() {

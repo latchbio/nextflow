@@ -1,61 +1,50 @@
 package nextflow.forch
 
-import java.nio.file.Path
-import java.util.concurrent.TimeUnit
+import nextflow.util.DispatcherClient
+import nextflow.util.ForchClient
 
-import groovy.json.JsonBuilder
+import java.nio.file.Path
+
 import groovy.util.logging.Slf4j
+
 import nextflow.Session
-import nextflow.exception.ProcessException
-import nextflow.exception.ProcessUnrecoverableException
-import nextflow.executor.BashWrapperBuilder
-import nextflow.executor.res.AcceleratorResource
-import nextflow.file.FileHelper
+
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskRun
 import nextflow.processor.TaskStatus
 import nextflow.script.ProcessConfig
-import nextflow.util.Escape
 import nextflow.util.MemoryUnit
 
 @Slf4j
 class ForchTaskHandler extends TaskHandler {
 
     ProcessConfig processConfig
-
     Integer forchTaskId
-
     Path remoteBinDir = null
-
+    private ForchClient forchClient
+    private DispatcherClient dispatcherClient
     Session session
 
-    ForchTaskHandler(TaskRun task, Path remoteBinDir, Session session) {
+    ForchTaskHandler(TaskRun task, Path remoteBinDir, Session session, ForchClient forchClient, DispatcherClient dispatcherClient) {
         super(task)
 
         this.processConfig = task.processor.config
         this.remoteBinDir = remoteBinDir
+        this.forchClient = forchClient
+        this.dispatcherClient = dispatcherClient
+
         this.session = session
-    }
-
-    private String subprocess(String command) {
-        StringBuilder stdout = new StringBuilder(), stderr = new StringBuilder();
-        Process proc = command.execute()
-
-        proc.consumeProcessOutput(stdout, stderr)
-        proc.waitFor(5, TimeUnit.SECONDS)
-
-        return stdout.toString().trim()
     }
 
     private String getCurrentStatus() {
         if (this.forchTaskId == null) return
 
-        return subprocess("forch status ${forchTaskId}")
+        return this.forchClient.getTaskStatus(this.forchTaskId)
     }
 
     @Override
     boolean checkIfRunning() {
-        def running =  this.currentStatus == 'running'
+        def running =  this.currentStatus == 'RUNNING'
         if (running)
             status = TaskStatus.RUNNING
         return running
@@ -64,11 +53,10 @@ class ForchTaskHandler extends TaskHandler {
     @Override
     boolean checkIfCompleted() {
         def cur = this.currentStatus
-        if (cur != "succeeded" && cur != "failed") return false
+        if (cur != "SUCCEEDED" && cur != "FAILED") return false
 
         // todo(ayush): single query
-        def exitStatus = subprocess("forch exitcode ${forchTaskId}")
-        task.exitStatus = Integer.parseInt(exitStatus)
+        task.exitStatus = this.forchClient.getTaskExitCode(this.forchTaskId)
 
         // todo(ayush): logs, retries
         task.stdout = ""
@@ -89,8 +77,6 @@ class ForchTaskHandler extends TaskHandler {
 
     @Override
     void submit() {
-        JsonBuilder builder = new JsonBuilder()
-
         int cpus = task.config.getCpus()
         MemoryUnit memory = task.config.getMemory() ?: MemoryUnit.of("2GiB")
 
@@ -98,6 +84,8 @@ class ForchTaskHandler extends TaskHandler {
         // AcceleratorResource acc = task.config.getAccelerator()
 
         def serverIp = System.getenv("latch_internal_nfs_server_ip")
+        if (serverIp == null)
+            throw new RuntimeException("failed to get server ip")
 
         String cmd = """\
             if [[ "\$(command -v apt-get)" ]]; then
@@ -131,29 +119,22 @@ class ForchTaskHandler extends TaskHandler {
             """.stripIndent() + cmd
         }
 
-        builder([
-            "display_name": this.task.name,
-            "container_image": this.task.container,
-            "container_entrypoint": [
+        this.forchTaskId = this.forchClient.submitTask(
+            this.task.name,
+            this.task.container,
+            [
                 "/bin/bash",
                 "-c",
                 cmd,
             ],
-            "cpus": cpus,
-            "memory_bytes": memory.bytes,
-            "gpu_type": null,
-            "gpus": 0,
-        ])
+            cpus,
+            memory.bytes
+        )
 
-        List<String> command = ["forch", "create", builder.toString()]
-        StringBuilder stdout = new StringBuilder(), stderr = new StringBuilder();
-        Process proc = command.execute()
-
-        proc.consumeProcessOutput(stdout, stderr)
-        proc.waitFor(5, TimeUnit.SECONDS)
-
-        log.debug("${task.name} taskExecutionId: $stdout, err: $stderr")
-
-        this.forchTaskId = Integer.parseInt(stdout.toString().trim())
+        // todo(rahul): put this in a single transaction with submitTask
+        this.dispatcherClient.updateForchTaskId(
+            this.taskExecutionId,
+            this.forchTaskId
+        )
     }
 }
