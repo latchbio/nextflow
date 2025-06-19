@@ -91,7 +91,7 @@ class ForchClient {
         if (res == null)
             throw new RuntimeException("failed to get task status for ${forchTaskId}")
 
-        return res["nfForchTaskStatus"]
+        return res["taskStatus"]
     }
 
     int getTaskExitCode(int forchTaskId) {
