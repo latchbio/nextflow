@@ -80,7 +80,10 @@ class ForchClient {
     String getTaskStatus(int forchTaskId) {
         Map res = client.execute("""
             query GetTaskStatus(\$taskId: BigInt!) {
-                taskStatus(argTaskId: \$taskId)
+                task(id: \$taskId) {
+                    id
+                    status
+                }
             }
             """,
             [
@@ -90,8 +93,9 @@ class ForchClient {
 
         if (res == null)
             throw new RuntimeException("failed to get task status for ${forchTaskId}")
+        
+        return res["task"]["status"]
 
-        return res["taskStatus"]
     }
 
     int getTaskExitCode(int forchTaskId) {
