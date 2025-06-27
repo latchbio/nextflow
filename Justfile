@@ -8,6 +8,17 @@ build-sync:
   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -ldflags '-extldflags "-static"' -o custom_fsync.bin custom_fsync/sync.go
   chmod +x custom_fsync
 
+image_name := "812206152185.dkr.ecr.us-west-2.amazonaws.com/forch-nf-runtime"
+
+@dbnp:
+    cp -rf ~/.nextflow ./
+
+    export tag=$(<LATCH_VERSION)-test
+    docker build -t {{image_name}}:$tag .
+    docker push {{image_name}}:$tag
+
+    rm -rf .nextflow
+
 build:
   #!/usr/bin/env bash
 
