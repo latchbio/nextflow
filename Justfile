@@ -12,10 +12,10 @@ image_name := "812206152185.dkr.ecr.us-west-2.amazonaws.com/forch-nf-runtime"
 
 @dbnp:
     cp -rf ~/.nextflow ./
+    rm -rf .nextflow/plugins/*
 
-    export tag=$(<LATCH_VERSION)-test
-    docker build -t {{image_name}}:$tag .
-    docker push {{image_name}}:$tag
+    docker build -t {{image_name}}:$(<LATCH_VERSION) .
+    docker push {{image_name}}:$(<LATCH_VERSION)
 
     rm -rf .nextflow
 

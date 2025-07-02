@@ -11,7 +11,6 @@ import groovy.json.JsonSlurper
 class GQLClient {
     private String endpoint
     private HttpRetryClient client
-    private boolean useForchAuth
 
     class GQLQueryException extends Exception {
         GQLQueryException(String msg) {
@@ -19,8 +18,7 @@ class GQLClient {
         }
     }
 
-    GQLClient(boolean useForchAuth = false) {
-        this.useForchAuth = useForchAuth
+    GQLClient() {
         endpoint = "https://vacuole.latch.bio/graphql"
 
         String domain = System.getenv("LATCH_SDK_DOMAIN")
@@ -45,7 +43,7 @@ class GQLClient {
             .uri(URI.create(this.endpoint))
             .timeout(Duration.ofSeconds(90))
             .header("Content-Type", "application/json")
-            .header("Authorization", LatchPathUtils.getAuthHeader(useForchAuth))
+            .header("Authorization", LatchPathUtils.getAuthHeader())
         HttpRequest req = requestBuilder.POST(HttpRequest.BodyPublishers.ofString(builder.toString())).build()
         HttpResponse<String> response = this.client.send(req)
 
