@@ -5,7 +5,7 @@ import nextflow.file.http.GQLClient
 
 @Slf4j
 class ForchClient {
-    private GQLClient client = new GQLClient()
+    private GQLClient client = new GQLClient(true)
 
     int submitTask(
         String displayName,
