@@ -26,6 +26,8 @@ class ForchClient {
         if (nfsServerTaskId == null)
             throw new RuntimeException("unable to get NFS server task id")
 
+        String region = System.getenv("host_region") ?: "us-west-2"
+
         Map res = client.execute("""
             mutation CreateForchTask(
                 \$displayName: String!,
@@ -38,6 +40,7 @@ class ForchClient {
                 \$groupId: BigInt!,
                 \$billedTo: BigInt!,
                 \$nfsServerTaskId: BigInt!
+                \$argTargetRegion: String!
             ) {
                 nfCreateForchTask(
                     input: {
@@ -51,6 +54,7 @@ class ForchClient {
                         argGroupId: \$groupId,
                         argBilledTo: \$billedTo,
                         argNfsServerTaskId: \$nfsServerTaskId
+                        argTargetRegion: \$targetRegion
                     }
                 ) {
                     resTaskId
@@ -68,6 +72,7 @@ class ForchClient {
                 "groupId": resourceGroup.toInteger(),
                 "billedTo": billingGroup.toInteger(),
                 "nfsServerTaskId": nfsServerTaskId,
+                "argTargetRegion": region,
             ]
         )["nfCreateForchTask"] as Map
 
