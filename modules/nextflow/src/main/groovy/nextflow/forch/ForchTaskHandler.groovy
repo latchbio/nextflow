@@ -89,19 +89,18 @@ class ForchTaskHandler extends TaskHandler {
 
         String cmd = """\
             if [[ "\$(command -v apt-get)" ]]; then
-                apt-get update
-                apt-get install -y nfs-common
+                apt-get update 2>&1 > /dev/null
+                apt-get install -y nfs-common 2>&1 > /dev/null
             elif [[ "\$(command -v yum)" ]]; then
-                yum install -y nfs-utils
+                yum install -y nfs-utils 2>&1 > /dev/null
             elif [[ "\$(command -v dnf)" ]]; then
-                dnf install -y nfs-utils
+                dnf install -y nfs-utils 2>&1 > /dev/null
             fi
 
             mkdir --parents ${session.baseDir}
         
-            until mount -t nfs4 [${serverIp}]:/ ${session.baseDir}
+            until mount -t nfs4 [${serverIp}]:/ ${session.baseDir} 2>&1 > /dev/null
             do
-                echo "failed to mount nfs share: retrying..."
                 sleep 5 
             done
             

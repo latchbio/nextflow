@@ -39,8 +39,8 @@ class ForchClient {
                 \$gpus: Int!,
                 \$groupId: BigInt!,
                 \$billedTo: BigInt!,
-                \$nfsServerTaskId: BigInt!
-                \$argTargetRegion: String!
+                \$nfsServerTaskId: BigInt!,
+                \$targetRegion: String!
             ) {
                 nfCreateForchTask(
                     input: {
@@ -53,7 +53,7 @@ class ForchClient {
                         argGpus: \$gpus,
                         argGroupId: \$groupId,
                         argBilledTo: \$billedTo,
-                        argNfsServerTaskId: \$nfsServerTaskId
+                        argNfsServerTaskId: \$nfsServerTaskId,
                         argTargetRegion: \$targetRegion
                     }
                 ) {
@@ -72,7 +72,7 @@ class ForchClient {
                 "groupId": resourceGroup.toInteger(),
                 "billedTo": billingGroup.toInteger(),
                 "nfsServerTaskId": nfsServerTaskId,
-                "argTargetRegion": region,
+                "targetRegion": region,
             ]
         )["nfCreateForchTask"] as Map
 
