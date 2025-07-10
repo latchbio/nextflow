@@ -29,6 +29,11 @@ class ForchExecutor extends Executor {
         // todo(ayush): decouple dispatcher and executor
         this.dispatcherClient = new DispatcherClient()
         this.forchClient = new ForchClient()
+
+        this.session.addIgniter {
+            this.dispatcherClient.updateExecutionStatus("RUNNING")
+        }
+
         uploadBinDir()
     }
 
@@ -43,5 +48,13 @@ class ForchExecutor extends Executor {
             log.info "Uploading local `bin` scripts folder to ${s3.toUriString()}/bin"
             remoteBinDir = FilesEx.copyTo(session.binDir, s3)
         }
+    }
+
+    @Override
+    void shutdown() {
+        def status = this.session.isSuccess() ? "SUCCEEDED" : (this.session.isAborted() ? "ABORTED" : "FAILED")
+        this.dispatcherClient.updateExecutionStatus(status)
+
+        super.shutdown()
     }
 }

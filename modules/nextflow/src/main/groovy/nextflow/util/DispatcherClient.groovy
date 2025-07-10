@@ -12,6 +12,40 @@ class DispatcherClient {
 
     public boolean debug = System.getenv("LATCH_NF_DEBUG") == "true"
 
+    void updateExecutionStatus(String status) {
+        if (debug) {
+            return
+        }
+
+        String executionId = System.getenv("forch_execution_id")
+        if (executionId == null) {
+            throw new RuntimeException("failed to update execution status: execution id not found")
+        }
+
+        client.execute("""
+            mutation UpdateExecutionStatus(
+                \$argExecutionId: BigInt!
+                \$argStatus: ExecutionStatus!
+            ) {
+                updateExecutionInfo(
+                    input: { 
+                        id: \$argExecutionId,
+                        patch: { 
+                            status: \$argStatus 
+                        }
+                    }
+                ) {
+                    clientMutationId
+                }
+            }
+            """,
+            [
+                argExecutionId: executionId,
+                argStatus: status,
+            ]
+        )
+    }
+
     int createProcessNode(String processName) {
         if (debug) {
             return 1
