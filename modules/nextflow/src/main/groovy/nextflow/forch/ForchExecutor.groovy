@@ -52,7 +52,7 @@ class ForchExecutor extends Executor {
 
     @Override
     void shutdown() {
-        def status = this.session.isSuccess() ? "SUCCEEDED" : (this.session.isAborted() ? "ABORTED" : "FAILED")
+        def status = session.success ? "SUCCEEDED" : ((session.aborted || session.cancelled) ? "ABORTED" : "FAILED")
         this.dispatcherClient.updateExecutionStatus(status)
 
         super.shutdown()
