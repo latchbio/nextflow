@@ -55,6 +55,10 @@ class ForchExecutor extends Executor {
         def status = session.success ? "SUCCEEDED" : ((session.aborted || session.cancelled) ? "ABORTED" : "FAILED")
         this.dispatcherClient.updateExecutionStatus(status)
 
+        String nfsServerTaskId = System.getenv("nfs_server_task_id")
+        if (nfsServerTaskId != null)
+            this.forchClient.abortTasks([Integer.parseInt(nfsServerTaskId)])
+
         super.shutdown()
     }
 }

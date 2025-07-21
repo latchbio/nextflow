@@ -182,6 +182,8 @@ class DockerBuilder extends ContainerBuilder<DockerBuilder> {
         // return the run command as result
         runCommand = result.toString()
 
+        log.warn(runCommand)
+
         // use an explicit 'docker rm' command since the --rm flag may fail. See https://groups.google.com/d/msg/docker-user/0Ayim0wv2Ls/tDC-tlAK03YJ
         if( remove && name ) {
             removeCommand = 'docker rm ' + name

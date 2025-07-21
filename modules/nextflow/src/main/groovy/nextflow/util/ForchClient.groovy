@@ -137,4 +137,16 @@ class ForchClient {
 
         return nodes[0]["taskEventContainerExitedDatumById"]["exitStatus"] as int
     }
+
+    void abortTasks(List<Integer> taskIds) {
+        client.execute("""
+            mutation AbortTask(\$argTaskIds: [BigInt!]!) {
+                nfStopForchTasks(input: { argTaskIds: \$argTaskIds }) {
+                    clientMutationId
+                }
+            }
+            """,
+            ["argTaskIds": taskIds]
+        )
+    }
 }

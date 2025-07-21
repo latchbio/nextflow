@@ -67,7 +67,7 @@ class ForchTaskHandler extends TaskHandler {
 
     @Override
     void kill() {
-        // noop
+        forchClient.abortTasks([forchTaskId])
     }
 
     @Override
