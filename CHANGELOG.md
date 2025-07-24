@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 3.0.5
+
+## Changed
+* In debug mode, the docker executor no longer enforces resource limits through cgroups
+
 ## 3.0.4
 
 ## Fixed
