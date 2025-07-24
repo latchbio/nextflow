@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 2.5.6
+
+### Changed
+* Docker builder no longer sets resource limits for individual containers when in debug mode
+
 ## 2.5.5
 
 ## Fixed
