@@ -98,6 +98,7 @@ class ProcessConfig implements Map<String,Object>, Cloneable {
             'scratch',
             'secret',
             'shell',
+            'spot',
             'spack',
             'stageInMode',
             'stageOutMode',
