@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 3.0.6
+
+## Changed
+* Add spot argument to processes
+
 ## 3.0.5
 
 ## Changed
