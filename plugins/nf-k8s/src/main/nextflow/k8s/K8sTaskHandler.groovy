@@ -312,7 +312,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         result.'nextflow.io/sessionId' = "uuid-${executor.getSession().uniqueId}" as String
         if( task.config.queue )
             result.'nextflow.io/queue' = task.config.queue
-        if( taskCfg.getSpot() )
+        if( taskCfg.spot )
             result.'latch/spot' = 'true'
         return result
     }
