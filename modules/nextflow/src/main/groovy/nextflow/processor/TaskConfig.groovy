@@ -532,12 +532,7 @@ class TaskConfig extends LazyMap implements Cloneable {
     }
 
     boolean getSpot() {
-        def value = get('spot')
-        if( value == null )
-            return false
-        if( value instanceof Boolean )
-            return value
-        return value.toString().toLowerCase() in Const.BOOL_YES
+        return toBool(get('spot'))
     }
 
     String getResourceLabelsAsString() {
