@@ -88,23 +88,14 @@ class ForchTaskHandler extends TaskHandler {
             throw new RuntimeException("failed to get server ip")
 
         String cmd = """\
-            if [[ "\$(command -v apt-get)" ]]; then
-                apt-get update 2>&1 > /dev/null
-                apt-get install -y nfs-common 2>&1 > /dev/null
-            elif [[ "\$(command -v yum)" ]]; then
-                yum install -y nfs-utils 2>&1 > /dev/null
-            elif [[ "\$(command -v dnf)" ]]; then
-                dnf install -y nfs-utils 2>&1 > /dev/null
-            fi
-
             mkdir --parents ${session.baseDir}
-        
+
             until mount -t nfs4 [${serverIp}]:/ ${session.baseDir} 2>&1 > /dev/null
             do
-                sleep 5 
+                sleep 5
             done
-            
-            trap "{ ret=\$?; cp ${TaskRun.CMD_LOG} ${task.workDir}/${TaskRun.CMD_LOG}||true; exit \$ret; }" EXIT; 
+
+            trap "{ ret=\$?; cp ${TaskRun.CMD_LOG} ${task.workDir}/${TaskRun.CMD_LOG}||true; exit \$ret; }" EXIT;
 
             cat ${task.workDir}/${TaskRun.CMD_RUN} | bash 2>&1 | tee ${TaskRun.CMD_LOG}
         """.stripIndent().trim()
