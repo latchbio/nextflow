@@ -14,7 +14,7 @@ image_name := "812206152185.dkr.ecr.us-west-2.amazonaws.com/forch-nf-runtime"
     cp -rf ~/.nextflow ./
     rm -rf .nextflow/plugins/*
 
-    docker build -t {{image_name}}:$(<LATCH_VERSION) .
+    docker build --platform linux/amd64 -t {{image_name}}:$(<LATCH_VERSION) .
     docker push {{image_name}}:$(<LATCH_VERSION)
 
     rm -rf .nextflow
