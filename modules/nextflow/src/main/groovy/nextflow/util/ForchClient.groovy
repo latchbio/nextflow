@@ -28,7 +28,7 @@ class ForchClient {
 
         String region = System.getenv("host_region") ?: "us-west-2"
 
-        String token = System.getenv("latch_execution_token")
+        String forchExecutionId = System.getenv("forch_execution_id")
 
         Map res = client.execute("""
             mutation CreateForchTask(
@@ -43,7 +43,7 @@ class ForchClient {
                 \$billedTo: BigInt!,
                 \$nfsServerTaskId: BigInt!,
                 \$targetRegion: String!
-                \$argToken: String!
+                \$forchExecutionId: BigInt!
             ) {
                 nfCreateForchTask(
                     input: {
@@ -58,7 +58,7 @@ class ForchClient {
                         argBilledTo: \$billedTo,
                         argNfsServerTaskId: \$nfsServerTaskId,
                         argTargetRegion: \$targetRegion,
-                        argToken: \$argToken
+                        argForchExecutionId: \$forchExecutionId,
                     }
                 ) {
                     resTaskId
@@ -77,7 +77,7 @@ class ForchClient {
                 "billedTo": billingGroup.toInteger(),
                 "nfsServerTaskId": nfsServerTaskId,
                 "targetRegion": region,
-                "argToken": token,
+                "forchExecutionId": forchExecutionId,
             ]
         )["nfCreateForchTask"] as Map
 
