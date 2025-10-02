@@ -12,6 +12,12 @@ class LatchPathUtils {
             def forchToken = System.getenv("forch_auth_token")
             if (forchToken != null) return "Forch-Auth-Token $forchToken"
         } else {
+            String forchExecutionId = System.getenv("forch_execution_id")
+            if (forchExecutionId != null) {
+                def token = System.getenv("latch_execution_token")
+                if (forchToken != null) return "Latch-Execution-Token $token"
+            }
+
             def flyteToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
             if (flyteToken != null) return "Latch-Execution-Token $flyteToken"
 
@@ -78,7 +84,7 @@ class LatchPathUtils {
                         defaultAccount
                     }
                 }
-            } 
+            }
         """)["accountInfoCurrent"] as Map
 
         if (accInfo == null)
