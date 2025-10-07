@@ -18,6 +18,7 @@ package nextflow
 
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.text.SimpleDateFormat
 /**
  * Application main constants
  *
