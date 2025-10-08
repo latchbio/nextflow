@@ -4,7 +4,6 @@ import groovy.json.JsonOutput
 import groovy.util.logging.Slf4j
 import nextflow.file.http.GQLClient
 import nextflow.file.http.GQLClient.GQLQueryException
-import java.security.SecureRandom
 
 
 @Slf4j
@@ -218,12 +217,6 @@ class DispatcherClient {
 
         String forchExecutionId = System.getenv("forch_execution_id")
         if (forchExecutionId != null) {
-            def random = new SecureRandom()
-            byte[] tokenBytes = new byte[20]
-            random.nextBytes(tokenBytes)
-
-            def token = tokenBytes.collect { String.format("%02x", it) }.join()
-
             try {
                 Map res = client.execute("""
                     mutation CreateForchTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$cached: Boolean!, \$hash: String, \$token: String!) {
@@ -233,8 +226,7 @@ class DispatcherClient {
                                     taskId: \$taskId,
                                     attemptIdx: \$attemptIdx,
                                     cached: \$cached,
-                                    hash: \$hash,
-                                    token: \$token
+                                    hash: \$hash
                                 }
                             }
                         ) {
@@ -249,7 +241,6 @@ class DispatcherClient {
                         attemptIdx: attemptIdx,
                         cached: status == 'SKIPPED',
                         hash: hash,
-                        token: token,
                     ]
                 )["createNfForchTaskExecutionInfo"] as Map
 
