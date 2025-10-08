@@ -5,7 +5,6 @@ import groovy.util.logging.Slf4j
 import nextflow.file.http.GQLClient
 import nextflow.file.http.GQLClient.GQLQueryException
 
-
 @Slf4j
 class DispatcherClient {
 
@@ -219,7 +218,7 @@ class DispatcherClient {
         if (forchExecutionId != null) {
             try {
                 Map res = client.execute("""
-                    mutation CreateForchTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$cached: Boolean!, \$hash: String, \$token: String!) {
+                    mutation CreateForchTaskExecutionInfo(\$taskId: BigInt!, \$attemptIdx: BigInt!, \$cached: Boolean!, \$hash: String) {
                         createNfForchTaskExecutionInfo(
                             input: {
                                 nfForchTaskExecutionInfo: {
