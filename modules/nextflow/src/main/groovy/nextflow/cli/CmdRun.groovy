@@ -379,6 +379,24 @@ class CmdRun extends CmdBase implements HubOptions {
         runner.execute(scriptArgs, this.entryName)
     }
 
+    static void detectModuleBinaryFeature(ConfigMap config) {
+        final moduleBinaries = config.navigate('nextflow.enable.moduleBinaries', false)
+        if( moduleBinaries ) {
+            log.debug "Enabling module binaries"
+            NextflowMeta.instance.moduleBinaries(true)
+        }
+    }
+
+    static void detectStrictFeature(ConfigMap config, Map sysEnv) {
+        final defStrict = sysEnv.get('NXF_ENABLE_STRICT') ?: false
+        log
+        final strictMode = config.navigate('nextflow.enable.strict', defStrict)
+        if( strictMode ) {
+            log.debug "Enabling nextflow strict mode"
+            NextflowMeta.instance.strictMode(true)
+        }
+    }
+
     protected void printBanner() {
         if( launcher.options.ansiLog ){
             // Plain header for verbose log

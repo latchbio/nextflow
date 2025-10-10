@@ -70,43 +70,6 @@ class Const {
      */
     static public final int APP_BUILDNUM = 6039
 
-    /**
-     * The app build time string relative to UTC timezone
-     */
-    static public final String APP_TIMESTAMP_UTC = {
-
-        def tz = TimeZone.getTimeZone('UTC')
-        def fmt = new SimpleDateFormat(DATETIME_FORMAT)
-        fmt.setTimeZone(tz)
-        fmt.format(new Date(APP_TIMESTAMP)) + ' ' + tz.getDisplayName( true, TimeZone.SHORT )
-
-    } ()
-
-
-    /**
-     * The app build time string relative to local timezone
-     */
-    static public final String APP_TIMESTAMP_LOCAL = {
-
-        def tz = TimeZone.getDefault()
-        def fmt = new SimpleDateFormat(DATETIME_FORMAT)
-        fmt.setTimeZone(tz)
-        fmt.format(new Date(APP_TIMESTAMP)) + ' ' + tz.getDisplayName( true, TimeZone.SHORT )
-
-    } ()
-
-    static String deltaLocal() {
-        def utc = APP_TIMESTAMP_UTC.split(' ')
-        def loc = APP_TIMESTAMP_LOCAL.split(' ')
-
-        if( APP_TIMESTAMP_UTC == APP_TIMESTAMP_LOCAL ) {
-            return ''
-        }
-
-        def result = utc[0] == loc[0] ? loc[1,-1].join(' ') : loc.join(' ')
-        return "($result)"
-    }
-
     private static Path getHomeDir(String appname) {
         final home = System.getenv('NXF_HOME')
         final result = home ? Paths.get(home) : sysHome().resolve(".$appname")

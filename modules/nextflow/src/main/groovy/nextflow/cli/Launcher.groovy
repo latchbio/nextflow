@@ -702,6 +702,7 @@ class Launcher {
 
 """
       N E X T F L O W
+      gentipbppjo[gkwrbnpwrnvprwfpw]
       version ${BuildInfo.version} build ${BuildInfo.buildNum}
       created ${BuildInfo.timestampUTC} ${BuildInfo.timestampDelta}
       cite doi:10.1038/nbt.3820
