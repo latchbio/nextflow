@@ -2,7 +2,11 @@ bucket := "latch-public"
 subdir := "nextflow-v2"
 version := `echo $(cat LATCH_VERSION) | tr -d '\n'`
 nextflow_dir := "s3://" + bucket + "/" + subdir
-path := nextflow_dir + "/" + version
+
+# note(ayush): this is branch-specific
+nextflow_version := "25.04.8"
+
+path := nextflow_dir + "/" + nextflow_version + "/" + version
 
 build-sync:
   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -ldflags '-extldflags "-static"' -o custom_fsync.bin custom_fsync/sync.go
