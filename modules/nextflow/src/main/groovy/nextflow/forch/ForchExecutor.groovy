@@ -59,7 +59,6 @@ class ForchExecutor extends Executor {
         if (nfsServerTaskId != null)
             this.forchClient.abortTasks([Integer.parseInt(nfsServerTaskId)])
 
-        sleep(10 * 60 * 1000)
         super.shutdown()
     }
 }
