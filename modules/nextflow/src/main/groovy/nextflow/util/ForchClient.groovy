@@ -29,6 +29,8 @@ class ForchClient {
         String region = System.getenv("host_region") ?: "us-west-2"
 
         String forchExecutionId = System.getenv("forch_execution_id")
+        if (forchExecutionId == null)
+            throw new RuntimeException("unable to get forch_execution_id")
 
         Map res = client.execute("""
             mutation CreateForchTask(
