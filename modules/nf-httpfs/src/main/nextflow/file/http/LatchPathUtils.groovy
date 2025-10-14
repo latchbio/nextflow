@@ -78,7 +78,7 @@ class LatchPathUtils {
                         defaultAccount
                     }
                 }
-            } 
+            }
         """)["accountInfoCurrent"] as Map
 
         if (accInfo == null)

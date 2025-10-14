@@ -28,10 +28,10 @@ class DispatcherClient {
                 \$argStatus: ExecutionStatus!
             ) {
                 updateExecutionInfo(
-                    input: { 
+                    input: {
                         id: \$argExecutionId,
-                        patch: { 
-                            status: \$argStatus 
+                        patch: {
+                            status: \$argStatus
                         }
                     }
                 ) {

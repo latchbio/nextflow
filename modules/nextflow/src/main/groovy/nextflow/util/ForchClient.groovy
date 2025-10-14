@@ -28,6 +28,10 @@ class ForchClient {
 
         String region = System.getenv("host_region") ?: "us-west-2"
 
+        String forchExecutionId = System.getenv("forch_execution_id")
+        if (forchExecutionId == null)
+            throw new RuntimeException("unable to get forch_execution_id")
+
         Map res = client.execute("""
             mutation CreateForchTask(
                 \$displayName: String!,
@@ -40,7 +44,8 @@ class ForchClient {
                 \$groupId: BigInt!,
                 \$billedTo: BigInt!,
                 \$nfsServerTaskId: BigInt!,
-                \$targetRegion: String!
+                \$targetRegion: String!,
+                \$forchExecutionId: BigInt!
             ) {
                 nfCreateForchTask(
                     input: {
@@ -54,7 +59,8 @@ class ForchClient {
                         argGroupId: \$groupId,
                         argBilledTo: \$billedTo,
                         argNfsServerTaskId: \$nfsServerTaskId,
-                        argTargetRegion: \$targetRegion
+                        argTargetRegion: \$targetRegion,
+                        argForchExecutionId: \$forchExecutionId,
                     }
                 ) {
                     resTaskId
@@ -73,6 +79,7 @@ class ForchClient {
                 "billedTo": billingGroup.toInteger(),
                 "nfsServerTaskId": nfsServerTaskId,
                 "targetRegion": region,
+                "forchExecutionId": forchExecutionId,
             ]
         )["nfCreateForchTask"] as Map
 
@@ -98,7 +105,7 @@ class ForchClient {
 
         if (res == null)
             throw new RuntimeException("failed to get task status for ${forchTaskId}")
-        
+
         return res["task"]["status"]
 
     }
