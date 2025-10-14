@@ -44,7 +44,7 @@ class ForchClient {
                 \$groupId: BigInt!,
                 \$billedTo: BigInt!,
                 \$nfsServerTaskId: BigInt!,
-                \$targetRegion: String!
+                \$targetRegion: String!,
                 \$forchExecutionId: BigInt!
             ) {
                 nfCreateForchTask(

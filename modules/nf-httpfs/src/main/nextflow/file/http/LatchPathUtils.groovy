@@ -13,7 +13,7 @@ class LatchPathUtils {
             if (forchToken != null) return "Forch-Auth-Token $forchToken"
         } else {
             def forchToken = System.getenv("latch_execution_token")
-            if (forchToken != null) return "Latch-Execution-Token $token"
+            if (forchToken != null) return "Latch-Execution-Token $forchToken"
 
             def flyteToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
             if (flyteToken != null) return "Latch-Execution-Token $flyteToken"
