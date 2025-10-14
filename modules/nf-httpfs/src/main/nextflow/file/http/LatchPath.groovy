@@ -326,11 +326,14 @@ class LatchPath extends XPath {
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUriString(), "part_count": numParts, "content_type": mimeType])
 
+        def latchToken = System.getenv("latch_execution_token")
+        def authHeader = latchToken != null ? "Latch-Execution-Token $latchToken" : LatchPathUtils.getAuthHeader()
+
         def request =  HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/start-upload"))
             .timeout(Duration.ofSeconds(90))
             .header("Content-Type", "application/json")
-            .header("Authorization", LatchPathUtils.getAuthHeader())
+            .header("Authorization", authHeader)
             .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
             .build()
 
@@ -424,7 +427,7 @@ class LatchPath extends XPath {
             .uri(URI.create("${host}/ldata/end-upload"))
             .timeout(Duration.ofSeconds(90))
             .header("Content-Type", "application/json")
-            .header("Authorization", LatchPathUtils.getAuthHeader())
+            .header("Authorization", authHeader)
             .POST(HttpRequest.BodyPublishers.ofString(endUploadBody))
             .build()
 
@@ -435,11 +438,14 @@ class LatchPath extends XPath {
         JsonBuilder builder = new JsonBuilder()
         builder(["path": this.toUriString()])
 
+        def latchToken = System.getenv("latch_execution_token")
+        def authHeader = latchToken != null ? "Latch-Execution-Token $latchToken" : LatchPathUtils.getAuthHeader()
+
         def request =  HttpRequest.newBuilder()
             .uri(URI.create("${host}/ldata/get-signed-url"))
             .timeout(Duration.ofSeconds(90))
             .header("Content-Type", "application/json")
-            .header("Authorization", LatchPathUtils.getAuthHeader())
+            .header("Authorization", authHeader)
             .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
             .build()
 
