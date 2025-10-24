@@ -463,7 +463,7 @@ class LatchPath extends XPath {
     @Override
     boolean equals(Object other) {
         if (this.class != other.class)
-            throw new ProviderMismatchException()
+            return false
 
         LatchPath that = (LatchPath) other
 
