@@ -459,4 +459,14 @@ class LatchPath extends XPath {
     Path toAbsolutePath() {
         return this
     }
+
+    @Override
+    boolean equals(Object other) {
+        if (this.class != other.class)
+            throw new ProviderMismatchException()
+
+        LatchPath that = (LatchPath) other
+
+        return this.path == that.path
+    }
 }
