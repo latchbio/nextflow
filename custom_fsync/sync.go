@@ -18,6 +18,11 @@ func main() {
 			return err
 		}
 
+		mode := di.Type()
+		if mode&os.ModeType != 0 { // ModeType mask catches all special types
+			return nil
+		}
+
 		f, err := os.OpenFile(path, os.O_RDONLY, 0)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error opening file: %s: %v\n", path, err)
