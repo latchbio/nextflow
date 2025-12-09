@@ -1,5 +1,10 @@
 # Latch Nextflow Changelog
 
+## 3.0.7
+
+## Added
+* Add `shm-size` container option support
+
 ## 3.0.6
 
 ## Changed

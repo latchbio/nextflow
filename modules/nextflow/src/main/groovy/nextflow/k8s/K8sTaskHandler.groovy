@@ -17,7 +17,9 @@
 package nextflow.k8s
 
 import nextflow.k8s.client.PodUnschedulableException
+import nextflow.k8s.model.PodMountEmptyDir
 import nextflow.util.DispatcherClient
+import nextflow.util.MemoryUnit
 
 import java.nio.file.Path
 
@@ -59,7 +61,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             p.waitFor()
             return p.text
         }
-
     } ()
 
     private ResourceType resourceType = ResourceType.Pod
@@ -257,6 +258,17 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             builder.withDisk(disk)
         if( acc )
             builder.withAccelerator(acc)
+
+        final containerOpts = task.config.getContainerOptionsMap()
+        if (containerOpts != null && containerOpts.exists("shm-size")) {
+            final shm = new MemoryUnit(containerOpts.getFirstValue("shm-size") as String)
+
+            // note(ayush): copied from https://stackoverflow.com/a/46434614
+            builder.withEmptyDir(new PodMountEmptyDir(
+                ["medium": "Memory", "sizeLimit": shm.bytes.toString()],
+                "/dev/shm"
+            ))
+        }
 
         final List<String> hostMounts = getContainerMounts()
         for( String mount : hostMounts ) {
