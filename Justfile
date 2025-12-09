@@ -3,8 +3,7 @@ subdir := "nextflow-v2"
 version := `echo $(cat LATCH_VERSION) | tr -d '\n'`
 nextflow_dir := "s3://" + bucket + "/" + subdir
 
-# note(ayush): this is branch-specific
-nextflow_version := "25.04.8"
+nextflow_version := `echo $(cat VERSION) | tr -d '\n'`
 
 path := nextflow_dir + "/" + nextflow_version + "/" + version
 
