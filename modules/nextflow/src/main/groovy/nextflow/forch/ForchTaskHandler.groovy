@@ -90,6 +90,8 @@ class ForchTaskHandler extends TaskHandler {
         String cmd = """\
             mkdir --parents ${session.baseDir}
 
+            chown -R root:root /bin 2>&1 > /dev/null
+
             until mount -t nfs4 [${serverIp}]:/ ${session.baseDir} 2>&1 > /dev/null
             do
                 sleep 5
