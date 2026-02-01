@@ -80,6 +80,13 @@ class ForchTaskHandler extends TaskHandler {
         int cpus = task.config.getCpus()
         MemoryUnit memory = task.config.getMemory() ?: MemoryUnit.of("2GiB")
 
+        final containerOpts = task.config.getContainerOptionsMap()
+
+        MemoryUnit shm;
+        if (containerOpts != null && containerOpts.exists("shm-size")) {
+            shm = new MemoryUnit(containerOpts.getFirstValue("shm-size") as String)
+        }
+
         // todo(ayush): gpu support
         // AcceleratorResource acc = task.config.getAccelerator()
 
@@ -97,9 +104,7 @@ class ForchTaskHandler extends TaskHandler {
                 sleep 5
             done
 
-            trap "{ ret=\$?; cp ${TaskRun.CMD_LOG} ${task.workDir}/${TaskRun.CMD_LOG}||true; exit \$ret; }" EXIT;
-
-            cat ${task.workDir}/${TaskRun.CMD_RUN} | bash 2>&1 | tee ${TaskRun.CMD_LOG}
+            cat ${task.workDir}/${TaskRun.CMD_RUN} | bash 2>&1
         """.stripIndent().trim()
 
         if (remoteBinDir != null) {
@@ -120,7 +125,8 @@ class ForchTaskHandler extends TaskHandler {
                 cmd,
             ],
             cpus,
-            memory.bytes
+            memory.bytes,
+            shm?.bytes
         )
 
         // todo(rahul): put this in a single transaction with submitTask
