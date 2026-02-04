@@ -7,12 +7,13 @@ import nextflow.file.http.GQLClient
 class ForchClient {
     private GQLClient client = new GQLClient(true)
 
-    int submitTask(
+    public int submitTask(
         String displayName,
         String image,
         List<String> entrypoint,
         int cpus,
-        long memoryBytes
+        long memoryBytes,
+        long shmBytes // nullable
     ) {
         String resourceGroup = System.getenv("forch_resource_group_id")
         if (resourceGroup == null)
@@ -35,6 +36,7 @@ class ForchClient {
                 \$containerEntrypoint: [String]!,
                 \$cpus: Int!,
                 \$memoryBytes: BigInt!,
+                \$shmBytes: BigInt,
                 \$gpuType: String,
                 \$gpus: Int!,
                 \$groupId: BigInt!,
@@ -49,6 +51,7 @@ class ForchClient {
                         argContainerEntrypoint: \$containerEntrypoint,
                         argCpus: \$cpus,
                         argMemoryBytes: \$memoryBytes,
+                        argShmBytes: \$shmBytes,
                         argGpuType: \$gpuType,
                         argGpus: \$gpus,
                         argGroupId: \$groupId,
@@ -67,6 +70,7 @@ class ForchClient {
                 "containerEntrypoint" : entrypoint,
                 "cpus" : cpus,
                 "memoryBytes" : memoryBytes,
+                "shmBytes": shmBytes == 0 ? null : shmBytes,
                 "gpuType" : null,
                 "gpus" : 0,
                 "groupId": resourceGroup.toInteger(),
