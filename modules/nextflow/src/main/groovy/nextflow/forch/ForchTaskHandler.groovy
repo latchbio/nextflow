@@ -82,7 +82,7 @@ class ForchTaskHandler extends TaskHandler {
 
         final containerOpts = task.config.getContainerOptionsMap()
 
-        MemoryUnit shm;
+        MemoryUnit shm = null;
         if (containerOpts != null && containerOpts.exists("shm-size")) {
             shm = new MemoryUnit(containerOpts.getFirstValue("shm-size") as String)
         }
@@ -116,17 +116,19 @@ class ForchTaskHandler extends TaskHandler {
             """.stripIndent() + cmd
         }
 
+        List<String> entrypoint = [
+            "/bin/bash",
+            "-c",
+            cmd,
+        ]
+
         this.forchTaskId = this.forchClient.submitTask(
             this.task.name,
             this.task.container,
-            [
-                "/bin/bash",
-                "-c",
-                cmd,
-            ],
+            entrypoint,
             cpus,
             memory.bytes,
-            shm?.bytes
+            shm?.bytes ?: 0
         )
 
         // todo(rahul): put this in a single transaction with submitTask

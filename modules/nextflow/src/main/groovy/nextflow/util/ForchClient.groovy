@@ -7,7 +7,7 @@ import nextflow.file.http.GQLClient
 class ForchClient {
     private GQLClient client = new GQLClient(true)
 
-    int submitTask(
+    public int submitTask(
         String displayName,
         String image,
         List<String> entrypoint,
@@ -70,7 +70,7 @@ class ForchClient {
                 "containerEntrypoint" : entrypoint,
                 "cpus" : cpus,
                 "memoryBytes" : memoryBytes,
-                "shmBytes": shmBytes,
+                "shmBytes": shmBytes == 0 ? null : shmBytes,
                 "gpuType" : null,
                 "gpus" : 0,
                 "groupId": resourceGroup.toInteger(),
