@@ -212,6 +212,10 @@ class TaskConfig extends LazyMap implements Cloneable {
         return get('stageOutMode')
     }
 
+    boolean getSpot() {
+        return toBool(get('spot'))
+    }
+
     boolean getDebug() {
         // check both `debug` and `echo` for backward
         // compatibility until `echo` is not removed

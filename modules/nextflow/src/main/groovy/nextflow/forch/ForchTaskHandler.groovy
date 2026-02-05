@@ -128,7 +128,8 @@ class ForchTaskHandler extends TaskHandler {
             entrypoint,
             cpus,
             memory.bytes,
-            shm?.bytes ?: 0
+            shm?.bytes ?: 0,
+            this.task.config.spot ? "spot" : "on-demand",
         )
 
         // todo(rahul): put this in a single transaction with submitTask

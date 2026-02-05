@@ -13,7 +13,8 @@ class ForchClient {
         List<String> entrypoint,
         int cpus,
         long memoryBytes,
-        long shmBytes // nullable
+        long shmBytes, // nullable
+        String capacityType
     ) {
         String resourceGroup = System.getenv("forch_resource_group_id")
         if (resourceGroup == null)
@@ -39,10 +40,11 @@ class ForchClient {
                 \$shmBytes: BigInt,
                 \$gpuType: String,
                 \$gpus: Int!,
+                \$capacityType: String!
                 \$groupId: BigInt!,
                 \$billedTo: BigInt!,
                 \$nfsServerTaskId: BigInt!,
-                \$targetRegion: String!
+                \$targetRegion: String!,
             ) {
                 nfCreateForchTask(
                     input: {
@@ -54,6 +56,7 @@ class ForchClient {
                         argShmBytes: \$shmBytes,
                         argGpuType: \$gpuType,
                         argGpus: \$gpus,
+                        argCapacityType: \$capacityType,
                         argGroupId: \$groupId,
                         argBilledTo: \$billedTo,
                         argNfsServerTaskId: \$nfsServerTaskId,
@@ -73,6 +76,7 @@ class ForchClient {
                 "shmBytes": shmBytes == 0 ? null : shmBytes,
                 "gpuType" : null,
                 "gpus" : 0,
+                "capacityType": capacityType,
                 "groupId": resourceGroup.toInteger(),
                 "billedTo": billingGroup.toInteger(),
                 "nfsServerTaskId": nfsServerTaskId,
