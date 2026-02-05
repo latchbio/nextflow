@@ -144,7 +144,14 @@ class ForchClient {
         if (nodes == null || nodes.size() == 0)
             return -1
 
-        return nodes[0]["taskEventContainerExitedDatumById"]["exitStatus"] as int
+        def teced = nodes[0]["taskEventContainerExitedDatumById"];
+
+        // note(ayush): the only time we have an exit event without an exit code is if the node it was running on was killed
+        // either manually or via spot preemption - in either case, treat that as a system kill and provide a 137 status
+        if (teced == null)
+            return 137
+
+        return teced["exitStatus"] as int
     }
 
     void abortTasks(List<Integer> taskIds) {
