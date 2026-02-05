@@ -30,36 +30,37 @@ class ForchClient {
 
         String region = System.getenv("host_region") ?: "us-west-2"
 
-        Map res = client.execute("""
+        Map res = client.execute(
+            """
             mutation CreateForchTask(
-                \$displayName: String!,
-                \$containerImage: String!,
-                \$containerEntrypoint: [String]!,
-                \$cpus: Int!,
-                \$memoryBytes: BigInt!,
-                \$shmBytes: BigInt,
-                \$gpuType: String,
-                \$gpus: Int!,
+                \$displayName: String!
+                \$containerImage: String!
+                \$containerEntrypoint: [String]!
+                \$cpus: Int!
+                \$memoryBytes: BigInt!
+                \$shmBytes: BigInt
+                \$gpuType: String
+                \$gpus: Int!
                 \$capacityType: String!
-                \$groupId: BigInt!,
-                \$billedTo: BigInt!,
-                \$nfsServerTaskId: BigInt!,
-                \$targetRegion: String!,
+                \$groupId: BigInt!
+                \$billedTo: BigInt!
+                \$nfsServerTaskId: BigInt!
+                \$targetRegion: String!
             ) {
                 nfCreateForchTask(
                     input: {
-                        argDisplayName: \$displayName,
-                        argContainerImage: \$containerImage,
-                        argContainerEntrypoint: \$containerEntrypoint,
-                        argCpus: \$cpus,
-                        argMemoryBytes: \$memoryBytes,
-                        argShmBytes: \$shmBytes,
-                        argGpuType: \$gpuType,
-                        argGpus: \$gpus,
-                        argCapacityType: \$capacityType,
-                        argGroupId: \$groupId,
-                        argBilledTo: \$billedTo,
-                        argNfsServerTaskId: \$nfsServerTaskId,
+                        argDisplayName: \$displayName
+                        argContainerImage: \$containerImage
+                        argContainerEntrypoint: \$containerEntrypoint
+                        argCpus: \$cpus
+                        argMemoryBytes: \$memoryBytes
+                        argShmBytes: \$shmBytes
+                        argGpuType: \$gpuType
+                        argGpus: \$gpus
+                        argCapacityType: \$capacityType
+                        argGroupId: \$groupId
+                        argBilledTo: \$billedTo
+                        argNfsServerTaskId: \$nfsServerTaskId
                         argTargetRegion: \$targetRegion
                     }
                 ) {
