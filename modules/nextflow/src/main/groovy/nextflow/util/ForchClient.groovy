@@ -116,9 +116,8 @@ class ForchClient {
         Map res = client.execute("""
             query GetTaskExitCode(\$taskId: BigInt!) {
                 taskEvents(
-                    condition: {taskId: \$taskId},
-                    filter: {taskEventContainerExitedDatumByIdExists: true},
-                    orderBy: TIME_DESC,
+                    condition: { taskId: \$taskId, type: "container-exited" }
+                    orderBy: TIME_DESC
                     first: 1
                 ) {
                     nodes {
