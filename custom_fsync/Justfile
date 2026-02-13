@@ -1,0 +1,14 @@
+install:
+  brew install filosottile/musl-cross/musl-cross
+  rustup target add x86_64-unknown-linux-musl
+
+build:
+  #!/usr/bin/env bash
+  arch='x86_64'
+
+  CC=${arch}-linux-musl-gcc \
+
+  cargo build \
+    --release \
+    --target ${arch}-unknown-linux-musl \
+    --config target.${arch}-unknown-linux-musl.linker=\"${arch}-linux-musl-gcc\"
