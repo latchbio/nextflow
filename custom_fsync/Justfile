@@ -11,4 +11,8 @@ build:
   cargo build \
     --release \
     --target ${arch}-unknown-linux-musl \
-    --config target.${arch}-unknown-linux-musl.linker=\"${arch}-linux-musl-gcc\"
+    --config target.${arch}-unknown-linux-musl.linker=\"${CC}\"
+
+upload:
+  aws s3 rm s3://latch-public/nextflow-v2/custom_fsync
+  aws s3 cp target/x86_64-unknown-linux-musl/release/custom_fsync s3://latch-public/nextflow-v2/custom_fsync
