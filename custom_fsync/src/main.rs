@@ -21,7 +21,6 @@ fn add_children_to_stack(dir: PathBuf, stack: &mut Vec<PathBuf>) -> io::Result<(
 fn fsync(top: PathBuf, verbose: bool) -> io::Result<()> {
     let mut stack: Vec<PathBuf> = Vec::new();
 
-    // todo(ayush): surely theres a way to write this in a way that isn't go-like
     if let Err(e) = add_children_to_stack(top, &mut stack) {
         println!("fatal: error reading current directory: {e}");
         return Err(e);
