@@ -52,7 +52,7 @@ class ForchExecutor extends Executor {
 
     @Override
     void shutdown() {
-        def status = session.success ? "SUCCEEDED" : ((session.aborted || session.cancelled) ? "ABORTED" : "FAILED")
+        def status = session.success ? "SUCCEEDED" : "FAILED"
         this.dispatcherClient.updateExecutionStatus(status)
 
         String nfsServerTaskId = System.getenv("nfs_server_task_id")

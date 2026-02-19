@@ -13,7 +13,8 @@ class ForchClient {
         List<String> entrypoint,
         int cpus,
         long memoryBytes,
-        long shmBytes // nullable
+        long shmBytes, // nullable
+        String capacityType
     ) {
         String resourceGroup = System.getenv("forch_resource_group_id")
         if (resourceGroup == null)
@@ -29,34 +30,37 @@ class ForchClient {
 
         String region = System.getenv("host_region") ?: "us-west-2"
 
-        Map res = client.execute("""
+        Map res = client.execute(
+            """
             mutation CreateForchTask(
-                \$displayName: String!,
-                \$containerImage: String!,
-                \$containerEntrypoint: [String]!,
-                \$cpus: Int!,
-                \$memoryBytes: BigInt!,
-                \$shmBytes: BigInt,
-                \$gpuType: String,
-                \$gpus: Int!,
-                \$groupId: BigInt!,
-                \$billedTo: BigInt!,
-                \$nfsServerTaskId: BigInt!,
+                \$displayName: String!
+                \$containerImage: String!
+                \$containerEntrypoint: [String]!
+                \$cpus: Int!
+                \$memoryBytes: BigInt!
+                \$shmBytes: BigInt
+                \$gpuType: String
+                \$gpus: Int!
+                \$capacityType: String!
+                \$groupId: BigInt!
+                \$billedTo: BigInt!
+                \$nfsServerTaskId: BigInt!
                 \$targetRegion: String!
             ) {
                 nfCreateForchTask(
                     input: {
-                        argDisplayName: \$displayName,
-                        argContainerImage: \$containerImage,
-                        argContainerEntrypoint: \$containerEntrypoint,
-                        argCpus: \$cpus,
-                        argMemoryBytes: \$memoryBytes,
-                        argShmBytes: \$shmBytes,
-                        argGpuType: \$gpuType,
-                        argGpus: \$gpus,
-                        argGroupId: \$groupId,
-                        argBilledTo: \$billedTo,
-                        argNfsServerTaskId: \$nfsServerTaskId,
+                        argDisplayName: \$displayName
+                        argContainerImage: \$containerImage
+                        argContainerEntrypoint: \$containerEntrypoint
+                        argCpus: \$cpus
+                        argMemoryBytes: \$memoryBytes
+                        argShmBytes: \$shmBytes
+                        argGpuType: \$gpuType
+                        argGpus: \$gpus
+                        argCapacityType: \$capacityType
+                        argGroupId: \$groupId
+                        argBilledTo: \$billedTo
+                        argNfsServerTaskId: \$nfsServerTaskId
                         argTargetRegion: \$targetRegion
                     }
                 ) {
@@ -73,6 +77,7 @@ class ForchClient {
                 "shmBytes": shmBytes == 0 ? null : shmBytes,
                 "gpuType" : null,
                 "gpus" : 0,
+                "capacityType": capacityType,
                 "groupId": resourceGroup.toInteger(),
                 "billedTo": billingGroup.toInteger(),
                 "nfsServerTaskId": nfsServerTaskId,
@@ -111,9 +116,8 @@ class ForchClient {
         Map res = client.execute("""
             query GetTaskExitCode(\$taskId: BigInt!) {
                 taskEvents(
-                    condition: {taskId: \$taskId},
-                    filter: {taskEventContainerExitedDatumByIdExists: true},
-                    orderBy: TIME_DESC,
+                    condition: { taskId: \$taskId, type: "container-exited" }
+                    orderBy: TIME_DESC
                     first: 1
                 ) {
                     nodes {
@@ -139,7 +143,14 @@ class ForchClient {
         if (nodes == null || nodes.size() == 0)
             return -1
 
-        return nodes[0]["taskEventContainerExitedDatumById"]["exitStatus"] as int
+        def teced = nodes[0]["taskEventContainerExitedDatumById"];
+
+        // note(ayush): the only time we have an exit event without an exit code is if the node it was running on was killed
+        // either manually or via spot preemption - in either case, treat that as a system kill and provide a 137 status
+        if (teced == null)
+            return 137
+
+        return teced["exitStatus"] as int
     }
 
     void abortTasks(List<Integer> taskIds) {
