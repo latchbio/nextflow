@@ -90,28 +90,14 @@ class ForchTaskHandler extends TaskHandler {
         // todo(ayush): gpu support
         // AcceleratorResource acc = task.config.getAccelerator()
 
-        def serverIp = System.getenv("latch_internal_nfs_server_ip")
-        if (serverIp == null)
-            throw new RuntimeException("failed to get server ip")
-
-        String cmd = """\
-            mkdir --parents ${session.baseDir}
-
-            chown -R root:root /usr/bin/mount 2>&1 > /dev/null
-
-            until mount -t nfs4 [${serverIp}]:/ ${session.baseDir} 2>&1 > /dev/null
-            do
-                sleep 5
-            done
-
-            cat ${task.workDir}/${TaskRun.CMD_RUN} | bash 2>&1
-        """.stripIndent().trim()
+        String cmd = "cat ${task.workDir}/${TaskRun.CMD_RUN} | bash 2>&1"
 
         if (remoteBinDir != null) {
             cmd = """\
                 mkdir -p /nextflow-bin
                 cp ${remoteBinDir}/* /nextflow-bin
                 chmod +x /nextflow-bin/*
+
                 export PATH=/nextflow-bin:\$PATH
             """.stripIndent() + cmd
         }
