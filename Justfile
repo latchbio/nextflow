@@ -18,6 +18,11 @@ build:
   make compile
   make install
 
+  rm -rf ~/.nextflow/plugins/nf-k8s-1.0.1
+  mkdir -p ~/.nextflow/plugins/nf-k8s-1.0.1
+  cp -r plugins/nf-k8s/build/classes/groovy/main ~/.nextflow/plugins/nf-k8s-1.0.1/classes
+  cp -r plugins/nf-k8s/build/classes/main/*  ~/.nextflow/plugins/nf-k8s-1.0.1/classes
+
 upload:
   #!/usr/bin/env bash
 

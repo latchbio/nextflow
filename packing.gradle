@@ -17,11 +17,7 @@ dependencies {
     // default cfg = runtime + httpfs + lineage + amazon + tower client + wave client
     defaultCfg project(':nf-httpfs')
     defaultCfg project(':nf-lineage')
-    console project(':plugins:nf-console')
-    google  project(':plugins:nf-google')
-    amazon  project(':plugins:nf-amazon')
-    tower   project(':plugins:nf-tower')
-    wave    project(':plugins:nf-wave')
+    defaultCfg project(':plugins:nf-k8s')
 }
 
 
