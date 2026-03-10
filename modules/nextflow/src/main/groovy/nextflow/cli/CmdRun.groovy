@@ -308,6 +308,7 @@ class CmdRun extends CmdBase implements HubOptions {
         checkRunName()
 
         log.info "N E X T F L O W  ~  version ${Const.APP_VER}"
+        log.info "Using Latch Nextflow"
         Plugins.init()
 
         // -- specify the arguments
