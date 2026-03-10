@@ -917,7 +917,7 @@ class FileHelper {
             // different providers
             CopyMoveHelper.moveToForeignTarget(source, target, options);
         }
-        return target;
+        return target
     }
 
     /**

@@ -16,23 +16,21 @@
 
 package nextflow.k8s
 
-import java.nio.file.Files
+import nextflow.k8s.client.PodUnschedulableException
+import nextflow.util.DispatcherClient
+
 import java.nio.file.Path
-import java.time.Instant
-import java.time.format.DateTimeFormatter
 
 import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
+
 import nextflow.SysEnv
 import nextflow.container.DockerBuilder
-import nextflow.exception.NodeTerminationException
-import nextflow.k8s.client.PodUnschedulableException
 import nextflow.exception.ProcessSubmitException
 import nextflow.executor.BashWrapperBuilder
 import nextflow.fusion.FusionAwareTask
 import nextflow.k8s.client.K8sClient
-import nextflow.k8s.client.K8sResponseException
 import nextflow.k8s.model.PodEnv
 import nextflow.k8s.model.PodOptions
 import nextflow.k8s.model.PodSpecBuilder
@@ -40,7 +38,6 @@ import nextflow.k8s.model.ResourceType
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskRun
 import nextflow.processor.TaskStatus
-import nextflow.trace.TraceRecord
 import nextflow.util.Escape
 import nextflow.util.PathTrie
 /**
@@ -69,7 +66,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     private K8sClient client
 
-    private String podName
+    private DispatcherClient dispatcherClient
 
     private BashWrapperBuilder builder
 
@@ -79,18 +76,14 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     private Path exitFile
 
-    private Map state
-
-    private long timestamp
-
     private K8sExecutor executor
-
-    private String runsOnNode = null
 
     K8sTaskHandler( TaskRun task, K8sExecutor executor ) {
         super(task)
+
         this.executor = executor
         this.client = executor.client
+        this.dispatcherClient = executor.dispatcherClient
         this.outputFile = task.workDir.resolve(TaskRun.CMD_OUTFILE)
         this.errorFile = task.workDir.resolve(TaskRun.CMD_ERRFILE)
         this.exitFile = task.workDir.resolve(TaskRun.CMD_EXIT)
@@ -107,10 +100,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
      */
     protected String getRunName() {
         executor.session.runName
-    }
-
-    protected String getPodName() {
-        return podName
     }
 
     protected K8sConfig getK8sConfig() { executor.getK8sConfig() }
@@ -148,7 +137,21 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     protected List<String> classicSubmitCli(TaskRun task) {
         final result = new ArrayList(BashWrapperBuilder.BASH)
-        result.add("${Escape.path(task.workDir)}/${TaskRun.CMD_RUN}".toString())
+        final command = """
+            for i in {1..50}; do
+                if [ -f ${Escape.path(task.workDir)}/${TaskRun.CMD_RUN} ]; then
+                    exec /bin/bash -ue ${Escape.path(task.workDir)}/${TaskRun.CMD_RUN}
+                    exit 0
+                else
+                    echo "Waiting for file to become available..."
+                    sleep 1
+                fi
+            done
+            echo "File not found after 50 attempts, failing."
+            exit 1
+        """.stripIndent()
+        result.add("-c".toString().trim())
+        result.add(command.toString().trim())
         return result
     }
 
@@ -158,11 +161,14 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
                 : classicSubmitCli(task)
     }
 
-    protected String getSyntheticPodName(TaskRun task) {
-        "nf-${task.hash}"
+    protected static String getSyntheticPodName(TaskRun task) {
+        def executionToken = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
+        if (executionToken == null)
+            throw new RuntimeException("failed to fetch execution token")
+        return "${executionToken}-${task.hash.toString().substring(0, 8)}-${task.index}"
     }
 
-    protected String getOwner() { OWNER }
+    protected static String getOwner() { OWNER }
 
     protected Boolean fixOwnership() {
         task.containerConfig.fixOwnership
@@ -199,13 +205,21 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
         final clientConfig = client.config
         final builder = new PodSpecBuilder()
-            .withImageName(imageName)
-            .withPodName(getSyntheticPodName(task))
-            .withNamespace(clientConfig.namespace)
-            .withServiceAccount(clientConfig.serviceAccount)
-            .withLabels(getLabels(task))
-            .withAnnotations(getAnnotations())
-            .withPodOptions(getPodOptions())
+                .withImageName(imageName)
+                .withPodName(getSyntheticPodName(task))
+                .withNamespace(clientConfig.namespace)
+                .withServiceAccount(clientConfig.serviceAccount)
+                .withLabels(getLabels(task))
+                .withAnnotations(getAnnotations())
+                .withPodOptions(getPodOptions())
+                .withHostMount("/opt/latch-env", "/opt/latch-env")
+
+        builder.withEnv(PodEnv.value("LATCH_NO_CRASH_REPORT", "1"))
+
+        if (System.getenv("LATCH_NF_DEBUG") != "true") {
+            def execId = System.getenv("FLYTE_INTERNAL_EXECUTION_ID")
+            builder.withEnv(PodEnv.value("FLYTE_INTERNAL_EXECUTION_ID", execId))
+        }
 
         // when `entrypointOverride` is false the launcher is run via `args` instead of `command`
         // to not override the container entrypoint
@@ -223,7 +237,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
         if( SysEnv.containsKey('NXF_DEBUG') )
             builder.withEnv(PodEnv.value('NXF_DEBUG', SysEnv.get('NXF_DEBUG')))
-        
+
         // add computing resources
         final cpus = taskCfg.getCpus()
         final mem = taskCfg.getMemory()
@@ -249,7 +263,11 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         }
 
         if ( fusionEnabled() ) {
-            builder.withPrivileged(true)
+            if( fusionConfig().privileged() )
+                builder.withPrivileged(true)
+            else {
+                builder.withResourcesLimits(["nextflow.io/fuse": 1])
+            }
 
             final env = fusionLauncher().fusionEnv()
             for( Map.Entry<String,String> it : env )
@@ -257,8 +275,8 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         }
 
         return useJobResource()
-            ? builder.buildAsJob()
-            : builder.build()
+                ? builder.buildAsJob()
+                : builder.build()
     }
 
     protected PodOptions getPodOptions() {
@@ -286,6 +304,8 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         result.'nextflow.io/sessionId' = "uuid-${executor.getSession().uniqueId}" as String
         if( task.config.queue )
             result.'nextflow.io/queue' = task.config.queue
+        if( task.config.spot )
+            result.'latch/spot' = 'true'
         return result
     }
 
@@ -303,158 +323,82 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         builder.build()
 
         final req = newSubmitRequest(task)
-        final resp = useJobResource()
-                ? client.jobCreate(req, yamlDebugPath())
-                : client.podCreate(req, yamlDebugPath())
+        this.dispatcherClient.submitPod(taskExecutionId, req)
 
-        if( !resp.metadata?.name )
-            throw new K8sResponseException("Missing created ${resourceType.lower()} name", resp)
-        this.podName = resp.metadata.name
         this.status = TaskStatus.SUBMITTED
-    }
-
-    @CompileDynamic
-    protected Path yamlDebugPath() {
-        boolean debug = k8sConfig.getDebug().getYaml()
-        return debug ? task.workDir.resolve('.command.yaml') : null
-    }
-
-    /**
-     * @return Retrieve the submitted pod state
-     */
-    protected Map getState() {
-        final now = System.currentTimeMillis()
-        try {
-            final delta =  now - timestamp;
-            if( !state || delta >= 1_000) {
-                def newState = useJobResource()
-                        ? client.jobState(podName)
-                        : client.podState(podName)
-                if( newState ) {
-                   log.trace "[K8s] Get ${resourceType.lower()}=$podName state=$newState"
-                   state = newState
-                   timestamp = now
-                }
-            }
-            return state
-        } 
-        catch (NodeTerminationException | PodUnschedulableException e) {
-            // create a synthetic `state` object adding an extra `nodeTermination`
-            // attribute to return the error to the caller method
-            final instant = Instant.now()
-            final result = new HashMap(10)
-            result.terminated = [startedAt:instant.toString(), finishedAt:instant.toString()]
-            result.nodeTermination = e
-            timestamp = now
-            state = result
-            return state
-        }
     }
 
     @Override
     boolean checkIfRunning() {
-        if( !podName ) throw new IllegalStateException("Missing K8s ${resourceType.lower()} name -- cannot check if running")
         if(isSubmitted()) {
-            def state = getState()
-            // include `terminated` state to allow the handler status to progress
-            if (state && (state.running != null || state.terminated)) {
+            def s = dispatcherClient.getTaskStatus(taskExecutionId)
+
+            // include terminated states to allow the handler status to progress
+            if (['RUNNING', 'SUCCEEDED', 'FAILED'].contains(s)) {
                 status = TaskStatus.RUNNING
-                determineNode()
                 return true
             }
         }
+
         return false
-    }
-
-    long getEpochMilli(String timeString) {
-        final time = DateTimeFormatter.ISO_INSTANT.parse(timeString)
-        return Instant.from(time).toEpochMilli()
-    }
-
-    /**
-     * Update task start and end times based on pod timestamps.
-     * We update timestamps because it's possible for a task to run  so quickly
-     * (less than 1 second) that it skips right over the RUNNING status.
-     * If this happens, the startTimeMillis never gets set and remains equal to 0.
-     * To make sure startTimeMillis is non-zero we update it with the pod start time.
-     * We update completeTimeMillis from the same pod info to be consistent.
-     */
-    void updateTimestamps(Map terminated) {
-        try {
-            startTimeMillis = getEpochMilli(terminated.startedAt as String)
-            completeTimeMillis = getEpochMilli(terminated.finishedAt as String)
-        } catch( Exception e ) {
-            log.debug "Failed updating timestamps '${terminated.toString()}'", e
-            // Only update if startTimeMillis hasn't already been set.
-            // If startTimeMillis _has_ been set, then both startTimeMillis
-            // and completeTimeMillis will have been set with the normal
-            // TaskHandler mechanism, so there's no need to reset them here.
-            if (!startTimeMillis) {
-                startTimeMillis = System.currentTimeMillis()
-                completeTimeMillis = System.currentTimeMillis()
-            }
-        }
     }
 
     @Override
     boolean checkIfCompleted() {
-        if( !podName ) throw new IllegalStateException("Missing K8s ${resourceType.lower()} name - cannot check if complete")
-        def state = getState()
-        if( state && state.terminated ) {
-            if( state.nodeTermination instanceof NodeTerminationException ||
-                state.nodeTermination instanceof PodUnschedulableException ) {
-                // keep track of the node termination error
-                task.error = (Throwable) state.nodeTermination
-                // mark the task as ABORTED since thr failure is caused by a node failure
+        Map s = dispatcherClient.getTaskStatus(taskExecutionId)
+
+        if( ['SUCCEEDED', 'FAILED'].contains(s.status) ) {
+
+            if (s.status == 'FAILED' && s.systemError != null) {
+                task.error = new PodUnschedulableException((String) s.systemError, new Exception("failed to launch pod"))
                 task.aborted = true
-            }
-            else {
+            } else {
                 // finalize the task
-                task.exitStatus = readExitFile()
+                if (s.status == 'FAILED' && s.runtimeError != null) {
+                    task.exitStatus = s.exitCode != null ? ((String) s.exitCode).toInteger() : Integer.MAX_VALUE
+                    task.stderr = (String) s.runtimeError
+                } else {
+                    // note(taras): need to read exitFile first to wait for the files to be available from OFS
+                    task.exitStatus = readExitFile()
+                    if (task.exitStatus == Integer.MAX_VALUE && s.exitCode != null) {
+                        task.exitStatus = ((String) s.exitCode).toInteger()
+                    }
+
+                    task.stderr = errorFile
+                }
+
                 task.stdout = outputFile
-                task.stderr = errorFile
             }
+
             status = TaskStatus.COMPLETED
-            savePodLogOnError(task)
-            deletePodIfSuccessful(task)
-            updateTimestamps(state.terminated as Map)
-            determineNode()
+
             return true
         }
 
         return false
     }
 
-    protected void savePodLogOnError(TaskRun task) {
-        if( task.isSuccess() )
-            return
-
-        if( errorFile && !errorFile.empty() )
-            return
-
-        final session = executor.getSession()
-        if( session.isAborted() || session.isCancelled() || session.isTerminated() )
-            return
-
-        try {
-            final stream = useJobResource()
-                    ? client.jobLog(podName)
-                    : client.podLog(podName)
-            Files.copy(stream, task.workDir.resolve(TaskRun.CMD_LOG))
-        }
-        catch( Exception e ) {
-            log.warn "Failed to copy log for ${resourceType.lower()} $podName", e
-        }
-    }
-
     protected int readExitFile() {
-        try {
-            exitFile.text as Integer
+        // If using OFS, files may not be immediately available as mount might be slow
+        int attempts = 0
+        while (attempts < 50) {
+            try {
+                def exitText = exitFile.text
+                if (exitText.trim()) {
+                    log.debug "[K8s] Exit status file has content for task: `$task.name`. Content: $exitText. Exited on attempt $attempts"
+                    return exitText as Integer
+                }
+            }
+            catch (Exception e) {
+                if (attempts % 10 == 0) {
+                    log.debug "[K8s] Cannot read exitstatus for task: `$task.name`. Retrying with attempt $attempts | ${e.message}"
+                }
+                sleep(500) // Wait for 0.5 seconds before retrying
+                attempts++
+            }
         }
-        catch( Exception e ) {
-            log.debug "[K8s] Cannot read exitstatus for task: `$task.name` | ${e.message}"
-            return Integer.MAX_VALUE
-        }
+        log.warn "[K8s] Failed to read non-empty exitstatus for task: `$task.name` after $attempts attempts"
+        return Integer.MAX_VALUE
     }
 
     /**
@@ -462,62 +406,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
      */
     @Override
     void kill() {
-        if( cleanupDisabled() )
-            return
-        
-        if( podName ) {
-            log.trace "[K8s] deleting ${resourceType.lower()} name=$podName"
-            if ( useJobResource() )
-                client.jobDelete(podName)
-            else
-                client.podDelete(podName)
-        }
-        else {
-            log.debug "[K8s] Oops.. invalid delete action"
-        }
+        dispatcherClient.updateTaskStatus(taskExecutionId, 'ABORTING')
     }
-
-    protected boolean cleanupDisabled() {
-        !k8sConfig.getCleanup()
-    }
-
-    protected void deletePodIfSuccessful(TaskRun task) {
-        if( !podName )
-            return
-
-        if( cleanupDisabled() )
-            return
-
-        if( !task.isSuccess() ) {
-            // do not delete successfully executed pods for debugging purpose
-            return
-        }
-
-        try {
-            if ( useJobResource() )
-                client.jobDelete(podName)
-            else
-                client.podDelete(podName)
-        }
-        catch( Exception e ) {
-            log.warn "Unable to cleanup ${resourceType.lower()}: $podName -- see the log file for details", e
-        }
-    }
-
-    private void determineNode(){
-        try {
-            if ( k8sConfig.fetchNodeName() && !runsOnNode )
-                runsOnNode = client.getNodeOfPod( podName )
-        } catch ( Exception e ){
-            log.warn ("Unable to get the node name of pod $podName -- see the log file for details", e)
-        }
-    }
-
-    TraceRecord getTraceRecord() {
-        final result = super.getTraceRecord()
-        result.put('native_id', podName)
-        result.put( 'hostname', runsOnNode )
-        return result
-    }
-
 }

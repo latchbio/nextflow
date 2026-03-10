@@ -17,6 +17,8 @@
 
 package nextflow.executor.local
 
+import nextflow.util.DispatcherClient
+
 import java.util.concurrent.Callable
 import java.util.concurrent.Future
 
@@ -40,6 +42,8 @@ class NativeTaskHandler extends TaskHandler {
     private Session session
 
     private Executor executor
+
+    private DispatcherClient dispatcherClient
 
     private class TaskSubmit implements Callable {
 
@@ -65,6 +69,7 @@ class NativeTaskHandler extends TaskHandler {
         super(task)
         this.executor = executor
         this.session = executor.session
+        this.dispatcherClient = executor.dispatcherClient
     }
 
 
@@ -74,12 +79,15 @@ class NativeTaskHandler extends TaskHandler {
         // it returns an error when everything is OK
         // of the exception throw in case of error
         result = session.getExecService().submit(new TaskSubmit(task))
+        dispatcherClient.updateTaskStatus(taskExecutionId, 'INITIALIZING')
         status = TaskStatus.SUBMITTED
     }
 
     @Override
     boolean checkIfRunning() {
         if( isSubmitted() && result != null ) {
+            if (status != TaskStatus.RUNNING)
+                dispatcherClient.updateTaskStatus(taskExecutionId, 'RUNNING')
             status = TaskStatus.RUNNING
             return true
         }
@@ -92,9 +100,10 @@ class NativeTaskHandler extends TaskHandler {
         if( isRunning() && result.isDone() ) {
             status = TaskStatus.COMPLETED
             if( result.get() instanceof Throwable ) {
+                dispatcherClient.updateTaskStatus(taskExecutionId, 'FAILED')
                 task.error = (Throwable)result.get()
-            }
-            else {
+            } else {
+                dispatcherClient.updateTaskStatus(taskExecutionId, 'SUCCEEDED')
                 task.stdout = result.get()
             }
             return true

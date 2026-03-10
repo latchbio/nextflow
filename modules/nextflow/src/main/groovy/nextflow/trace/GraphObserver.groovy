@@ -16,6 +16,7 @@
 
 package nextflow.trace
 
+import java.nio.file.Files
 import java.nio.file.Path
 
 import groovy.transform.PackageScope
@@ -68,9 +69,8 @@ class GraphObserver implements TraceObserver {
     void onFlowCreate(Session session) {
         this.dag = session.dag
         // check file existence
-        final attrs = FileHelper.readAttributes(file)
-        if( attrs ) {
-            if( overwrite && (attrs.isDirectory() || !file.delete()) )
+        if( Files.exists(file) ) {
+            if( overwrite && (file.isDirectory() || !file.delete()) )
                 throw new AbortOperationException("Unable to overwrite existing DAG file: ${file.toUriString()}")
             else if( !overwrite )
                 throw new AbortOperationException("DAG file already exists: ${file.toUriString()} -- enable `dag.overwrite` in your config file to overwrite existing DAG files")

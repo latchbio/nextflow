@@ -80,14 +80,23 @@ public class CopyMoveHelper {
     private static void copyFile(Path source, Path target, boolean foreign, CopyOption... options)
             throws IOException
     {
-
         if( !foreign ) {
             source.getFileSystem().provider().copy(source, target, options);
             return;
         }
 
+        if (target.getFileSystem().provider().getScheme().equals("latch")) {
+            target.getFileSystem().provider().copy(source, target, options);
+            return;
+        }
+
+        if (source.getFileSystem().provider().getScheme().equals("latch")) {
+            source.getFileSystem().provider().copy(source, target, options);
+            return;
+        }
+
         try (InputStream in = Files.newInputStream(source)) {
-            Files.copy(in, target);
+            Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
@@ -158,10 +167,13 @@ public class CopyMoveHelper {
 
         // delete target if it exists and REPLACE_EXISTING is specified
         if (opts.replaceExisting()) {
-            FileHelper.deletePath(target);
-        }
-        else if (Files.exists(target))
+            // rahul: latch paths can be overridden and do not require explicit delete
+            if (!target.getFileSystem().provider().getScheme().equals("latch")) {
+                FileHelper.deletePath(target);
+            }
+        } else if (Files.exists(target)) {
             throw new FileAlreadyExistsException(target.toString());
+        }
 
         // create directory or copy file
         if (attrs.isDirectory()) {

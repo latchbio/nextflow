@@ -116,6 +116,10 @@ class PodSpecBuilder {
 
     List<String> devices
 
+    Map<String,?> resourcesLimits
+
+    String schedulerName
+
     /**
      * @return A sequential volume unique identifier
      */
@@ -271,7 +275,7 @@ class PodSpecBuilder {
     PodSpecBuilder withEmptyDir( PodMountEmptyDir emptyDir ) {
         this.emptyDirs.add(emptyDir)
         return this
-    } 
+    }
 
     PodSpecBuilder withSecrets( Collection<PodMountSecret> secrets ) {
         this.secrets.addAll(secrets)
@@ -306,13 +310,13 @@ class PodSpecBuilder {
         return this
     }
 
-    PodSpecBuilder withDevices(List<String> dev) {
-        this.devices = dev
+    PodSpecBuilder withActiveDeadline(int seconds) {
+        this.activeDeadlineSeconds = seconds
         return this
     }
 
-    PodSpecBuilder withActiveDeadline(int seconds) {
-        this.activeDeadlineSeconds = seconds
+    PodSpecBuilder withResourcesLimits(Map<String,?> limits) {
+        this.resourcesLimits = limits
         return this
     }
 
@@ -337,7 +341,7 @@ class PodSpecBuilder {
         // -- secrets
         if( opts.getMountSecrets() )
             secrets.addAll( opts.getMountSecrets() )
-        // -- volume claims 
+        // -- volume claims
         if( opts.getVolumeClaims() )
             volumeClaims.addAll( opts.getVolumeClaims() )
         // -- labels
@@ -410,9 +414,6 @@ class PodSpecBuilder {
         if( imagePullPolicy )
             container.imagePullPolicy = imagePullPolicy
 
-        if( devices )
-            container.devices = devices
-
         final secContext = new LinkedHashMap(10)
         if( privileged ) {
             // note: privileged flag needs to be defined in the *container* securityContext
@@ -433,6 +434,9 @@ class PodSpecBuilder {
 
         if( nodeSelector )
             spec.nodeSelector = nodeSelector.toSpec()
+
+        if( schedulerName )
+            spec.schedulerName = schedulerName
 
         if( affinity )
             spec.affinity = affinity
@@ -493,6 +497,10 @@ class PodSpecBuilder {
 
         if( this.disk ) {
             container.resources = addDiskResources(this.disk, container.resources as Map)
+        }
+
+        if( this.resourcesLimits ) {
+            container.resources = addResourcesLimits(this.resourcesLimits, container.resources as Map)
         }
 
         // add storage definitions ie. volumes and mounts
@@ -565,17 +573,29 @@ class PodSpecBuilder {
         final pod = build()
 
         return [
-            apiVersion: 'batch/v1',
-            kind: 'Job',
-            metadata: pod.metadata,
-            spec: [
-                backoffLimit: 0,
-                template: [
-                    metadata: pod.metadata,
-                    spec: pod.spec
+                apiVersion: 'batch/v1',
+                kind: 'Job',
+                metadata: pod.metadata,
+                spec: [
+                        backoffLimit: 0,
+                        template: [
+                                metadata: pod.metadata,
+                                spec: pod.spec
+                        ]
                 ]
-            ]
         ]
+    }
+
+    @PackageScope
+    Map addResourcesLimits(Map limits, Map result) {
+        if( result == null )
+            result = new LinkedHashMap(10)
+
+        final limits0 = result.limits as Map ?: new LinkedHashMap(10)
+        limits0.putAll( limits )
+        result.limits = limits0
+
+        return result
     }
 
     @PackageScope
@@ -622,41 +642,106 @@ class PodSpecBuilder {
         return res
     }
 
+
     @PackageScope
-    String getAcceleratorType(AcceleratorResource accelerator) {
+    void validateAccelerator(AcceleratorResource accelerator) {
+        // gpu-small: nvidia-t4 (1)
+        // gpu-large: nvidia-a10g (1)
+        // v100-x1: nvidia-v100 (1)
+        // v100-x4: nvidia-v100 (4)
+        // v100-x8: nvidia-v100 (8)
 
-        def type = accelerator.type ?: 'nvidia.com'
+        if (
+                (accelerator.type == "nvidia-t4" && accelerator.limit == 1)
+                        || (accelerator.type == "nvidia-a10g" && accelerator.limit == 1)
+                        || (accelerator.type == "nvidia-v100" && accelerator.limit in [1, 4, 8])
+        ) {
+            return
+        }
 
-        if ( type.contains('/') )
-            // Assume the user has fully specified the resource type.
-            return type
+        throw new VerifyError("""\
+Invalid GPU configuration. Latch only allows the following combinations:
+    - accelerator 1, type: "nvidia-t4"
+    - accelerator 1, type: "nvidia-a10g"
+    - accelerator 1, type: "nvidia-v100"
+    - accelerator 4, type: "nvidia-v100"
+    - accelerator 8, type: "nvidia-v100"
 
-        // Assume we're using GPU and update as necessary.
-        if( !type.contains('.') ) type += '.com'
-        type += '/gpu'
+You provided ${accelerator.type}, ${accelerator.limit}
+        """)
 
-        return type
     }
-
 
     @PackageScope
     Map addAcceleratorResources(AcceleratorResource accelerator, Map res) {
-
         if( res == null )
             res = new LinkedHashMap(2)
 
-        def type = getAcceleratorType(accelerator)
+        final requests = res.get("requests") as Map ?: new LinkedHashMap<>(2)
+        final limits = res.get("limits") as Map ?: new LinkedHashMap<>(2)
 
-        if( accelerator.request ) {
-            final req = res.requests as Map ?: new LinkedHashMap<>(2)
-            req.put(type, accelerator.request)
-            res.requests = req
+        if (accelerator.limit == 0) return res;
+
+        if (accelerator.type == null) {
+            accelerator.type = "nvidia-t4"
+            log.info("No GPU type specified - defaulting to \"nvidia-t4\"")
         }
-        if( accelerator.limit ) {
-            final lim = res.limits as Map ?: new LinkedHashMap<>(2)
-            lim.put(type, accelerator.limit)
-            res.limits = lim
+
+        def type = accelerator.type
+
+        validateAccelerator(accelerator)
+
+        if (type != null) {
+            log.info "GPU Accelerator selected - CPU / RAM settings will be overwritten"
+            limits.put("gpu-type", type)
         }
+
+        if (type == "nvidia-t4") {
+            requests.put("nvidia.com/gpu", 1)
+            requests.put("cpu", 7)
+            requests.put("memory", "30Gi")
+
+            limits.put("nvidia.com/gpu", 1)
+            limits.put("cpu", 7)
+            limits.put("memory", "30Gi")
+        } else if (type == "nvidia-a10g") {
+            requests.put("nvidia.com/gpu", 1)
+            requests.put("cpu", 31)
+            requests.put("memory", "120Gi")
+
+            limits.put("nvidia.com/gpu", 1)
+            limits.put("cpu", 64)
+            limits.put("memory", "256Gi")
+        } else if (type == "nvidia-v100") {
+            if (accelerator.limit == 1) {
+                requests.put("nvidia.com/gpu", 1)
+                requests.put("cpu", 7)
+                requests.put("memory", "48Gi")
+
+                limits.put("nvidia.com/gpu", 1)
+                limits.put("cpu", 7)
+                limits.put("memory", "48Gi")
+            } else if (accelerator.limit == 4) {
+                requests.put("nvidia.com/gpu", 4)
+                requests.put("cpu", 30)
+                requests.put("memory", "230Gi")
+
+                limits.put("nvidia.com/gpu", 4)
+                limits.put("cpu", 30)
+                limits.put("memory", "230Gi")
+            } else if (accelerator.limit == 8) {
+                requests.put("nvidia.com/gpu", 8)
+                requests.put("cpu", 62)
+                requests.put("memory", "400Gi")
+
+                limits.put("nvidia.com/gpu", 8)
+                limits.put("cpu", 62)
+                limits.put("memory", "400Gi")
+            }
+        }
+
+        res.put("requests", requests)
+        res.put("limits", limits)
 
         return res
     }
@@ -694,8 +779,8 @@ class PodSpecBuilder {
         for( Map.Entry entry : map ) {
             final key = sanitizeKey(entry.key as String, kind)
             final value = (kind == MetaType.LABEL)
-                ? sanitizeValue(entry.value, kind, SegmentType.VALUE)
-                : entry.value
+                    ? sanitizeValue(entry.value, kind, SegmentType.VALUE)
+                    : entry.value
 
             result.put(key, value)
         }
@@ -704,7 +789,7 @@ class PodSpecBuilder {
 
     protected String sanitizeKey(String value, MetaType kind) {
         final parts = value.tokenize('/')
-        
+
         if (parts.size() == 2) {
             return "${sanitizeValue(parts[0], kind, SegmentType.PREFIX)}/${sanitizeValue(parts[1], kind, SegmentType.NAME)}"
         }
@@ -724,7 +809,7 @@ class PodSpecBuilder {
     protected String sanitizeValue(value, MetaType kind, SegmentType segment) {
         def str = String.valueOf(value)
         if( str.length() > segment.maxSize ) {
-            log.debug "K8s $kind $segment exceeds allowed size: $segment.maxSize -- offending str=$str"
+            log.trace "K8s $kind $segment exceeds allowed size: $segment.maxSize -- offending str=$str"
             str = str.substring(0,segment.maxSize)
         }
         str = str.replaceAll(/[^a-zA-Z0-9\.\_\-]+/, '_')

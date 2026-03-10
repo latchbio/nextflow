@@ -18,6 +18,8 @@ package nextflow.executor
 
 import java.nio.file.Path
 
+import nextflow.util.DispatcherClient
+
 import groovy.transform.CompileStatic
 import groovy.transform.Memoized
 import groovy.util.logging.Slf4j
@@ -49,6 +51,11 @@ abstract class Executor {
     String name
 
     /**
+     * Client for making HTTP requests to dispatcher
+     */
+    DispatcherClient dispatcherClient
+
+    /**
      * The queue holder that keep track of all tasks for this executor.
      */
     private TaskMonitor monitor
@@ -69,7 +76,9 @@ abstract class Executor {
         register()
     }
 
-    protected void register() { }
+    protected void register() {
+        this.dispatcherClient = new DispatcherClient()
+    }
 
     void signal() {
         monitor.signal()
@@ -89,6 +98,7 @@ abstract class Executor {
         }
 
         final handler = createTaskHandler(task)
+        handler.taskExecutionId = dispatcherClient.createTaskExecution(task.taskId, handler.attemptIdx, task.hash.toString())
 
         /*
          * Add the task to the queue for processing

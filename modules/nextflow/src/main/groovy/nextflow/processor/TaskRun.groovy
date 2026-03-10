@@ -47,6 +47,7 @@ import nextflow.script.params.OutParam
 import nextflow.script.params.StdInParam
 import nextflow.script.params.ValueOutParam
 import nextflow.spack.SpackCache
+
 /**
  * Models a task instance
  *
@@ -72,6 +73,11 @@ class TaskRun implements Cloneable {
      * Task name
      */
     String name
+
+    /**
+     * Holds the id of the nf_task_info in Vacuole
+     */
+    int taskId
 
     /**
      * The unique hash code associated to this task
@@ -305,6 +311,11 @@ class TaskRun implements Cloneable {
     volatile int failCount
 
     /**
+     * The number to times the execution of the task has failed due to system/k8s errors
+     */
+    volatile int systemRetryCount
+
+    /**
      * The number of times the submit of the task has been retried
      */
     volatile int submitRetries
@@ -361,23 +372,30 @@ class TaskRun implements Cloneable {
         return processor.singleton ? processor.name : "$processor.name ($index)"
     }
 
+    String getTag() {
+        if (config.containsKey('tag') && config.tag != null) {
+            try {
+                // -- look-up the 'sampleId' property, and if everything is fine
+                //    cache this value in the 'name' attribute
+                return String.valueOf(config.tag).trim()
+            } catch( IllegalStateException ignored ) {
+                log.debug "Cannot access `tag` property for task: ${processor.name} (${index})"
+            } catch (Exception e) {
+                log.debug "Unable to evaluate `tag` property for task: ${processor.name} (${index})", e
+            }
+        }
+
+        return null
+    }
+
     String getName() {
         if( name )
             return name
 
         final baseName = processor.name
-        if( config.containsKey('tag') )
-            try {
-                // -- look-up the 'sampleId' property, and if everything is fine
-                //    cache this value in the 'name' attribute
-                return name = "$baseName (${String.valueOf(config.tag).trim()})"
-            }
-            catch( IllegalStateException e ) {
-                log.debug "Cannot access `tag` property for task: $baseName ($index)"
-            }
-            catch( Exception e ) {
-                log.debug "Unable to evaluate `tag` property for task: $baseName ($index)", e
-            }
+
+        if (tag != null)
+            return name = "${baseName} (${tag})"
 
         return lazyName()
     }
@@ -393,8 +411,8 @@ class TaskRun implements Cloneable {
 
     String getTraceScript() {
         return template!=null && body.source
-            ? body.source
-            : getScript()
+                ? body.source
+                : getScript()
     }
 
 
@@ -433,8 +451,8 @@ class TaskRun implements Cloneable {
      */
     Map<String,Path> getInputFilesMap() {
 
-        def result = [:]
-        def allFiles = getInputFiles().values()
+        final allFiles = getInputFiles().values()
+        final result = new HashMap<String,Path>(allFiles.size())
         for( List<FileHolder> entry : allFiles ) {
             if( entry ) for( FileHolder it : entry ) {
                 result[ it.stageName ] = it.storePath
@@ -466,7 +484,7 @@ class TaskRun implements Cloneable {
     /**
      * Get the map of *input* objects by the given {@code InParam} type
      *
-     * @param types One ore more subclass of {@code InParam}
+     * @param types One or more subclass of {@code InParam}
      * @return An associative array containing all the objects for the specified type
      */
     def <T extends InParam> Map<T,Object> getInputsByType( Class<T>... types ) {
@@ -482,7 +500,7 @@ class TaskRun implements Cloneable {
     /**
      * Get the map of *output* objects by the given {@code InParam} type
      *
-     * @param types One ore more subclass of {@code InParam}
+     * @param types One or more subclass of {@code InParam}
      * @return An associative array containing all the objects for the specified type
      */
     def <T extends OutParam> Map<T,Object> getOutputsByType( Class<T>... types ) {

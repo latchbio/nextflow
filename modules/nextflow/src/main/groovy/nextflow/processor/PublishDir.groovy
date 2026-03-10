@@ -24,6 +24,7 @@ import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.PathMatcher
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.ExecutorService
 
 import groovy.transform.CompileDynamic
@@ -370,17 +371,25 @@ class PublishDir {
         try {
             processFileImpl(source, destination)
         }
-        catch( FileAlreadyExistsException e ) {
-            if( checkIsSameRealPath(source, destination) )
-                return 
+        catch ( FileAlreadyExistsException e ) {
+            if (checkIsSameRealPath(source, destination))
+                return
             // make sure destination and source does not overlap
             // see https://github.com/nextflow-io/nextflow/issues/2177
-            if( checkSourcePathConflicts(destination))
+            if (checkSourcePathConflicts(destination))
                 return
-            
-            if( overwrite ) {
-                FileHelper.deletePath(destination)
-                processFileImpl(source, destination)
+
+            if (overwrite) {
+                log.warn "Overwriting file at ${destination.toUriString()}"
+
+                if (destination.getFileSystem().provider().getScheme().equals("latch")) {
+                    processFileImpl(source, destination, true)
+                } else {
+                    FileHelper.deletePath(destination)
+                    processFileImpl(source, destination)
+                }
+            } else {
+                log.debug "Skipping upload. File already exists at ${destination.toUriString()}"
             }
         }
 
@@ -439,7 +448,7 @@ class PublishDir {
     }
 
     @CompileStatic
-    protected void processFileImpl( Path source, Path destination ) {
+    protected void processFileImpl( Path source, Path destination, boolean overwrite = false ) {
         log.trace "publishing file: $source -[$mode]-> $destination"
 
         if( !mode || mode == Mode.SYMLINK ) {
@@ -453,10 +462,18 @@ class PublishDir {
             FilesEx.mklink(source, [hard:true], destination)
         }
         else if( mode == Mode.MOVE ) {
-            FileHelper.movePath(source, destination)
+            if (overwrite) {
+                FileHelper.movePath(source, destination, StandardCopyOption.REPLACE_EXISTING)
+            } else {
+                FileHelper.movePath(source, destination)
+            }
         }
         else if( mode == Mode.COPY ) {
-            FileHelper.copyPath(source, destination)
+            if (overwrite) {
+                FileHelper.copyPath(source, destination, StandardCopyOption.REPLACE_EXISTING)
+            } else {
+                FileHelper.copyPath(source, destination)
+            }
         }
         else if( mode == Mode.COPY_NO_FOLLOW ) {
             FileHelper.copyPath(source, destination, LinkOption.NOFOLLOW_LINKS)

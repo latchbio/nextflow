@@ -118,6 +118,9 @@ class DockerBuilder extends ContainerBuilder<DockerBuilder> {
     DockerBuilder build(StringBuilder result) {
         assert image
 
+
+        boolean debug = System.getenv("LATCH_NF_DEBUG") == "true"
+
         if( sudo )
             result << 'sudo '
 
@@ -128,17 +131,17 @@ class DockerBuilder extends ContainerBuilder<DockerBuilder> {
 
         result << 'run -i '
 
-        if( cpus && !legacy )
+        if( !debug && cpus && !legacy )
             result << "--cpu-shares ${cpus * 1024} "
 
-        if( cpuset ) {
+        if( !debug && cpuset ) {
             if( legacy )
                 result << "--cpuset ${cpuset} "
             else
                 result << "--cpuset-cpus ${cpuset} "
         }
 
-        if( memory )
+        if( !debug && memory )
             result << "--memory ${memory} "
 
         if( tty )

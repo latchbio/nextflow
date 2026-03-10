@@ -324,7 +324,7 @@ class BashWrapperBuilder {
         binding.fix_ownership = fixOwnership() ? "[ \${NXF_OWNER:=''} ] && (shopt -s extglob; GLOBIGNORE='..'; chown -fR --from root \$NXF_OWNER ${workDir}/{*,.*}) || true" : null
 
         binding.trace_script = isTraceRequired() ? getTraceScript(binding) : null
-        
+
         return binding
     }
 
@@ -381,8 +381,14 @@ class BashWrapperBuilder {
         int attempt=0
         while( true ) {
             try {
-                try (BufferedWriter writer=Files.newBufferedWriter(path, CREATE,WRITE,TRUNCATE_EXISTING)) {
+                // note(taras): always sync to disk to ensure that the file is visible to other clients
+                try(
+                        FileOutputStream fos = new FileOutputStream(path.toFile());
+                        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(fos))
+                ) {
                     writer.write(data)
+                    writer.flush()
+                    fos.getFD().sync()
                 }
                 return path
             }
@@ -528,7 +534,7 @@ class BashWrapperBuilder {
 
     String getSyncCmd() {
         if ( SysEnv.get( 'NXF_DISABLE_FS_SYNC' ) != "true" ) {
-            return 'sync || true'
+            return "${this.bean.sessionWorkDir}/custom_fsync"
         }
         return null
     }

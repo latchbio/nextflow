@@ -1,0 +1,14 @@
+# this needs `cargo install bpf-linker`:
+# LLVM_PREFIX=$(brew --prefix llvm) cargo install --no-default-features bpf-linker --features llvm-21
+#
+# you also need `brew install filosottile/musl-cross/musl-cross` which takes a *very* long time
+@build:
+  #!/usr/bin/env bash
+  arch='x86_64'
+
+  CC=${arch}-linux-musl-gcc \
+  cargo build \
+    --release \
+    --target=${arch}-unknown-linux-musl \
+    --config=target.${arch}-unknown-linux-musl.linker=\"${arch}-linux-musl-gcc\"
+

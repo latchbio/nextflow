@@ -87,6 +87,7 @@ class ProcessConfig implements Map<String,Object>, Cloneable {
             'each',
             'env',
             'secret',
+            'spot',
             'stdin',
             'stdout',
             'stageInMode',

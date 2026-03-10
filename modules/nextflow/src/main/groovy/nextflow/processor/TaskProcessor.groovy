@@ -15,6 +15,8 @@
  */
 package nextflow.processor
 
+import nextflow.file.http.LatchPath
+import java.nio.file.StandardCopyOption
 import static nextflow.processor.ErrorStrategy.*
 
 import java.lang.reflect.InvocationTargetException
@@ -32,6 +34,7 @@ import java.util.regex.Pattern
 
 import ch.artecat.grengine.Grengine
 import com.google.common.hash.HashCode
+import groovy.json.JsonOutput
 import groovy.transform.CompileStatic
 import groovy.transform.Memoized
 import groovy.transform.PackageScope
@@ -105,6 +108,7 @@ import nextflow.util.CacheHelper
 import nextflow.util.Escape
 import nextflow.util.LockManager
 import nextflow.util.LoggerHelper
+import nextflow.util.DispatcherClient
 import nextflow.util.TestOnly
 import org.codehaus.groovy.control.CompilerConfiguration
 import org.codehaus.groovy.control.customizers.ASTTransformationCustomizer
@@ -130,6 +134,8 @@ class TaskProcessor {
     final private static Pattern ENV_VAR_NAME = ~/[a-zA-Z_]+[a-zA-Z0-9_]*/
 
     final private static Pattern QUESTION_MARK = ~/(\?+)/
+
+    final private static int MAX_SYSTEM_RETRY = 5
 
     @TestOnly private static volatile TaskProcessor currentProcessor0
 
@@ -161,6 +167,16 @@ class TaskProcessor {
     protected String name
 
     /**
+     * The id of the nf_process_node created in Vacuole
+     */
+    protected int nodeId
+
+    /**
+     * Number to tasks that were launched
+     */
+    protected int numTasks
+
+    /**
      * The piece of code to be execute provided by the user
      */
     protected BodyDef taskBody
@@ -189,6 +205,10 @@ class TaskProcessor {
      */
     private volatile int errorCount
 
+    /**
+     * Client for making HTTP requests to dispatcher
+     */
+    protected DispatcherClient dispatcherClient
 
     /**
      * Set to true the very first time the error is shown.
@@ -300,16 +320,19 @@ class TaskProcessor {
         this.config = config
         this.taskBody = taskBody
         this.name = name
+        this.numTasks = 0
         this.maxForks = config.maxForks ? config.maxForks as int : 0
         this.forksCount = maxForks ? new LongAdder() : null
         this.isFair0 = config.getFair()
+
+        this.dispatcherClient = new DispatcherClient()
     }
 
     /**
      * @return The processor unique id
      */
     int getId() { id }
-  
+
     /**
      * @return The {@code TaskConfig} object holding the task configuration properties
      */
@@ -417,15 +440,15 @@ class TaskProcessor {
         if ( !taskBody )
             throw new IllegalStateException("Missing task body for process `$name`")
 
-        // -- check that input set defines at least two elements
-        def invalidInputSet = config.getInputs().find { it instanceof TupleInParam && it.inner.size()<2 }
-        if( invalidInputSet )
-            checkWarn "Input `set` must define at least two component -- Check process `$name`"
+        // -- check that input tuple defines at least two elements
+        def invalidInputTuple = config.getInputs().find { it instanceof TupleInParam && it.inner.size()<2 }
+        if( invalidInputTuple )
+            checkWarn "Input `tuple` must define at least two elements -- Check process `$name`"
 
-        // -- check that output set defines at least two elements
-        def invalidOutputSet = config.getOutputs().find { it instanceof TupleOutParam && it.inner.size()<2 }
-        if( invalidOutputSet )
-            checkWarn "Output `set` must define at least two component -- Check process `$name`"
+        // -- check that output tuple defines at least two elements
+        def invalidOutputTuple = config.getOutputs().find { it instanceof TupleOutParam && it.inner.size()<2 }
+        if( invalidOutputTuple )
+            checkWarn "Output `tuple` must define at least two elements -- Check process `$name`"
 
         /**
          * Verify if this process run only one time
@@ -477,6 +500,16 @@ class TaskProcessor {
          */
         def result = config.getOutputs().channels
         return result.size() == 1 ? result[0] : result
+    }
+
+    void createRemoteProcessNode() {
+        this.nodeId = dispatcherClient.createProcessNode(this.name)
+
+        config.getInputs().each { it ->
+            Set<TaskProcessor> processors = NodeMarker.findInputSource(it)
+            for (TaskProcessor src: processors)
+                dispatcherClient.createProcessEdge(src.nodeId, this.nodeId)
+        }
     }
 
     /**
@@ -564,6 +597,8 @@ class TaskProcessor {
 
         // notify the creation of a new vertex the execution DAG
         NodeMarker.addProcessNode(this, config.getInputs(), config.getOutputs())
+        // this must happen before the operator is started to ensure that nodeId is populated
+        createRemoteProcessNode()
 
         // fix issue #41
         start(operator)
@@ -605,20 +640,27 @@ class TaskProcessor {
 
         // -- create the task run instance
         final task = createTaskRun(params)
+
         // -- set the task instance as the current in this thread
         currentTask.set(task)
 
         // -- validate input lengths
-        validateInputSets(values)
+        validateInputTuples(values)
 
         // -- map the inputs to a map and use to delegate closure values interpolation
         final secondPass = [:]
         int count = makeTaskContextStage1(task, secondPass, values)
         makeTaskContextStage2(task, secondPass, count)
 
+        // rahul: the task process must be created after the task context is setup
+        task.taskId = this.dispatcherClient.createProcessTask(this.nodeId, task.index, task.tag)
+
         // verify that `when` guard, when specified, is satisfied
-        if( !checkWhenGuard(task) )
+        if( !checkWhenGuard(task) ) {
+            this.dispatcherClient.createTaskExecution(task.taskId, 0, null, 'SKIPPED')
             return
+        }
+
 
         TaskClosure block
         if( session.stubRun && (block=task.config.getStubBlock()) ) {
@@ -631,21 +673,23 @@ class TaskProcessor {
 
         // -- verify if exists a stored result for this case,
         //    if true skip the execution and return the stored data
-        if( checkStoredOutput(task) )
+        if( checkStoredOutput(task) ) {
+            this.dispatcherClient.createTaskExecution(task.taskId, 0, null,'SKIPPED')
             return
+        }
 
         def hash = createTaskHashKey(task)
         checkCachedOrLaunchTask(task, hash, resumable)
     }
 
     @Memoized
-    private List<TupleInParam> getDeclaredInputSet() {
+    private List<TupleInParam> getDeclaredInputTuple() {
         getConfig().getInputs().ofType(TupleInParam)
     }
 
-    protected void validateInputSets( List values ) {
+    protected void validateInputTuples( List values ) {
 
-        def declaredSets = getDeclaredInputSet()
+        def declaredSets = getDeclaredInputTuple()
         for( int i=0; i<declaredSets.size(); i++ ) {
             final param = declaredSets[i]
             final entry = values[param.index]
@@ -653,7 +697,7 @@ class TaskProcessor {
             final actual = entry instanceof Collection ? entry.size() : (entry instanceof Map ? entry.size() : 1)
 
             if( actual != expected ) {
-                final msg = "Input tuple does not match input set cardinality declared by process `$name` -- offending value: $entry"
+                final msg = "Input tuple does not match tuple declaration in process `$name` -- offending value: $entry"
                 checkWarn(msg, [firstOnly: true, cacheKey: this])
             }
         }
@@ -662,7 +706,7 @@ class TaskProcessor {
 
     /**
      * @return A string 'she-bang' formatted to the added on top script to be executed.
-     * The interpreter to be used define bu the *taskConfig* property {@code shell}
+     * The interpreter to be used define by the *taskConfig* property {@code shell}
      */
     static String shebangLine(shell) {
         assert shell, "Missing 'shell' property in process configuration"
@@ -794,8 +838,11 @@ class TaskProcessor {
 
                 log.trace "[${safeTaskName(task)}] Cacheable folder=${resumeDir?.toUriString()} -- exists=$exists; try=$tries; shouldTryCache=$shouldTryCache; entry=$entry"
                 final cached = shouldTryCache && exists && entry.trace.isCompleted() && checkCachedOutput(task.clone(), resumeDir, hash, entry)
-                if( cached )
+                if( cached ) {
+                    this.dispatcherClient.createTaskExecution(task.taskId, 0, hash != null ? hash.toString() : null, 'SKIPPED')
                     break
+                }
+
             }
             catch (Throwable t) {
                 log.warn1("[${safeTaskName(task)}] Unable to resume cached task -- See log file for details", causedBy: t)
@@ -856,7 +903,7 @@ class TaskProcessor {
         }
 
         if( !task.config.getStoreDir().exists() ) {
-            log.trace "[${safeTaskName(task)}] Store dir does not exists > ${task.config.storeDir} -- return false"
+            log.trace "[${safeTaskName(task)}] Store dir does not exist > ${task.config.storeDir} -- return false"
             // no folder -> no cached result
             return false
         }
@@ -866,7 +913,7 @@ class TaskProcessor {
             // -- expose task exit status to make accessible as output value
             task.config.exitStatus = TaskConfig.EXIT_ZERO
             // -- check if all output resources are available
-            collectOutputs(task)
+            collectOutputs(task, task.getTargetDir(), task.@stdout, task.context)
             log.info "[skipping] Stored process > ${safeTaskName(task)}"
             // set the exit code in to the task object
             task.exitStatus = TaskConfig.EXIT_ZERO
@@ -1012,11 +1059,18 @@ class TaskProcessor {
 
             // -- retry without increasing the error counts
             if( task && (error.cause instanceof ProcessRetryableException || error.cause instanceof CloudSpotTerminationException) ) {
+                if (task.systemRetryCount > MAX_SYSTEM_RETRY) {
+                    log.info "[$task.hashLog] NOTE: ${error.message} -- Execution exceeded max retry count (${task.systemRetryCount})"
+                    return errorStrategy
+                }
+
                 if( error.cause instanceof ProcessRetryableException )
                     log.info "[$task.hashLog] NOTE: ${error.message} -- Execution is retried"
                 else
                     log.info "[$task.hashLog] NOTE: ${error.message} -- Cause: ${error.cause.message} -- Execution is retried"
+
                 task.failCount+=1
+                task.systemRetryCount+=1
                 final taskCopy = task.makeCopy()
                 session.getExecService().submit {
                     try {
@@ -1290,10 +1344,10 @@ class TaskProcessor {
             message = err0(error.cause)
 
         result
-            .append('  ')
-            .append(message)
-            .append('\n')
-            .toString()
+                .append('  ')
+                .append(message)
+                .append('\n')
+                .toString()
     }
 
 
@@ -1317,6 +1371,41 @@ class TaskProcessor {
             result += " -- Check script '${details[0]}' at line: ${details[1]}"
         }
         return result
+    }
+
+
+    void writeToStoreDir(TaskRun task, Path source, LatchPath storeDir) {
+        Path rel = task.workDir.relativize(source)
+        Path target = storeDir.resolve(rel)
+
+        log.info "Storing output ${target.toUriString()}"
+
+        FileHelper.copyPath(source, target)
+    }
+
+
+    void storeOutputs(TaskRun task) {
+        if (task.cached) return
+
+        Path storeDir = task.config.getStoreDir()
+        if (storeDir == null || storeDir.scheme != "latch") return
+
+        LatchPath lp = (LatchPath) storeDir
+        lp.createDirIfNotExists()
+
+        for( OutParam param : task.outputs.keySet() ) {
+            if (!(param instanceof FileOutParam)) continue
+
+            def outputs = task.outputs[param]
+
+            if (outputs instanceof Path) {
+                writeToStoreDir(task, outputs, lp)
+            } else {
+                for (Path o: outputs as List<Path>) {
+                    writeToStoreDir(task, o, lp)
+                }
+            }
+        }
     }
 
     /**
@@ -1378,26 +1467,26 @@ class TaskProcessor {
             def value = task.outputs.get(param)
 
             switch( param ) {
-            case StdOutParam:
-                log.trace "Process $name > normalize stdout param: $param"
-                value = value instanceof Path ? value.text : value?.toString()
+                case StdOutParam:
+                    log.trace "Process $name > normalize stdout param: $param"
+                    value = value instanceof Path ? value.text : value?.toString()
 
-            case OptionalParam:
-                if( !value && param instanceof OptionalParam && param.optional ) {
-                    final holder = [] as MissingParam; holder.missing = param
-                    tuples[param.index] = holder
+                case OptionalParam:
+                    if( !value && param instanceof OptionalParam && param.optional ) {
+                        final holder = [] as MissingParam; holder.missing = param
+                        tuples[param.index] = holder
+                        break
+                    }
+
+                case EnvOutParam:
+                case ValueOutParam:
+                case DefaultOutParam:
+                    log.trace "Process $name > collecting out param: ${param} = $value"
+                    tuples[param.index].add(value)
                     break
-                }
 
-            case EnvOutParam:
-            case ValueOutParam:
-            case DefaultOutParam:
-                log.trace "Process $name > collecting out param: ${param} = $value"
-                tuples[param.index].add(value)
-                break
-
-            default:
-                throw new IllegalArgumentException("Illegal output parameter type: $param")
+                default:
+                    throw new IllegalArgumentException("Illegal output parameter type: $param")
             }
         }
 
@@ -1430,7 +1519,7 @@ class TaskProcessor {
                     fairBuffers.remove(0)
                     // increase the index of the next emission
                     currentEmission++
-                    // take the next emissions 
+                    // take the next emissions
                     emissions = fairBuffers[0]
                 }
             }
@@ -1544,7 +1633,7 @@ class TaskProcessor {
                 ? List.of(line,'')
                 : List.of(line.substring(0,p), line.substring(p+1))
     }
-    
+
     /**
      * Collects the process 'std output'
      *
@@ -1566,6 +1655,7 @@ class TaskProcessor {
     }
 
     protected void collectOutFiles( TaskRun task, FileOutParam param, Path workDir, Map context ) {
+        if (!workDir.exists()) return;
 
         final List<Path> allFiles = []
         // type file parameter can contain a multiple files pattern separating them with a special character
@@ -1653,7 +1743,7 @@ class TaskProcessor {
             FileHelper.visitFiles(opts, workDir, namePattern) { Path it -> files.add(it) }
         }
         catch( NoSuchFileException e ) {
-            throw new MissingFileException("Cannot access directory: '$workDir'", e)
+            throw new MissingFileException("Cannot access directory: '${workDir.toUriString()}'", e)
         }
 
         return files.sort()
@@ -1735,6 +1825,7 @@ class TaskProcessor {
         // then add project bin dir
         if( executor.binDir )
             result.add(executor.binDir)
+
         return result
     }
 
@@ -1816,7 +1907,7 @@ class TaskProcessor {
 
         if( obj == null )
             throw new ProcessUnrecoverableException("Path value cannot be null")
-        
+
         if( !(obj instanceof CharSequence) )
             throw new ProcessUnrecoverableException("Not a valid path value type: ${obj.getClass().getName()} ($obj)")
 
@@ -1829,7 +1920,7 @@ class TaskProcessor {
             return FileHelper.asPath(str)
         if( !str )
             throw new ProcessUnrecoverableException("Path value cannot be empty")
-        
+
         throw new ProcessUnrecoverableException("Not a valid path value: '$str'")
     }
 
@@ -2131,7 +2222,7 @@ class TaskProcessor {
         if( modules ) {
             keys.addAll(modules)
         }
-        
+
         final conda = task.getCondaEnv()
         if( conda ) {
             keys.add(conda)
@@ -2155,7 +2246,9 @@ class TaskProcessor {
         final mode = config.getHashMode()
         final hash = computeHash(keys, mode)
         if( session.dumpHashes ) {
-            traceInputsHashes(task, keys, mode, hash)
+            session.dumpHashes=='json'
+                    ? traceInputsHashesJson(task, keys, mode, hash)
+                    : traceInputsHashes(task, keys, mode, hash)
         }
         return hash
     }
@@ -2165,7 +2258,7 @@ class TaskProcessor {
             return CacheHelper.hasher(keys, mode).hash()
         }
         catch (Throwable e) {
-            final msg = "Oops.. something went wrong while creating task '$name' unique id -- Offending keys: ${ keys.collect {"\n - type=${it.getClass().getName()} value=$it"} }"
+            final msg = "Something went wrong while creating task '$name' unique id -- Offending keys: ${ keys.collect {"\n - type=${it.getClass().getName()} value=$it"} }"
             throw new UnexpectedException(msg,e)
         }
     }
@@ -2189,6 +2282,16 @@ class TaskProcessor {
                 result.add(path)
         }
         return result
+    }
+
+    private void traceInputsHashesJson( TaskRun task, List entries, CacheHelper.HashMode mode, hash ) {
+        final collector = (item) -> [
+                hash: CacheHelper.hasher(item, mode).hash().toString(),
+                type: item?.getClass()?.getName(),
+                value: item?.toString()
+        ]
+        final json = JsonOutput.toJson(entries.collect(collector))
+        log.info "[${safeTaskName(task)}] cache hash: ${hash}; mode: ${mode}; entries: ${JsonOutput.prettyPrint(json)}"
     }
 
     private void traceInputsHashes( TaskRun task, List entries, CacheHelper.HashMode mode, hash ) {
@@ -2283,7 +2386,7 @@ class TaskProcessor {
             // -- expose task exit status to make accessible as output value
             task.config.exitStatus = task.exitStatus
             // -- if it's OK collect results and finalize
-            collectOutputs(task)
+            collectOutputs(task, task.workDir, task.@stdout, task.context)
         }
         catch ( Throwable error ) {
             fault = resumeOrDie(task, error)
@@ -2308,6 +2411,49 @@ class TaskProcessor {
         isCacheable() && session.resumeMode
     }
 
+    private void uploadTaskLogs( TaskRun task ) {
+        if (task.workDir == null) {
+            return
+        }
+
+        def logDir = System.getenv("LATCH_LOG_DIR")
+        if (logDir == null) {
+            return
+        }
+
+        Path p = FileHelper.asPath(logDir)
+        if (p.scheme != 'latch') {
+            log.warn "LATCH_LOG_DIR ${logDir} is not a valid latch directory"
+            return
+        }
+
+        log.debug "Uploading log files for ${safeTaskName(task)}"
+
+        for (String name : [
+                TaskRun.CMD_LOG,
+                TaskRun.CMD_SCRIPT,
+                TaskRun.CMD_INFILE,
+                TaskRun.CMD_OUTFILE,
+                TaskRun.CMD_ERRFILE,
+                TaskRun.CMD_EXIT,
+                TaskRun.CMD_START,
+                TaskRun.CMD_RUN,
+                TaskRun.CMD_STAGE,
+                TaskRun.CMD_TRACE,
+                TaskRun.CMD_ENV
+        ]) {
+            try {
+                Path source = task.workDir.resolve(name)
+                Path subPath = session.workDir.relativize(source)
+                Path target = p.resolve("work").resolve(subPath)
+
+                FileHelper.copyPath(source, target, StandardCopyOption.REPLACE_EXISTING)
+            } catch (NoSuchFileException e) {
+                log.debug "Skipping upload of ${name} for ${safeTaskName(task)}: ${e.toString()}"
+            }
+        }
+    }
+
     /**
      * Finalize the task execution, checking the exit status
      * and binding output values accordingly
@@ -2318,10 +2464,17 @@ class TaskProcessor {
     private void finalizeTask0( TaskRun task ) {
         log.trace "Finalize process > ${safeTaskName(task)}"
 
+        try {
+            uploadTaskLogs(task)
+        } catch (Exception e) {
+            log.warn "Failed to upload log files for ${safeTaskName(task)}: ${e.toString()}\n${e.printStackTrace()}"
+        }
+
         // -- bind output (files)
         if( task.canBind ) {
             bindOutputs(task)
             publishOutputs(task)
+            storeOutputs(task)
         }
 
         // increment the number of processes executed
@@ -2421,6 +2574,9 @@ class TaskProcessor {
             // apparently auto if-guard instrumented by @Slf4j is not honoured in inner classes - add it explicitly
             if( log.isTraceEnabled() )
                 log.trace "<${name}> Before run -- messages: ${messages}"
+
+            numTasks += 1
+
             // the counter must be incremented here, otherwise it won't be consistent
             state.update { StateObj it -> it.incSubmitted() }
             // task index must be created here to guarantee consistent ordering
@@ -2480,6 +2636,8 @@ class TaskProcessor {
             // apparently auto if-guard instrumented by @Slf4j is not honoured in inner classes - add it explicitly
             if( log.isTraceEnabled() )
                 log.trace "<${name}> After stop"
+
+            dispatcherClient.closeProcessNode(nodeId, numTasks)
         }
 
         /**

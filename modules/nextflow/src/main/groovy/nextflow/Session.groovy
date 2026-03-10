@@ -16,6 +16,8 @@
 
 package nextflow
 
+import nextflow.file.http.LatchFileSystemProvider
+
 import static nextflow.Const.*
 
 import java.nio.file.Files
@@ -189,6 +191,11 @@ class Session implements ISession {
     boolean debug
 
     /**
+     * Defines the cloud path where store cache meta-data
+     */
+    Path cloudCachePath
+
+    /**
      * Local path where script generated classes are saved
      */
     private Path classesDir
@@ -242,11 +249,11 @@ class Session implements ISession {
 
     boolean getStatsEnabled() { statsEnabled }
 
-    private boolean dumpHashes
+    private String dumpHashes
 
     private List<String> dumpChannels
 
-    boolean getDumpHashes() { dumpHashes }
+    String getDumpHashes() { dumpHashes }
 
     List<String> getDumpChannels() { dumpChannels }
 
@@ -330,7 +337,7 @@ class Session implements ISession {
             uniqueId = UUID.fromString(config.resume as String)
         }
         else {
-           uniqueId = systemEnv.get('NXF_UUID') ? UUID.fromString(systemEnv.get('NXF_UUID')) : UUID.randomUUID()
+            uniqueId = systemEnv.get('NXF_UUID') ? UUID.fromString(systemEnv.get('NXF_UUID')) : UUID.randomUUID()
         }
         log.debug "Session UUID: $uniqueId"
 
@@ -361,9 +368,23 @@ class Session implements ISession {
         this.workDir = ((config.workDir ?: 'work') as Path).complete()
         this.setLibDir( config.libDir as String )
 
+        // -- init cloud cache path
+        this.cloudCachePath = cloudCachePath(config.cloudcache as Map, workDir)
+
         // -- file porter config
         this.filePorter = new FilePorter(this)
 
+    }
+
+    protected Path cloudCachePath(Map cloudcache, Path workDir) {
+        if( !cloudcache?.enabled )
+            return null
+        final String path = cloudcache.path
+        final result = path ? FileHelper.asPath(path) : workDir
+        if( result.scheme !in ['s3','az','gs'] ) {
+            throw new IllegalArgumentException("Storage path not supported by Cloud-cache - offending value: '${result}'")
+        }
+        return result
     }
 
     /**
@@ -394,6 +415,9 @@ class Session implements ISession {
         this.statsEnabled = observers.any { it.enableMetrics() }
         this.workflowMetadata = new WorkflowMetadata(this, scriptFile)
 
+        // download custom fsync binary which supports fsyncing of every file in a directory
+        this.copyCustomFsync()
+
         // configure script params
         binding.setParams( (Map)config.params )
         binding.setArgs( new ScriptRunner.ArgsList(args) )
@@ -401,6 +425,26 @@ class Session implements ISession {
         cache = CacheFactory.create(uniqueId,runName).open()
 
         return this
+    }
+
+    /**
+     * Copies the custom fsync file from the image. Expects the binary to be present in the image at /root/custom_fsync
+     */
+    void copyCustomFsync() {
+        Path srcPath = Paths.get("/root/custom_fsync")
+        Path dstPath = workDir.resolve("custom_fsync")
+
+        if (!srcPath.exists()) {
+            log.debug "Skipping copy for custom fsync: Source file not found in /root/custom_fsync"
+            return
+        }
+
+        if (dstPath.exists()) {
+            log.debug "Skipping copy for custom fsync: File already exists"
+            return
+        }
+
+        Files.copy(srcPath, dstPath)
     }
 
     Session setBinding(ScriptBinding binding ) {
@@ -656,6 +700,8 @@ class Session implements ISession {
             // invoke shutdown callbacks
             shutdown0()
             log.trace "Session > after cleanup"
+            // shutdown latch path executor
+            LatchFileSystemProvider.shutdown()
             // shutdown executors
             executorFactory?.shutdown()
             executorFactory = null

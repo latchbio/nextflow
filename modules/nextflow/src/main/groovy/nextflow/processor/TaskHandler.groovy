@@ -39,6 +39,10 @@ abstract class TaskHandler {
 
     protected TaskHandler(TaskRun task) {
         this.task = task
+
+        // rahul: use failCount instead of `.attempt()` because attempt is
+        // not incremented for K8s system failures
+        this.attemptIdx = task.failCount
     }
 
     /** Only for testing purpose */
@@ -64,6 +68,10 @@ abstract class TaskHandler {
     long startTimeMillis
 
     long completeTimeMillis
+
+    int attemptIdx
+
+    int taskExecutionId
 
 
     /**
