@@ -262,18 +262,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             builder.withActiveDeadline(duration.toSeconds() as int)
         }
 
-        if ( fusionEnabled() ) {
-            if( fusionConfig().privileged() )
-                builder.withPrivileged(true)
-            else {
-                builder.withResourcesLimits(["nextflow.io/fuse": 1])
-            }
-
-            final env = fusionLauncher().fusionEnv()
-            for( Map.Entry<String,String> it : env )
-                builder.withEnv(PodEnv.value(it.key, it.value))
-        }
-
         return useJobResource()
                 ? builder.buildAsJob()
                 : builder.build()
