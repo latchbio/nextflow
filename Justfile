@@ -8,8 +8,9 @@ nextflow_version := `echo $(cat VERSION) | tr -d '\n'`
 path := nextflow_dir + "/" + nextflow_version + "/" + version
 
 build-sync:
-  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -ldflags '-extldflags "-static"' -o custom_fsync.bin custom_fsync/sync.go
-  chmod +x custom_fsync
+  cargo build --release --manifest-path custom_fsync/Cargo.toml --target x86_64-unknown-linux-musl
+  cp custom_fsync/target/x86_64-unknown-linux-musl/release/custom_fsync custom_fsync.bin
+  chmod +x custom_fsync.bin
 
 build:
   #!/usr/bin/env bash
@@ -21,7 +22,12 @@ build:
   rm -rf ~/.nextflow/plugins/nf-k8s-1.0.1
   mkdir -p ~/.nextflow/plugins/nf-k8s-1.0.1
   cp -r plugins/nf-k8s/build/classes/groovy/main ~/.nextflow/plugins/nf-k8s-1.0.1/classes
-  cp -r plugins/nf-k8s/build/classes/main/*  ~/.nextflow/plugins/nf-k8s-1.0.1/classes
+  if [[ -d plugins/nf-k8s/build/classes/java/main ]]; then
+    cp -r plugins/nf-k8s/build/classes/java/main/* ~/.nextflow/plugins/nf-k8s-1.0.1/classes
+  fi
+  if [[ -d plugins/nf-k8s/build/resources/main ]]; then
+    cp -r plugins/nf-k8s/build/resources/main/* ~/.nextflow/plugins/nf-k8s-1.0.1/classes
+  fi
 
 upload:
   #!/usr/bin/env bash
