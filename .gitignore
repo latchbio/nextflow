@@ -42,3 +42,4 @@ sandbox
 wave-tests
 x/*
 nextflow.tar.gz
+lib/
