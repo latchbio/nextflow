@@ -8,7 +8,7 @@ nextflow_version := `echo $(cat VERSION) | tr -d '\n'`
 path := nextflow_dir + "/" + nextflow_version + "/" + version
 
 build-sync:
-  cargo build --release --manifest-path custom_fsync/Cargo.toml --target x86_64-unknown-linux-musl
+  RUSTFLAGS="-C linker=rust-lld" cargo build --release --manifest-path custom_fsync/Cargo.toml --target x86_64-unknown-linux-musl
   cp custom_fsync/target/x86_64-unknown-linux-musl/release/custom_fsync custom_fsync.bin
   chmod +x custom_fsync.bin
 
