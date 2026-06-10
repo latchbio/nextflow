@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,9 @@ package nextflow.config
 
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
-import nextflow.config.schema.ConfigScope
-import nextflow.config.schema.SchemaNode
-import nextflow.config.schema.ScopeName
+import nextflow.config.spec.ConfigScope
+import nextflow.config.spec.SpecNode
+import nextflow.config.spec.ScopeName
 import nextflow.plugin.Plugins
 import nextflow.script.dsl.Description
 /**
@@ -35,10 +35,12 @@ class ConfigValidator {
     /**
      * Hidden options added by ConfigBuilder
      */
-    private static final List<String> hiddenOptions = List.of(
+    private static final List<String> HIDDEN_OPTIONS = List.of(
         'cacheable',
         'dumpChannels',
+        'dumpHashes',
         'libDir',
+        'outputFormat',
         'poolSize',
         'preview',
         'runName',
@@ -46,74 +48,154 @@ class ConfigValidator {
     );
 
     /**
+     * Core plugin scopes which can only be validated when
+     * the plugin is loaded.
+     */
+    private static final List<String> CORE_PLUGIN_SCOPES = List.of(
+        'aws',
+        'azure',
+        'cloudcache',
+        'google',
+        'k8s',
+        'tower',
+        'wave'
+    )
+
+    /**
      * Additional config scopes added by third-party plugins
      */
-    private SchemaNode.Scope pluginScopes
+    private SpecNode.Scope pluginScopes
 
     ConfigValidator() {
         loadPluginScopes()
     }
 
     private void loadPluginScopes() {
-        final scopes = new HashMap<String, SchemaNode>()
+        final children = new HashMap<String, SpecNode>()
         for( final scope : Plugins.getExtensions(ConfigScope) ) {
             final clazz = scope.getClass()
             final name = clazz.getAnnotation(ScopeName)?.value()
             final description = clazz.getAnnotation(Description)?.value()
+            if( name == '' ) {
+                children.putAll(SpecNode.Scope.of(clazz, '').children())
+                continue
+            }
             if( !name )
                 continue
-            if( name in scopes ) {
+            if( name in children ) {
                 log.warn "Plugin config scope `${clazz.name}` conflicts with existing scope: `${name}`"
                 continue
             }
-            scopes.put(name, SchemaNode.Scope.of(clazz, description))
+            children.put(name, SpecNode.Scope.of(clazz, description))
         }
-        pluginScopes = new SchemaNode.Scope('', scopes)
+        pluginScopes = new SpecNode.Scope('', children)
     }
 
-    void validate(ConfigMap config) {
-        validate(config.toConfigObject())
-    }
+    /**
+     * Validate a config block within the given scope.
+     *
+     * @param config
+     * @param scopes
+     */
+    void validate(Map<String,?> config, List<String> scopes=[]) {
+        for( final entry : config.entrySet() ) {
+            final key = entry.key
+            final value = entry.value
 
-    void validate(ConfigObject config) {
-        final flatConfig = config.flatten()
-        for( String key : flatConfig.keySet() ) {
-            final names = key.tokenize('.')
-            if( names.first() == 'profiles' ) {
-                if( !names.isEmpty() ) names.remove(0)
-                if( !names.isEmpty() ) names.remove(0)
+            final names = scopes + [key]
+
+            if( names.size() == 2 && names.first() == 'profiles' )
+                names.clear()
+
+            if( value instanceof Map ) {
+                if( isSelector(key) )
+                    names.removeLast()
+                if( isMapOption(names) )
+                    continue
+                validate(value, names)
             }
-            final scope = names.first()
-            if( scope == 'env' ) {
-                checkEnv(names.last())
-                continue
-            }
-            if( scope == 'params' )
-                continue
-            final fqName = names.join('.')
-            if( fqName.startsWith('process.ext.') )
-                return
-            if( !isValid(names) ) {
-                log.warn "Unrecognized config option '${fqName}'"
-                continue
+            else {
+                validateOption(names)
             }
         }
     }
 
     /**
-     * Determine whether a config option is defined in the schema.
+     * Determine whether a scope name is a process selector.
+     *
+     * @param name
+     */
+    private boolean isSelector(String name) {
+        return name.startsWith('withLabel:') || name.startsWith('withName:')
+    }
+
+    /**
+     * Validate a config option given by the list of names.
+     *
+     * For example, the option 'process.resourceLimits' is represented
+     * as ['process', 'resourceLimits'].
+     *
+     * @param names
+     */
+    void validateOption(List<String> names) {
+        final scope = names.first()
+        if( scope == 'env' ) {
+            checkEnv(names.last())
+            return
+        }
+        if( scope == 'params' )
+            return
+        if( isMissingCorePluginScope(scope) )
+            return
+        if( isValid(names) )
+            return
+        log.warn1 "Unrecognized config option '${names.join('.')}'"
+    }
+
+    /**
+     * Determine whether a config option is defined in the spec.
      *
      * @param names
      */
     boolean isValid(List<String> names) {
-        if( names.size() == 1 && names.first() in hiddenOptions )
+        if( names.size() == 1 && names.first() in HIDDEN_OPTIONS )
             return true
-        final child = SchemaNode.ROOT.getChild(names)
-        if( child instanceof SchemaNode.Option || child instanceof SchemaNode.DslOption )
+        final child = SpecNode.ROOT.getChild(names)
+        if( child instanceof SpecNode.Option || child instanceof SpecNode.DslOption )
             return true
         if( pluginScopes.getOption(names) )
             return true
         return false
+    }
+
+    /**
+     * Determine whether a config scope is from a core plugin
+     * which is not currently loaded.
+     *
+     * @param name
+     */
+    private boolean isMissingCorePluginScope(String name) {
+        return name in CORE_PLUGIN_SCOPES
+            && !pluginScopes.children().containsKey(name)
+    }
+
+    /**
+     * Determine whether a config option is a map option.
+     *
+     * This method is needed to distinguish between config scopes
+     * and config options that happen to be maps, since this distinction
+     * is lost when the config is resolved.
+     *
+     * @param names
+     */
+    private boolean isMapOption(List<String> names) {
+        return isMapOption0(SpecNode.ROOT, names)
+            || isMapOption0(pluginScopes, names)
+    }
+
+    private static boolean isMapOption0(SpecNode.Scope scope, List<String> names) {
+        final node = scope.getOption(names)
+        return node != null && node.types().contains(Map.class)
     }
 
     /**

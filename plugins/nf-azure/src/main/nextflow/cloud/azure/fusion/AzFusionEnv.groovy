@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package nextflow.cloud.azure.fusion
@@ -36,6 +35,15 @@ import org.pf4j.Extension
 @Slf4j
 class AzFusionEnv implements FusionEnv {
 
+    /**
+     * Get the environment variables for Fusion with Azure, taking into
+     * account a managed identity ID if provided
+     *
+     * @param scheme The storage scheme ('az' for Azure)
+     * @param config The Fusion configuration
+     * @param managedIdentityId Optional managed identity client ID from pool options
+     * @return Map of environment variables
+     */
     @Override
     Map<String, String> getEnvironment(String scheme, FusionConfig config) {
         if (scheme != 'az') {
@@ -43,21 +51,30 @@ class AzFusionEnv implements FusionEnv {
         }
 
         final cfg = AzConfig.config
+        final managedIdentityId = cfg.batch().poolIdentityClientId
         final result = new LinkedHashMap(10)
 
         if (!cfg.storage().accountName) {
             throw new IllegalArgumentException("Missing Azure Storage account name")
         }
 
-        if (cfg.storage().accountKey && cfg.storage().sasToken) {
-            throw new IllegalArgumentException("Azure Storage Access key and SAS token detected. Only one is allowed")
+        result.AZURE_STORAGE_ACCOUNT = cfg.storage().accountName
+
+        // If pool has a managed identity, ONLY add the MSI client ID
+        // DO NOT add any SAS token or reference cfg.storage().sasToken
+        if (managedIdentityId) {
+            // Fusion will try and pick up a managed identity that is available.
+            // We recommend explicitly setting the config item to the managed ID so you know which one is being used.
+            // However if set to 'true' it will use whichever is available.
+            // This can be helpful if the pools have different managed identities.
+            if (managedIdentityId != 'auto') {
+                result.FUSION_AZ_MSI_CLIENT_ID = managedIdentityId
+            }
+            // No SAS token is added or generated
+            return result
         }
 
-        result.AZURE_STORAGE_ACCOUNT = cfg.storage().accountName
-        // In theory, generating an impromptu SAS token for authentication methods other than
-        // `azure.storage.sasToken` should not be necessary, because those methods should already allow sufficient
-        // access for normal operation. Nevertheless, #5287 heavily implies that failing to do so causes the Azure
-        // Storage plugin or Fusion to fail. In any case, it may be possible to remove this in the future.
+        // If no managed identity, use the standard environment with SAS token
         result.AZURE_STORAGE_SAS_TOKEN = getOrCreateSasToken()
 
         return result
@@ -68,8 +85,12 @@ class AzFusionEnv implements FusionEnv {
      * authentication method.
      */
     synchronized String getOrCreateSasToken() {
-
         final cfg = AzConfig.config
+
+        // Check for incompatible configuration
+        if (cfg.storage().accountKey && cfg.storage().sasToken) {
+            throw new IllegalArgumentException("Azure Storage Access key and SAS token detected. Only one is allowed")
+        }
 
         // If a SAS token is already defined in the configuration, just return it
         if (cfg.storage().sasToken) {

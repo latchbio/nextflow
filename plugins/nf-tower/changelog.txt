@@ -1,17 +1,86 @@
 nf-tower changelog
 ===================
-1.11.4-patch2 - 6 Oct 2025
-- Fix cache command to check session cloudCachePath [e2964232]
-- Fix cache command to use SysEnv for cloudcache path check (#6432) [1936c601]
+1.28.0 - 28 May 2026
+- Expose dataset file size in seqera fs file attributes (#7141) [beac1e455]
+- Fix world-readable seqera-auth.config credential file (#7182) [41a5f24af]
+- Bump lib-httpx@2.3.0 (#7181) [1c47215a8]
 
-1.11.4-patch1 - 2 Aug 2025
-- Improve Fusion license error message (#6313) [9e3fc268]
+1.27.0 - 28 Apr 2026
+- Add -user-secret and -workspace-secret flags to nextflow launch (#7040) [53045104d]
 
-1.11.4 - 30 Jun 2025
-- Fix JWT token refresh to Fusion validation request (#6231) [267ee1cf]
+1.26.0 - 25 Apr 2026
+- Abort execution when platform telemetry error (#6827) [b1ad3f720]
+- Add Seqera NIO filesystem for datasets and refactor TowerClient/TowerObserver (#6946) [433b10a1f]
 
-1.11.3 - 2 Jun 2025
-- Add Platform info to Fusion license (#6142)
+1.25.0 - 20 Apr 2026
+- Fix resolution of `-with-tower` with `TOWER_API_ENDPOINT` (#7045) [ce962e882]
+- Fusion GPU metrics collection (#7022) [6289635b8]
+- Fix saveCacheFiles early return skipping log file uploads (#7015) [6fb704838]
+
+1.24.0 - 7 Apr 2026
+- Add resourceAllocation field to trace record (#6973) [a2742939c]
+- Replace Auth0 with Platform OIDC PKCE for auth login (#6953) [f39afea97]
+- Use inline metadata from trace create response (#6976) [58736b7cc]
+
+1.23.0 - 26 Mar 2026
+- Skip launch metadata fetch for CLI-submitted runs (#6975) [3c9875720]
+- Add platform-related metadata to WorkflowRun lineage record (#6545) [fc4d7dd6e]
+- Add request timeout to tower client (#6950) [ff773ba72]
+- Fix LogsCheckpoint thread interrupt race condition (#6939) [9d65b9eea]
+- Fix typo in TowerRetryPolicy: maxAttemps -> maxAttempts (#6949) [97eb0d1b3]
+- Fix security vulnerabilities (#6938) [8b1ab40c4]
+
+1.22.0 - 17 Mar 2026
+- Add logStreamId to Tower task record (#6877) [df49fdb68]
+- Increase tasks.cloudZone width from 15 to 25 (#6907) [a217a459f]
+
+1.21.0 - 28 Feb 2026
+- Fix ResourcesAggregator deadlock with virtual thread executor (#6840) [7ac4f3ea9]
+- Propagate workflow ID and watch URL to session metadata (#6242) [870c858af]
+
+1.20.0 - 8 Feb 2026
+- Fix spurious WARN when workflow fails before onFlowBegin (#6816) [584003712]
+- Fix LogsCheckpoint thread blocking shutdown for up to 90 seconds (#6787) [54a595805]
+- Add accelerator request to trace record (#6703) [00f35b3a9]
+
+1.19.0 - 19 Dec 2025
+- Add spot interruption tracking to trace records (#6606) [eecd81671]
+
+1.18.0 - 28 Nov 2025
+- Fix TowerJsonGenerator thread-safety issue (#6619) [579cd6e4e]
+
+1.17.2 - 28 Nov 2025
+- Fix Fusion license JWT token refresh by reusing TowerClient [561ed6c32]
+
+1.17.1 - 22 Oct 2025
+- Show workspace roles in 'auth status', tweak error message on 403 (#6497) [0633d90d1]
+
+1.17.0 - 21 Oct 2025
+- Add nextflow auth command for Seqera Platform authentication (#6463) [bedf02a99]
+- Add nextflow launch command (#6491) [7c8fa3d9d]
+- Rename `config.schema` package to `config.spec` (#6485) [ef0d2d601]
+
+1.16.0 - 8 Oct 2025
+- Fix cache command to check session cloudCachePath [a88e2cdf2]
+- Fix cache command to use SysEnv for cloudcache path check (#6432) [771b8b60e]
+- Fix cookie policy for Seqera Platform JWT token refresh (#6411) [c3959cfc3]
+
+1.14.0 - 15 Aug 2025
+- Fix bug in DefaultObserverFactory (#6259) [bec4bf7a]
+- Improve Fusion license error message (#6313) [c3f397ea]
+- Unify nf-lang config scopes with runtime classes (#6271) [bfa67ca3]
+- Update trace observers to v2 (#6257) [544b8c47]
+- Bump groovy 4.0.28 (#6304) [a468f8ef]
+
+1.13.0 - 6 Jul 2025
+- Bump Slf4j version 2.0.17 [93199e09]
+- Fix JWT token refresh to Fusion validation request (#6231) [95dfdafd]
+- Fix http response err message [1f05451f]
+- Remove deprecated GsonHelper class [700faddb]
+
+1.12.0 - 2 Jun 2025
+- Add Platform info to Fusion license (#6142) [75f1bc52]
+- Bump Groovy to version 4.0.27 (#6125) [258e1790]
 
 1.11.2 - 8 Apr 2025
 - Fix container meta deduplication [f4600d2e]
@@ -25,7 +94,7 @@ nf-tower changelog
 - Bump groovy 4.0.26 [f740bc56]
 
 1.10.0 - 12 Feb 2025
-- Add Fusion token validation (#5614) [ci fast] [1dcb18d6]
+- Add Fusion token validation (#5614) [1dcb18d6]
 - Bump groovy 4.0.25 [19c40a4a]
 
 1.9.4 - 20 Jan 2025
@@ -66,12 +135,12 @@ nf-tower changelog
 - Add -cloudcache CLI option (#4385) [73fda582]
 
 1.6.2 - 28 Sep 2023
-- Disable Tower container field for multiple images [ci fast] [b53936b0]
+- Disable Tower container field for multiple images [b53936b0]
 - Bump Apache 2.0 license to tower client [e4a878b6]
 
 1.6.1 - 17 Aug 2023
 - Fix checkpoint thread termination (#4166) [2b449daa]
-- Fix typos in source code comments (#4173) [ci fast] [e78bc37e]
+- Fix typos in source code comments (#4173) [e78bc37e]
 
 1.6.0 - 5 Aug 2023
 - Add Tower logs checkpoint (#4132) [71dfecc2]
@@ -96,7 +165,7 @@ nf-tower changelog
 - Fix NoSuchMethodError String.stripIndent with Java 11 [308eafe6]
 
 1.5.10 - 21 Feb 2023
-- Log exception when an unexpected  occurs (#3603) [ci fast] [9aeca99f]
+- Log exception when an unexpected  occurs (#3603) [9aeca99f]
 - Bump groovy 3.0.15 [7a3ebc7d]
 
 1.5.9 - 14 Jan 2023

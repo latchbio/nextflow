@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,16 +55,15 @@ class AbstractGridExecutorTest extends Specification {
     def 'should return a custom job name'() {
 
         given:
-        def exec = [:] as AbstractGridExecutor
-        exec.session = [:] as Session
-        exec.session.config = [:]
+        def exec = Spy(AbstractGridExecutor)
 
-        expect:
+        when:
+        exec.config = new ExecutorConfig([:])
+        then:
         exec.resolveCustomJobName(Mock(TaskRun)) == null
 
         when:
-        exec.session = [:] as Session
-        exec.session.config = [ executor: [jobName: { task.name.replace(' ','_') }  ] ]
+        exec.config = new ExecutorConfig(jobName: { task.name.replace(' ','_') })
         then:
         exec.resolveCustomJobName(new TaskRun(config: [name: 'hello world'])) == 'hello_world'
 
@@ -73,19 +72,18 @@ class AbstractGridExecutorTest extends Specification {
     def 'should return job submit name' () {
 
         given:
-        def exec = [:] as AbstractGridExecutor
-        exec.session = [:] as Session
-        exec.session.config = [:]
+        def exec = Spy(AbstractGridExecutor)
 
         final taskName = 'Hello world'
         final taskRun = new TaskRun(name: taskName, config: [name: taskName])
 
-        expect:
+        when:
+        exec.config = new ExecutorConfig([:])
+        then:
         exec.getJobNameFor(taskRun) == 'nf-Hello_world'
 
         when:
-        exec.session = [:] as Session
-        exec.session.config = [ executor: [jobName: { task.name.replace(' ','_') }  ] ]
+        exec.config = new ExecutorConfig(jobName: { task.name.replace(' ','_') })
         then:
         exec.getJobNameFor(taskRun) == 'Hello_world'
 
@@ -110,7 +108,7 @@ class AbstractGridExecutorTest extends Specification {
         given:
         def LONG = 'abcd' * 100
         def exec = [:] as AbstractGridExecutor
-        
+
         expect:
         exec.sanitizeJobName('foo') == 'foo'
         exec.sanitizeJobName(LONG) == LONG.substring(0,256)
@@ -131,16 +129,15 @@ class AbstractGridExecutorTest extends Specification {
                 NXF_CHDIR=/some/dir
                 '''.stripIndent()
     }
-    
+
     def 'should fetch queue status'() {
         given:
         def STATUS = ['123': AbstractGridExecutor.QueueStatus.RUNNING]
         def NAME = 'TheExecutorName'
         and:
-        def session = Mock(Session) { getConfig()>>[:] }
+        def config = Spy(new ExecutorConfig([:]))
         and:
-        def exec = Spy(AbstractGridExecutor)
-        exec.session = session
+        def exec = Spy(AbstractGridExecutor) { getConfig() >> config }
         exec.@queueInterval = Duration.of('1m')
         exec.name = NAME
 
@@ -148,7 +145,7 @@ class AbstractGridExecutorTest extends Specification {
         when:
         def result = exec.getQueueStatus('foo')
         then:
-        1 * session.getExecConfigProp(NAME,'queueGlobalStatus',false)>>false
+        1 * config.getExecConfigProp(NAME,'queueGlobalStatus',false)>>false
         1 * exec.getQueueStatus0('foo') >> STATUS
         and:
         result == STATUS
@@ -157,7 +154,7 @@ class AbstractGridExecutorTest extends Specification {
         when:
         result = exec.getQueueStatus('foo')
         then:
-        1 * session.getExecConfigProp(NAME,'queueGlobalStatus',false)>>true
+        1 * config.getExecConfigProp(NAME,'queueGlobalStatus',false)>>true
         1 * exec.getQueueStatus0(null) >> STATUS
         and:
         result == STATUS

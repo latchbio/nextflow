@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -348,7 +348,7 @@ class ConfigParserV2Test extends Specification {
 
     }
 
-    def 'should return the set of parsed profiles' () {
+    def 'should return the set of declared profiles' () {
 
         given:
         def text = '''
@@ -366,13 +366,42 @@ class ConfigParserV2Test extends Specification {
         def slurper = new ConfigParserV2().setProfiles(['alpha'])
         slurper.parse(text)
         then:
-        slurper.getProfiles() == ['alpha','beta'] as Set
+        slurper.getDeclaredProfiles() == ['alpha','beta'] as Set
 
         when:
         slurper = new ConfigParserV2().setProfiles(['omega'])
         slurper.parse(text)
         then:
-        slurper.getProfiles() == ['alpha','beta'] as Set
+        slurper.getDeclaredProfiles() == ['alpha','beta'] as Set
+    }
+
+    def 'should return the map of declared params' () {
+
+        given:
+        def text = '''
+        params {
+            a = 1
+            b = 2
+        }
+
+        profiles {
+            alpha {
+                params.a = 3
+            }
+        }
+        '''
+
+        when:
+        def slurper = new ConfigParserV2().setParams([c: 4])
+        slurper.parse(text)
+        then:
+        slurper.getDeclaredParams() == [a: 1, b: 2]
+
+        when:
+        slurper = new ConfigParserV2().setParams([c: 4]).setProfiles(['alpha'])
+        slurper.parse(text)
+        then:
+        slurper.getDeclaredParams() == [a: 3, b: 2]
     }
 
     def 'should ignore config includes when specified' () {
@@ -428,7 +457,7 @@ class ConfigParserV2Test extends Specification {
                 .parse(configText)
         then:
         config.params.str1 instanceof String
-        config.params.str2 instanceof GString
+        config.params.str2 instanceof String
         config.process.clusterOptions instanceof Closure
         config.process.ext.bar instanceof Closure
 
@@ -438,7 +467,7 @@ class ConfigParserV2Test extends Specification {
                 .parse(configText)
         then:
         config.params.str1 instanceof String
-        config.params.str2 instanceof GString
+        config.params.str2 instanceof String
         config.process.clusterOptions instanceof Closure
         config.process.ext.bar instanceof Closure
 
@@ -691,6 +720,45 @@ class ConfigParserV2Test extends Specification {
         cleanup:
         folder?.deleteDir()
 
+    }
+
+    def 'should override config params with CLI params' () {
+        given:
+        def CONFIG = '''
+            params.outdir = 'results'
+            report.file = "${params.outdir}/report.html"
+            '''
+
+        when:
+        def config = new ConfigParserV2().setParams(outdir: 'my-results').parse(CONFIG)
+        then:
+        config.params.outdir == 'my-results'
+        config.report.file == 'my-results/report.html'
+    }
+
+    def 'should convert CLI params to appropriate type based on config params' () {
+        given:
+        def cliParams = [
+            igenomes_ignore: 'true',
+            max_cpus: '8',
+            publish_mode: 'symlink',
+            config_profile_name: 'Test profile'
+        ]
+        and:
+        def CONFIG = '''
+            params.igenomes_ignore = false
+            params.max_cpus = 4
+            params.publish_mode = 'copy'
+            params.config_profile_name = null
+            '''
+
+        when:
+        def config = new ConfigParserV2().setParams(cliParams).parse(CONFIG)
+        then:
+        config.params.igenomes_ignore == true
+        config.params.max_cpus == 8
+        config.params.publish_mode == 'symlink'
+        config.params.config_profile_name == 'Test profile'
     }
 
     static class ConfigFileHandler implements HttpHandler {

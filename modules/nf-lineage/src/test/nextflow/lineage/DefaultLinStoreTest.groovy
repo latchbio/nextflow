@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2025, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -123,12 +123,10 @@ class DefaultLinStoreTest extends Specification {
         lidStore.save(key4, value4)
 
         when:
-        def results = lidStore.search( [type:['FileOutput'], labels:['value2']])
+        def results = lidStore.search( [type:['FileOutput'], labels:['value2']]).toList()
         then:
         results.size() == 2
-        results.keySet().containsAll([key2,key3])
-        results[key2] == value2
-        results[key3] == value3
+        results.containsAll([key2,key3])
     }
 
     def 'should search subkeys' () {
@@ -154,7 +152,7 @@ class DefaultLinStoreTest extends Specification {
          lidStore.save(key4, value4)
 
          when:
-         def results = lidStore.getSubKeys("testKey")
+         def results = lidStore.getSubKeys("testKey").toList()
          then:
          results.size() == 2
          results.containsAll([key2, key3])

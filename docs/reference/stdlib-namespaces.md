@@ -43,7 +43,7 @@ The global namespace contains globally available constants and functions.
 : Create a branch criteria to use with the {ref}`operator-branch` operator.
 
 `env( name: String ) -> String`
-: :::{versionadded} 24.11.0-edge
+: :::{versionadded} 25.04.0
   :::
 : Get the value of the environment variable with the specified name in the Nextflow launch environment.
 
@@ -56,8 +56,8 @@ The global namespace contains globally available constants and functions.
   :::
 : Stop the pipeline execution and return an exit code and optional error message.
 
-`file( filePattern: String, [options] ) -> Path | List<Path>`
-: Get a file from a file name or glob pattern. Returns a collection of files if the glob pattern yields zero or multiple files.
+`file( filePattern: String, [options] ) -> Path`
+: Get a file from a file name or glob pattern.
 
 : The following options are available:
 
@@ -79,10 +79,13 @@ The global namespace contains globally available constants and functions.
   `type: String`
   : Type of paths returned, can be `'file'`, `'dir'` or `'any'` (default: `'file'`)
 
-: See also: {ref}`channel.fromPath <channel-path>`.
+: :::{note}
+  This function returns a collection if the glob pattern yields zero or multiple files. Use `files()` to get a collection of files.
+  :::
 
-`files( filePattern: String, [options] ) -> List<Path>`
+`files( filePattern: String, [options] ) -> Iterable<Path>`
 : Get a collection of files from a file name or glob pattern. Supports the same options as `file()`.
+: See also: {ref}`channel.fromPath <channel-path>`.
 
 `groupKey( key, size: int ) -> GroupKey`
 : Create a grouping key to use with the {ref}`operator-grouptuple` operator.
@@ -105,11 +108,11 @@ The global namespace contains globally available constants and functions.
 `sleep( milliseconds: long )`
 : Sleep for the given number of milliseconds.
 
-`tuple( collection: List ) -> ArrayTuple`
-: Create a tuple object from the given collection.
+`record( [options] ) -> Record`
+: Create a record from the given named arguments.
 
-`tuple( args... ) -> ArrayTuple`
-: Create a tuple object from the given arguments.
+`tuple( args... ) -> Tuple`
+: Create a tuple from the given arguments.
 
 (stdlib-namespaces-channel)=
 
@@ -118,6 +121,20 @@ The global namespace contains globally available constants and functions.
 The `channel` namespace contains the built-in channel factories. See {ref}`channel-factory` for details.
 
 (stdlib-namespaces-nextflow)=
+
+## `log`
+
+The `log` namepsace contains functions for logging messages to the console.
+
+`error( message: String )`
+: Log an error message to the console.
+: This function does not terminate the pipeline -- use the global `error()` function instead.
+
+`info( message: String )`
+: Log an info message to the console.
+
+`warn( message: String )`
+: Log a warning message to the console.
 
 ## `nextflow`
 

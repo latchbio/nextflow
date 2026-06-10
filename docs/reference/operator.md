@@ -1,15 +1,16 @@
 (operator-page)=
 
-# Operators
+# Operators (legacy)
+
+:::{versionadded} 26.04.0
+See {ref}`operator-join-record` for the core set of operators that are recommended for use with static typing. See {ref}`migrating-static-types-operators` for a guide on how to replace each legacy operator with core operators.
+:::
 
 (operator-branch)=
 
 ## branch
 
-:::{versionadded} 19.08.0-edge
-:::
-
-*Returns: multiple queue channels or value channels, matching the source type*
+*Returns: multiple channels*
 
 The `branch` operator forwards each item from a source channel to one of multiple output channels, based on a selection criteria.
 
@@ -63,7 +64,11 @@ The `branchCriteria()` method can be used to create a branch criteria as a varia
 
 ## buffer
 
-*Returns: queue channel*
+:::{deprecated} 26.04.0
+This operator is {ref}`non-deterministic <cache-nondeterministic-inputs>` and should not be used.
+:::
+
+*Returns: channel*
 
 The `buffer` operator collects items from a source channel into subsets and emits each subset separately.
 
@@ -129,11 +134,13 @@ This operator has multiple variants:
 
   The `remainder` option can be used to emit any remaining items as a partial subset.
 
-See also: [collate](#collate)
-
 ## collate
 
-*Returns: queue channel*
+:::{deprecated} 26.04.0
+This operator is {ref}`non-deterministic <cache-nondeterministic-inputs>` and should not be used.
+:::
+
+*Returns: channel*
 
 The `collate` operator collects items from a source channel into groups of *N* items.
 
@@ -179,13 +186,11 @@ This operator has multiple variants:
 
   You can specify `false` as the third parameter to discard any remaining items.
 
-See also: [buffer](#buffer)
-
 (operator-collect)=
 
 ## collect
 
-*Returns: value channel*
+*Returns: dataflow value*
 
 The `collect` operator collects all items from a source channel into a list and emits it as a single item:
 
@@ -197,29 +202,18 @@ The `collect` operator collects all items from a source channel into a list and 
 :language: console
 ```
 
-An optional {ref}`closure <script-closure>` can be used to transform each item before it is collected:
+The `collect` operator behaves differently from `toList` in the following ways:
 
-```{literalinclude} ../snippets/collect-with-mapper.nf
-:language: nextflow
-```
+- When the source channel is empty, `collect` emits nothing whereas `toList` emits an empty list.
+- `collect` flattens collected values whereas `toList` does not.
 
-```{literalinclude} ../snippets/collect-with-mapper.out
-:language: console
-```
-
-Available options:
-
-`flat`
-: When `true`, nested list structures are flattened and their items are collected individually (default: `true`).
-
-`sort`
-: When `true`, the collected items are sorted by their natural ordering (default: `false`). Can also be a {ref}`closure <script-closure>` or a [Comparator](https://docs.oracle.com/javase/8/docs/api/java/util/Comparator.html) which defines how items are compared during sorting.
-
-See also: [toList](#tolist), [toSortedList](#tosortedlist)
+:::{note}
+When static typing is enabled via `nextflow.enable.types`, `collect` behaves the same way as `toList`.
+:::
 
 ## collectFile
 
-*Returns: queue channel*
+*Returns: channel*
 
 The `collectFile` operator collects the items from a source channel and saves them to one or more files, emitting the collected file(s).
 
@@ -250,8 +244,7 @@ This operator has multiple variants:
 The following example shows how to use a closure to collect and sort all sequences in a FASTA file from shortest to longest:
 
 ```nextflow
-Channel
-    .fromPath('/data/sequences.fa')
+channel.fromPath('/data/sequences.fa')
     .splitFasta( record: [id: true, sequence: true] )
     .collectFile( name: 'result.fa', sort: { v -> v.size() } ) {
         v -> v.sequence
@@ -305,7 +298,7 @@ Available options:
 
 ## combine
 
-*Returns: queue channel*
+*Returns: channel*
 
 The `combine` operator produces the combinations (i.e. cross product, "Cartesian" product) of two source channels, or a channel and a list (as the right operand), emitting each combination separately.
 
@@ -329,23 +322,19 @@ The `by` option can be used to combine items that share a matching key. The valu
 :language: console
 ```
 
-:::{note}
-The `combine` operator is similar to `cross` and `join`, making them easy to confuse. Their differences can be summarized as follows:
-
-- `combine` and `cross` both produce an *outer product* or *cross product*, whereas `join` produces an *inner product*.
-
-- `combine` filters pairs with a matching key only if the `by` option is used, whereas `cross` always filters pairs with a matching key.
-
-- `combine` with the `by` option merges and flattens each pair, whereas `cross` does not. Compare the examples for `combine` and `cross` to see this difference.
+:::{tip}
+As a best practice, use `join` with records instead of `combine` with `by`. The `combine` operator without `by` is still useful for producing all combinations of two sources. See {ref}`operator-join-record` for details.
 :::
-
-See also: [cross](#cross), [join](#join)
 
 (operator-concat)=
 
 ## concat
 
-*Returns: queue channel*
+:::{deprecated} 26.04.0
+Use `mix` instead.
+:::
+
+*Returns: channel*
 
 The `concat` operator emits the items from two or more source channels into a single output channel. Each source channel is emitted in the order in which it was specified.
 
@@ -361,13 +350,11 @@ For example:
 :language: console
 ```
 
-See also: [mix](#mix)
-
 (operator-count)=
 
 ## count
 
-*Returns: value channel*
+*Returns: dataflow value*
 
 The `count` operator computes the total number of items in a source channel and emits it:
 
@@ -379,69 +366,11 @@ The `count` operator computes the total number of items in a source channel and 
 :language: console
 ```
 
-An optional filter can be provided to select which items to count. The selection criteria can be a literal value, a {ref}`regular expression <script-regexp>`, a type qualifier (i.e. Java class), or a boolean predicate. For example:
-
-```{literalinclude} ../snippets/count-with-filter-number.nf
-:language: nextflow
-```
-
-```{literalinclude} ../snippets/count-with-filter-number.out
-:language: console
-```
-
-```{literalinclude} ../snippets/count-with-filter-regex.nf
-:language: nextflow
-```
-
-```{literalinclude} ../snippets/count-with-filter-regex.out
-:language: console
-```
-
-```{literalinclude} ../snippets/count-with-filter-closure.nf
-:language: nextflow
-```
-
-```{literalinclude} ../snippets/count-with-filter-closure.out
-:language: console
-```
-
-(operator-countfasta)=
-
-## countFasta
-
-*Returns: value channel*
-
-Counts the total number of records in a channel of FASTA files, equivalent to `splitFasta | count`. See [splitFasta](#splitfasta) for the list of available options.
-
-(operator-countfastq)=
-
-## countFastq
-
-*Returns: value channel*
-
-Counts the total number of records in a channel of FASTQ files, equivalent to `splitFastq | count`. See [splitFastq](#splitfastq) for the list of available options.
-
-(operator-countjson)=
-
-## countJson
-
-*Returns: value channel*
-
-Counts the total number of records in a channel of JSON files, equivalent to `splitJson | count`. See [splitJson](#splitjson) for the list of available options.
-
-(operator-countlines)=
-
-## countLines
-
-*Returns: value channel*
-
-Counts the total number of lines in a channel of text files, equivalent to `splitText | count`. See [splitLines](#splittext) for the list of available options.
-
 (operator-cross)=
 
 ## cross
 
-*Returns: queue channel*
+*Returns: channel*
 
 The `cross` operator emits every pairwise combination of two channels for which the pair has a matching key.
 
@@ -455,26 +384,17 @@ By default, the key is defined as the first entry in a list or map, or the value
 :language: console
 ```
 
-An optional closure can be used to define the matching key for each item:
-
-```{literalinclude} ../snippets/cross-with-mapper.nf
-:language: nextflow
-```
-
-```{literalinclude} ../snippets/cross-with-mapper.out
-:language: console
-```
-
-There are two important caveats when using the `cross` operator:
-
-1. The operator is not *commutative*, i.e. `a.cross(b)` is not the same as `b.cross(a)`
-2. Each source channel should not emit any items with duplicate keys, i.e. each item should have a unique key.
-
-See also: [combine](#combine)
+:::{tip}
+As a best practice, use `join` with records instead of `cross`. See {ref}`operator-join-record` for details.
+:::
 
 ## distinct
 
-*Returns: queue channel or value channel, matching the source type*
+:::{deprecated} 26.04.0
+This operator is {ref}`non-deterministic <cache-nondeterministic-inputs>` and should not be used. Use `unique` instead.
+:::
+
+*Returns: channel*
 
 The `distinct` operator forwards a source channel with *consecutively* repeated items removed, such that each emitted item is different from the preceding one:
 
@@ -496,13 +416,15 @@ An optional {ref}`closure <script-closure>` can be used to transform each value 
 :language: console
 ```
 
-See also: [unique](#unique)
-
 (operator-dump)=
 
 ## dump
 
-*Returns: queue channel or value channel, matching the source type*
+:::{deprecated} 26.04.0
+Use `view` instead.
+:::
+
+*Returns: channel*
 
 The `dump` operator prints each item in a source channel when the pipeline is executed with the `-dump-channels` command-line option, otherwise it does nothing. It is a useful way to inspect and debug channels quickly without having to modify the pipeline script.
 
@@ -512,13 +434,11 @@ The `tag` option can be used to select which channels to dump:
 :language: nextflow
 ```
 
-Then, you can run your pipeline with `-dump-channels foo` or `-dump-channels bar` to dump the content of either channel. Multiple tag names can be specified as a comma-separated list.
+Then, you can run your pipeline with `-dump-channels plus1` or `-dump-channels exp2` to dump the content of either channel. Multiple tag names can be specified as a comma-separated list.
 
 Available options:
 
 `pretty`
-: :::{versionadded} 22.10.0
-  :::
 : When `true`, format the output as pretty-printed JSON (default: `false`).
 
 `tag`
@@ -528,7 +448,7 @@ Available options:
 
 ## filter
 
-*Returns: queue channel or value channel, matching the source type*
+*Returns: channel*
 
 The `filter` operator emits the items from a source channel that satisfy a condition, discarding all other items. The filter condition can be a literal value, a {ref}`regular expression <script-regexp>`, a type qualifier (i.e. Java class), or a boolean predicate.
 
@@ -566,7 +486,11 @@ The following example filters a channel using a boolean predicate, which is a {r
 
 ## first
 
-*Returns: value channel*
+:::{deprecated} 26.04.0
+This operator is {ref}`non-deterministic <cache-nondeterministic-inputs>` and should not be used.
+:::
+
+*Returns: dataflow value*
 
 The `first` operator emits the first item in a source channel, or the first item that matches a condition. The condition can be a {ref}`regular expression<script-regexp>`, a type qualifier (i.e. Java class), or a boolean predicate. For example:
 
@@ -578,7 +502,7 @@ The `first` operator emits the first item in a source channel, or the first item
 
 ## flatMap
 
-*Returns: queue channel*
+*Returns: channel*
 
 The `flatMap` operator applies a *mapping function* to each item from a source channel.
 
@@ -602,11 +526,19 @@ When the mapping function returns a map, each key-value pair in the map is emitt
 :language: console
 ```
 
+:::{note}
+When static typing is enabled via `nextflow.enable.types`, `flatMap` does not flatten maps or tuples.
+:::
+
 (operator-flatten)=
 
 ## flatten
 
-*Returns: queue channel*
+:::{deprecated} 26.04.0
+Use `flatMap` instead.
+:::
+
+*Returns: channel*
 
 The `flatten` operator flattens each item from a source channel that is a list or other collection, such that each element in each collection is emitted separately:
 
@@ -620,17 +552,19 @@ The `flatten` operator flattens each item from a source channel that is a list o
 
 As shown in the above example, deeply nested collections are also flattened.
 
-See also: [flatMap](#flatmap)
-
 (operator-grouptuple)=
 
 ## groupTuple
 
-*Returns: queue channel*
+:::{deprecated} 26.04.0
+Use `groupBy` instead.
+:::
+
+*Returns: channel*
 
 The `groupTuple` operator collects lists (i.e. *tuples*) from a source channel into groups based on a grouping key. A new tuple is emitted for each distinct key.
 
-To be more precise, the operator transforms a sequence of tuples like *(K, V, W, ..)* into a sequence of tuples like *(K, list(V), list(W), ..)*.
+To be more precise, the operator transforms a sequence of tuples like *(K, V1, V2, ..)* into a sequence of tuples like *(K, list(V1), list(V2), ..)*.
 
 For example:
 
@@ -674,19 +608,16 @@ Available options:
 : The required number of items for each group. When a group reaches the required size, it is emitted.
 
 `sort`
-: Defines the sorting criteria for the grouped items. Can be one of the following values:
-
-  - `false`: No sorting is applied (default).
-  - `true`: Order the grouped items by the item's natural ordering i.e. numerical for number, lexicographic for string, etc. See the [Java documentation](http://docs.oracle.com/javase/tutorial/collections/interfaces/order.html) for more information.
-  - `'hash'`: Order the grouped items by the hash number associated to each entry.
-  - `'deep'`: Similar to the previous, but the hash number is created on actual entries content e.g. when the item is a file, the hash is created on the actual file content.
-  - A custom sorting criteria used to order the nested list elements of each tuple. It can be a {ref}`Closure <script-closure>` or a [Comparator](http://docs.oracle.com/javase/7/docs/api/java/util/Comparator.html) object.
+: Defines the sorting criteria for the grouped items.
+: :::{warning}
+  The `sort` option is discouraged because it can lead to inconsistent sorting when there are multiple groups. Perform sorting separately (e.g., in a subsequent `map` operation) to ensure correct results.
+  :::
 
 (operator-ifempty)=
 
 ## ifEmpty
 
-*Returns: queue channel or value channel, matching the source type*
+*Returns: channel*
 
 The `ifEmpty` operator emits a source channel, or a default value if the source channel is *empty* (doesn't emit any value):
 
@@ -714,19 +645,19 @@ See also: {ref}`channel-empty` channel factory
 
 ## join
 
-*Returns: queue channel*
+*Returns: channel*
 
 The `join` operator emits the inner product of two source channels using a matching key.
 
-To be more precise, the operator transforms a sequence of tuples like *(K, V1, V2, ..)* and *(K, W1, W1, ..)* into a sequence of tuples like *(K, V1, V2, .., W1, W2, ..)*.
+To be more precise, the operator transforms a sequence of tuples like *(K, V1, V2, ..)* and *(K, W1, W2, ..)* into a sequence of tuples like *(K, V1, V2, .., W1, W2, ..)*.
 
 For example:
 
-```{literalinclude} ../snippets/join.nf
+```{literalinclude} ../snippets/join-tuple.nf
 :language: nextflow
 ```
 
-```{literalinclude} ../snippets/join.out
+```{literalinclude} ../snippets/join-tuple.out
 :language: console
 ```
 
@@ -734,17 +665,13 @@ By default, the first element of each item is used as the key. The `by` option c
 
 By default, unmatched items are discarded. The `remainder` option can be used to emit them at the end:
 
-```{literalinclude} ../snippets/join-with-remainder.nf
+```{literalinclude} ../snippets/join-tuple-remainder.nf
 :language: nextflow
 ```
 
-```{literalinclude} ../snippets/join-with-remainder.out
+```{literalinclude} ../snippets/join-tuple-remainder.out
 :language: console
 ```
-
-:::{note}
-The `join` operator is similar to an SQL *inner join*, or an SQL *outer join* when `remainder` is `true`. The only difference is that `join` does not support duplicate keys, whereas an SQL join produces the cross-product of duplicate keys. The `combine` operator with the `by` option is equivalent to an SQL join.
-:::
 
 Available options:
 
@@ -760,13 +687,19 @@ Available options:
 `remainder`
 : When `true`, unmatched items are emitted at the end, otherwise they are discarded (default: `false`). 
 
-See also: [combine](#combine), [cross](#cross)
+:::{tip}
+As a best practice, use `join` with records instead of tuples. It allows you to join on field names instead of tuple indices, and it produces a true relational join (i.e. SQL join). See {ref}`operator-join-record` for details.
+:::
 
 (operator-last)=
 
 ## last
 
-*Returns: value channel*
+:::{deprecated} 26.04.0
+This operator is {ref}`non-deterministic <cache-nondeterministic-inputs>` and should not be used.
+:::
+
+*Returns: dataflow value*
 
 The `last` operator emits the last item from a source channel:
 
@@ -782,7 +715,7 @@ The `last` operator emits the last item from a source channel:
 
 ## map
 
-*Returns: queue channel or value channel, matching the source type*
+*Returns: channel*
 
 The `map` operator applies a *mapping function* to each item from a source channel:
 
@@ -795,14 +728,14 @@ The `map` operator applies a *mapping function* to each item from a source chann
 ```
 
 :::{note}
-`null` values are not emitted by `map`.
+By default, null values are not emitted by `map`. When static typing is enabled via `nextflow.enable.types`, null values are emitted.
 :::
 
 (operator-max)=
 
 ## max
 
-*Returns: value channel*
+*Returns: dataflow value*
 
 The `max` operator emits the item with the greatest value from a source channel:
 
@@ -838,7 +771,11 @@ The following examples show how to find the longest string in a channel:
 
 ## merge
 
-*Returns: queue channel or value channel, matching the source type*
+:::{deprecated} 26.04.0
+This operator is {ref}`non-deterministic <cache-nondeterministic-inputs>` and should not be used. Use [join](#join) instead.
+:::
+
+*Returns: channel*
 
 The `merge` operator joins the items from two or more channels into a new channel:
 
@@ -850,33 +787,11 @@ The `merge` operator joins the items from two or more channels into a new channe
 :language: console
 ```
 
-An optional closure can be used to control how two items are merged:
-
-```{literalinclude} ../snippets/merge-with-mapper.nf
-:language: nextflow
-```
-
-```{literalinclude} ../snippets/merge-with-mapper.out
-:language: console
-```
-
-The `merge` operator may return a queue channel or value channel depending on the inputs:
-
-- If the first argument is a queue channel, the `merge` operator will return a queue channel merging as many values as are available for all inputs. Value channels will be re-used for each merged value.
-
-- If the first argument is a value channel, the `merge` operator will return a value channel merging the first value from each input, regardless of whether there are queue channel inputs with additional values.
-
-:::{danger}
-In general, the use of the `merge` operator is discouraged. Processes and channel operators are not guaranteed to emit items in the order that they were received, as they are executed concurrently. Therefore, if you try to merge output channels from different processes, the resulting channel may be different on each run, which will cause resumed runs to {ref}`not work properly <cache-nondeterministic-inputs>`.
-
-You should always use a matching key (e.g. sample ID) to merge multiple channels, so that they are combined in a deterministic way. For this purpose, you can use the [join](#join) operator.
-:::
-
 (operator-min)=
 
 ## min
 
-*Returns: value channel*
+*Returns: dataflow value*
 
 The `min` operator emits the item with the lowest value from a source channel:
 
@@ -912,9 +827,9 @@ The following examples show how to find the shortest string in a channel:
 
 ## mix
 
-*Returns: queue channel*
+*Returns: channel*
 
-The `mix` operator emits the items from two or more source channels into a single output channel:
+The `mix` operator emits the items from two source channels into a single output channel:
 
 ```{literalinclude} ../snippets/mix.nf
 :language: nextflow
@@ -935,16 +850,11 @@ b
 3
 ```
 
-See also: [concat](#concat)
-
 (operator-multimap)=
 
 ## multiMap
 
-:::{versionadded} 19.11.0-edge
-:::
-
-*Returns: multiple queue channels or value channels, matching the source type*
+*Returns: multiple channels*
 
 The `multiMap` operator applies a set of mapping functions to a source channel, producing a separate output channel for each mapping function.
 
@@ -986,7 +896,11 @@ If you use `multiMap` to split a tuple or map into multiple channels, it is reco
 
 ## randomSample
 
-*Returns: queue channel*
+:::{deprecated} 26.04.0
+This operator is {ref}`non-deterministic <cache-nondeterministic-inputs>` and should not be used.
+:::
+
+*Returns: channel*
 
 The `randomSample` operator emits a randomly-selected subset of items from a source channel:
 
@@ -1008,7 +922,7 @@ The above example will print 10 randomly-selected numbers between 1 and 100 (wit
 
 ## reduce
 
-*Returns: value channel*
+*Returns: dataflow value*
 
 The `reduce` operator applies an *accumulator function* sequentially to each item in a source channel, and emits the final accumulated value. The accumulator function takes two parameters -- the accumulated value and the *i*-th emitted item -- and it should return the accumulated result, which is passed to the next invocation with the *i+1*-th item. This process is repeated for each item in the source channel.
 
@@ -1036,6 +950,10 @@ By default, the first item is used as the initial accumulated value. You can opt
 
 ## set
 
+:::{deprecated} 26.04.0
+Use a standard assignment instead.
+:::
+
 *Returns: nothing*
 
 The `set` operator assigns a source channel to a variable, whose name is specified as a closure parameter:
@@ -1050,15 +968,17 @@ Using `set` is semantically equivalent to assigning a variable:
 my_channel = channel.of(10, 20, 30)
 ```
 
-See also: [tap](#tap)
-
 (operator-splitcsv)=
 
 ## splitCsv
 
-*Returns: queue channel*
+:::{deprecated} 26.04.0
+Use `flatMap` with the {ref}`Path <stdlib-types-path>` `splitCsv` method instead.
+:::
 
-The `splitCsv` operator parses and splits [CSV-formatted](http://en.wikipedia.org/wiki/Comma-separated_values) text from a source channel into records, or groups of records with a given size.
+*Returns: channel*
+
+The `splitCsv` operator parses and splits [CSV](http://en.wikipedia.org/wiki/Comma-separated_values) files or text from a source channel into records.
 
 For example:
 
@@ -1103,9 +1023,6 @@ Available options:
 `decompress`
 : When `true`, decompress the content using the GZIP format before processing it (default: `false`). Files with the `.gz` extension are decompressed automatically.
 
-`elem`
-: The index of the element to split when the source items are lists or tuples (default: first file object or first element).
-
 `header`
 : When `true`, the first line is used as the columns names (default: `false`). Can also be a list of columns names.
 
@@ -1128,17 +1045,20 @@ Available options:
 
 ## splitFasta
 
-*Returns: queue channel*
+:::{deprecated} 26.04.0
+Use `flatMap` with the {ref}`Path <stdlib-types-path>` `splitFasta` method instead.
+:::
 
-The `splitFasta` operator splits [FASTA-formatted](http://en.wikipedia.org/wiki/FASTA_format) text from a source channel into individual sequences.
+*Returns: channel*
+
+The `splitFasta` operator splits [FASTA](http://en.wikipedia.org/wiki/FASTA_format) files or text from a source channel into individual sequences.
 
 The `by` option can be used to group sequences into chunks of a given size. The following example shows how to read a FASTA file and split it into chunks of 10 sequences each:
 
 ```nextflow
-Channel
-     .fromPath('misc/sample.fa')
-     .splitFasta( by: 10 )
-     .view()
+channel.fromPath('misc/sample.fa')
+    .splitFasta( by: 10 )
+    .view()
 ```
 
 :::{warning}
@@ -1148,11 +1068,10 @@ Chunks are stored in memory by default. When splitting large files, specify `fil
 The `record` option can be used to split FASTA content into *records* instead of text chunks. Each record is a map that allows you to access the FASTA sequence data with ease. For example:
 
 ```nextflow
-Channel
-     .fromPath('misc/sample.fa')
-     .splitFasta( record: [id: true, seqString: true] )
-     .filter { record -> record.id =~ /^ENST0.*/ }
-     .view { record -> record.seqString }
+channel.fromPath('misc/sample.fa')
+    .splitFasta( record: [id: true, seqString: true] )
+    .filter { record -> record.id =~ /^ENST0.*/ }
+    .view { record -> record.seqString }
 ```
 
 The above example loads the `misc/sample.fa` file, splits it into records containing the `id` and `seqString` fields (i.e. the sequence id and the sequence data), filters records by their ID, and finally prints the sequence string of each record.
@@ -1170,9 +1089,6 @@ Available options:
 
 `decompress`
 : When `true`, decompress the content using the GZIP format before processing it (default: `false`). Files with the `.gz` extension are decompressed automatically.
-
-`elem`
-: The index of the element to split when the source items are lists or tuples (default: first file object or first element).
 
 `file`
 : When `true`, saves each split to a file. Use a string instead of `true` value to create split files with a specific name (split index number is automatically added). Finally, set this attribute to an existing directory, in order to save the split files into the specified directory.
@@ -1194,21 +1110,22 @@ Available options:
 `size`
 : Defines the size of the expected chunks as a memory unit, e.g. `1.MB`.
 
-See also: [countFasta](#countfasta)
-
 (operator-splitfastq)=
 
 ## splitFastq
 
-*Returns: queue channel*
+:::{deprecated} 26.04.0
+Use `flatMap` with the {ref}`Path <stdlib-types-path>` `splitFastq` method instead.
+:::
 
-The `splitFastq` operator splits [FASTQ formatted](http://en.wikipedia.org/wiki/FASTQ_format) text from a source channel into individual sequences.
+*Returns: channel*
+
+The `splitFastq` operator splits [FASTQ](http://en.wikipedia.org/wiki/FASTQ_format) files or text from a source channel into individual sequences.
 
 The `by` option can be used to group sequences into chunks of a given size. The following example shows how to read a FASTQ file and split it into chunks of 10 sequences each:
 
 ```nextflow
-Channel
-    .fromPath('misc/sample.fastq')
+channel.fromPath('misc/sample.fastq')
     .splitFastq( by: 10 )
     .view()
 ```
@@ -1220,8 +1137,7 @@ Chunks are stored in memory by default. When splitting large files, specify `fil
 The `record` option can be used to split FASTQ content into *records* instead of text chunks. Each record is a map that allows you to access the FASTQ sequence data with ease. For example:
 
 ```nextflow
-Channel
-    .fromPath('misc/sample.fastq')
+channel.fromPath('misc/sample.fastq')
     .splitFastq( record: true )
     .view { record -> record.readHeader }
 ```
@@ -1229,8 +1145,7 @@ Channel
 The `pe` option can be used to split paired-end FASTQ files. The source channel must emit tuples containing the file pairs. For example:
 
 ```nextflow
-Channel
-    .fromFilePairs('/my/data/SRR*_{1,2}.fastq', flat: true)
+channel.fromFilePairs('/my/data/SRR*_{1,2}.fastq', flat: true)
     .splitFastq(by: 100_000, pe: true, file: true)
     .view()
 ```
@@ -1257,9 +1172,6 @@ Available options:
 `decompress`
 : When `true`, decompress the content using the GZIP format before processing it (default: `false`). Files with the `.gz` extension are decompressed automatically.
 
-`elem`
-: The index of the element to split when the source items are lists or tuples (default: first file object or first element).
-
 `file`
 : When `true`, saves each split to a file. Use a string instead of `true` value to create split files with a specific name (split index number is automatically added). Finally, set this attribute to an existing directory, in order to save the split files into the specified directory.
 
@@ -1277,15 +1189,17 @@ Available options:
   - `qualityHeader`: Base quality header (it may be empty)
   - `qualityString`: Quality values for the sequence
 
-See also: [countFastq](#countfastq)
-
 (operator-splitjson)=
 
 ## splitJson
 
-*Returns: queue channel*
+:::{deprecated} 26.04.0
+Use `flatMap` with the {ref}`Path <stdlib-types-path>` `splitJson` method instead.
+:::
 
-The `splitJson` operator splits [JSON formatted](https://en.wikipedia.org/wiki/JSON) text from a source channel into individual records.
+*Returns: channel*
+
+The `splitJson` operator splits [JSON](https://en.wikipedia.org/wiki/JSON) files or text from a source channel into individual records.
 
 If the source item is a JSON array, each element of the array will be emitted:
 
@@ -1325,19 +1239,20 @@ Available options:
 `path`
 : Defines a query for a section of each source item to parse and split. The expression should be a path similar to [JSONPath](https://goessner.net/articles/JsonPath/). The empty string is the document root (default). An integer in brackets is a zero-based index in a JSON array. A string preceded by a dot `.` is a key in a JSON object.
 
-See also: [countJson](#countjson)
-
 (operator-splittext)=
 
 ## splitText
 
-*Returns: queue channel*
+:::{deprecated} 26.04.0
+Use `flatMap` with the {ref}`Path <stdlib-types-path>` `splitText` method instead.
+:::
+
+*Returns: channel*
 
 The `splitText` operator splits multi-line text content from a source channel into chunks of *N* lines:
 
 ```nextflow
-Channel
-    .fromPath('/some/path/*.txt')
+channel.fromPath('/some/path/*.txt')
     .splitText()
     .view()
 ```
@@ -1347,8 +1262,7 @@ The above example loads a collection of text files, splits the content of each f
 The `by` option can be used to emit chunks of *N* lines:
 
 ```nextflow
-Channel
-    .fromPath('/some/path/*.txt')
+channel.fromPath('/some/path/*.txt')
     .splitText( by: 10 )
     .subscribe { chunk ->
         print chunk
@@ -1359,8 +1273,7 @@ Channel
 An optional {ref}`closure <script-closure>` can be used to transform each text chunk produced by the operator. The following example shows how to split text files into chunks of 10 lines and transform them to uppercase letters:
 
 ```nextflow
-Channel
-    .fromPath('/some/path/*.txt')
+channel.fromPath('/some/path/*.txt')
     .splitText( by: 10 ) { v -> v.toUpperCase() }
     .view()
 ```
@@ -1383,9 +1296,6 @@ Available options:
 `decompress`
 : When `true`, decompresses the content using the GZIP format before processing it (default: `false`). Files with the `.gz` extension are decompressed automatically.
 
-`elem`
-: The index of the element to split when the source items are lists or tuples (default: first file object or first element).
-
 `file`
 : When `true`, saves each split to a file. Use a string instead of `true` value to create split files with a specific name (split index number is automatically added). Finally, set this attribute to an existing directory, in order to save the split files into the specified directory.
 
@@ -1394,8 +1304,6 @@ Available options:
 
 `limit`
 : Limits the number of lines to retrieve for each source item (default: no limit).
-
-See also: [countLines](#countlines)
 
 (operator-subscribe)=
 
@@ -1442,7 +1350,7 @@ Available options:
 
 ## sum
 
-*Returns: value channel*
+*Returns: dataflow value*
 
 The `sum` operator emits the sum of all items in a source channel:
 
@@ -1468,7 +1376,11 @@ An optional {ref}`closure <script-closure>` can be used to transform each item b
 
 ## take
 
-*Returns: queue channel*
+:::{warning}
+This operator depends on the ordering of values in the source channel. It can lead to {ref}`non-deterministic behavior <cache-nondeterministic-inputs>` if used improperly.
+:::
+
+*Returns: channel*
 
 The `take` operator takes the first *N* items from a source channel:
 
@@ -1488,7 +1400,11 @@ See also: [until](#until)
 
 ## tap
 
-*Returns: queue channel or value channel, matching the source type*
+:::{deprecated} 26.04.0
+Use a standard assignment instead.
+:::
+
+*Returns: channel*
 
 The `tap` operator assigns a source channel to a variable, and emits the source channel. It is a useful way to extract intermediate output channels from a chain of operators. For example:
 
@@ -1500,37 +1416,9 @@ The `tap` operator assigns a source channel to a variable, and emits the source 
 :language: console
 ```
 
-See also: [set](#set)
-
-## toInteger
-
-*Returns: queue channel or value channel, matching the source type*
-
-The `toInteger` operator converts string values from a source channel to integer values:
-
-```{literalinclude} ../snippets/tointeger.nf
-:language: nextflow
-```
-
-```{literalinclude} ../snippets/tointeger.out
-:language: console
-```
-
-:::{note}
-`toInteger` is equivalent to:
-
-```nextflow
-map { v -> v as Integer }
-```
-:::
-
-:::{note}
-You can also use `toLong`, `toFloat`, and `toDouble` to convert to other numerical types.
-:::
-
 ## toList
 
-*Returns: value channel*
+*Returns: dataflow value*
 
 The `toList` operator collects all the items from a source channel into a list and emits the list as a single item:
 
@@ -1542,24 +1430,11 @@ The `toList` operator collects all the items from a source channel into a list a
 :language: console
 ```
 
-:::{note}
-There are two main differences between `toList` and `collect`:
-
-- When there is no input, `toList` emits an empty list whereas `collect` emits nothing.
-- By default, `collect` flattens list items by one level.
-
-In other words, `toList` is equivalent to:
-
-```nextflow
-collect(flat: false).ifEmpty([])
-```
-:::
-
 See also: [collect](#collect)
 
 ## toSortedList
 
-*Returns: value channel*
+*Returns: dataflow value*
 
 The `toSortedList` operator collects all the items from a source channel into a sorted list and emits the list as a single item:
 
@@ -1581,23 +1456,15 @@ An optional closure can be used to control how items are compared when sorting. 
 :language: console
 ```
 
-:::{note}
-`toSortedList` is equivalent to:
-
-```nextflow
-collect(flat: false, sort: true).ifEmpty([])
-```
-:::
-
 See also: [collect](#collect)
 
 ## transpose
 
-*Returns: queue channel*
+*Returns: channel*
 
 The `transpose` operator "transposes" each tuple from a source channel by flattening any nested list in each tuple, emitting each nested item separately.
 
-To be more precise, the operator transforms a sequence of tuples like *(K, list(V), list(W), ..)* into a sequence of tuples like *(K, V, W, ..)*.
+To be more precise, the operator transforms a sequence of tuples like *(K, list(V1), list(V2), ..)* into a sequence of tuples like *(K, V1, V2, ..)*.
 
 For example:
 
@@ -1637,13 +1504,15 @@ Available options:
 `remainder`
 : When `true`, incomplete tuples are emitted with `null` values for missing elements, otherwise they are discarded (default: `false`). 
 
-See also: [groupTuple](#grouptuple)
+:::{tip}
+As a best practice, use [`flatMap`](#flatmap) instead of `transpose`, since `flatMap` has a well-defined return type.
+:::
 
 (operator-unique)=
 
 ## unique
 
-*Returns: queue channel or value channel, matching the source type*
+*Returns: channel*
 
 The `unique` operator emits the unique items from a source channel:
 
@@ -1665,17 +1534,11 @@ An optional {ref}`closure <script-closure>` can be used to transform each item b
 :language: console
 ```
 
-:::{note}
-The difference between `unique` and `distinct` is that `unique` removes *all* duplicate values, whereas `distinct` removes only *consecutive* duplicate values. As a result, `unique` must process the entire source channel before it can emit anything, whereas `distinct` can emit each value immediately.
-:::
-
-See also: [distinct](#distinct)
-
 (operator-until)=
 
 ## until
 
-*Returns: queue channel or value channel, matching the source type*
+*Returns: channel*
 
 The `until` operator emits each item from a source channel until a stopping condition is satisfied:
 
@@ -1693,7 +1556,7 @@ See also: [take](#take)
 
 ## view
 
-*Returns: queue channel or value channel, matching the source type*
+*Returns: channel*
 
 The `view` operator prints each item from a source channel to standard output:
 
@@ -1721,3 +1584,8 @@ Available options:
 
 `newLine`
 : Print each item to a separate line (default: `true`).
+
+`tag`
+: :::{versionadded} 26.04.0
+  :::
+: Print the channel values only when `-dump-channels` is specified on the command line with the given tag.

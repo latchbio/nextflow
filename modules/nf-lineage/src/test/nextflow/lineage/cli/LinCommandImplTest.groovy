@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2025, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,6 +45,8 @@ import org.junit.Rule
 import spock.lang.Shared
 import spock.lang.Specification
 import test.OutputCapture
+
+import static test.TestHelper.filterLogNoise
 
 class LinCommandImplTest extends Specification{
 
@@ -99,12 +101,7 @@ class LinCommandImplTest extends Specification{
         lidLog.write("run_name", uniqueId, "lid://123456", date)
         when:
         new LinCommandImpl().list(configMap)
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture)
 
         then:
         stdout.size() == 2
@@ -118,13 +115,7 @@ class LinCommandImplTest extends Specification{
 
         when:
         new LinCommandImpl().list(configMap)
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('WARN') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture, true)
 
         then:
         stdout.size() == 1
@@ -144,12 +135,7 @@ class LinCommandImplTest extends Specification{
         lidFile.text = jsonSer
         when:
         new LinCommandImpl().view(configMap, ["lid://12345"])
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture)
 
         then:
         stdout.size() == expectedOutput.readLines().size()
@@ -169,12 +155,7 @@ class LinCommandImplTest extends Specification{
         lidFile.text = jsonSer
         when:
         new LinCommandImpl().view(configMap, ["lid://12345#labels"])
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture)
 
         then:
         stdout.size() == expectedOutput.readLines().size()
@@ -195,12 +176,7 @@ class LinCommandImplTest extends Specification{
 
         when:
         new LinCommandImpl().view(configMap, ["lid://12345#output"])
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture)
 
         then:
         stdout.size() == expectedOutput.readLines().size()
@@ -212,12 +188,7 @@ class LinCommandImplTest extends Specification{
 
         when:
         new LinCommandImpl().view(configMap, ["lid://12345"])
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture)
 
         then:
         stdout.size() == 1
@@ -284,12 +255,7 @@ class LinCommandImplTest extends Specification{
 
         when:
         new LinCommandImpl().render(configMap, ["lid://12345/file.bam", outputHtml.toString()])
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture)
 
         then:
         stdout.size() == 1
@@ -331,12 +297,7 @@ class LinCommandImplTest extends Specification{
 
         when:
         new LinCommandImpl().render(configMap, ["lid://12345/file.bam", outputHtml.toString()])
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture)
 
         then:
         stdout.size() == 1
@@ -358,12 +319,7 @@ class LinCommandImplTest extends Specification{
         lidFile.text = jsonSer
         when:
         new LinCommandImpl().view(configMap, ["lid:///?type=FileOutput"])
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture)
 
         then:
         stdout.size() == expectedOutput.readLines().size()
@@ -387,37 +343,32 @@ class LinCommandImplTest extends Specification{
         def expectedOutput = '''diff --git 12345 67890
 --- 12345
 +++ 67890
-@@ -1,16 +1,16 @@
- {
+@@ -2,16 +2,16 @@
    "version": "lineage/v1beta1",
    "kind": "FileOutput",
--  "path": "path/to/file",
-+  "path": "path/to/file2",
-   "checksum": {
--    "value": "45372qe",
-+    "value": "42472qet",
-     "algorithm": "nextflow",
-     "mode": "standard"
-   },
--  "source": "lid://123987/file.bam",
-+  "source": "lid://123987/file2.bam",
-   "workflowRun": "lid://123987/",
-   "taskRun": null,
--  "size": 1234,
-+  "size": 1235,
-   "createdAt": "1970-01-02T10:17:36.789Z",
-   "modifiedAt": "1970-01-02T10:17:36.789Z",
-   "labels": null
+   "spec": {
+-    "path": "path/to/file",
++    "path": "path/to/file2",
+     "checksum": {
+-      "value": "45372qe",
++      "value": "42472qet",
+       "algorithm": "nextflow",
+       "mode": "standard"
+     },
+-    "source": "lid://123987/file.bam",
++    "source": "lid://123987/file2.bam",
+     "workflowRun": "lid://123987/",
+     "taskRun": null,
+-    "size": 1234,
++    "size": 1235,
+     "createdAt": "1970-01-02T10:17:36.789Z",
+     "modifiedAt": "1970-01-02T10:17:36.789Z",
+     "labels": null
 '''
 
         when:
         new LinCommandImpl().diff(configMap, ["lid://12345", "lid://67890"])
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture)
 
         then:
         stdout.join('\n') == expectedOutput
@@ -436,12 +387,7 @@ class LinCommandImplTest extends Specification{
         when:
         new LinCommandImpl().diff(configMap, ["lid://89012", "lid://12345"])
         new LinCommandImpl().diff(configMap, ["lid://12345", "lid://67890"])
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture)
 
         then:
         stdout.size() == 2
@@ -457,12 +403,7 @@ class LinCommandImplTest extends Specification{
         new LinCommandImpl().render(config, ["lid://12345", "output.html"])
         new LinCommandImpl().diff(config, ["lid://89012", "lid://12345"])
 
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture)
         def expectedOutput = "Error lineage store not loaded - Check Nextflow configuration"
         then:
         stdout.size() == 4
@@ -488,19 +429,14 @@ class LinCommandImplTest extends Specification{
             "lid://123987/file2.bam", "lid://123987/", null, 1235, time, time, ["experiment=test"])
         def entry3 = new FileOutput("path/to/file3",new Checksum("42472qet","nextflow","standard"),
             "lid://123987/file2.bam", "lid://123987/", null, 1235, time, time, null)
-        def expectedOutput1 = '[\n  "lid://123987/file.bam",\n  "lid://123987/file2.bam"\n]'
-        def expectedOutput2 = '[\n  "lid://123987/file2.bam",\n  "lid://123987/file.bam"\n]'
+        def expectedOutput1 = 'lid://123987/file.bam\nlid://123987/file2.bam'
+        def expectedOutput2 = 'lid://123987/file2.bam\nlid://123987/file.bam'
         lidFile.text = encoder.encode(entry)
         lidFile2.text = encoder.encode(entry2)
         lidFile3.text = encoder.encode(entry3)
         when:
         new LinCommandImpl().find(configMap, ["type=FileOutput", "label=experiment=test"])
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture)
 
         then:
         stdout.join('\n') == expectedOutput1 || stdout.join('\n') == expectedOutput2
@@ -526,12 +462,7 @@ class LinCommandImplTest extends Specification{
         lid2.text = encoder.encode(incorrectData)
         when:
         new LinCommandImpl().check(configMap, ["lid://12345/output/file1.txt"])
-        def stdout = capture
-            .toString()
-            .readLines()// remove the log part
-            .findResults { line -> !line.contains('DEBUG') ? line : null }
-            .findResults { line -> !line.contains('INFO') ? line : null }
-            .findResults { line -> !line.contains('plugin') ? line : null }
+        def stdout = filterLogNoise(capture)
         def expectedOutput1 = "Checksum validation succeed"
         then:
         stdout.size() == 1

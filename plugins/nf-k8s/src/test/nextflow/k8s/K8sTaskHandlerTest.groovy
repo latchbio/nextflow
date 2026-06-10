@@ -509,32 +509,6 @@ class K8sTaskHandlerTest extends Specification {
 
     }
 
-    def 'should use K8s exit code when available' () {
-        given:
-        def ERR_FILE = Paths.get('err.file')
-        def OUT_FILE = Paths.get('out.file')
-        def POD_NAME = 'pod-xyz'
-        def client = Mock(K8sClient)
-        def termState = [ reason: "Error",
-                          startedAt: "2018-01-13T10:09:36Z",
-                          finishedAt: "2018-01-13T10:19:36Z",
-                          exitCode: 137 ]
-        def task = new TaskRun()
-        def handler = Spy(new K8sTaskHandler(task: task, client:client, podName: POD_NAME, outputFile: OUT_FILE, errorFile: ERR_FILE))
-
-        when:
-        def result = handler.checkIfCompleted()
-        then:
-        1 * handler.getState() >> [terminated: termState]
-        1 * handler.updateTimestamps(termState)
-        0 * handler.readExitFile()
-        1 * handler.deletePodIfSuccessful(task) >> null
-        1 * handler.savePodLogOnError(task) >> null
-        handler.task.exitStatus == 137
-        handler.status == TaskStatus.COMPLETED
-        result == true
-    }
-
     def 'should kill a pod' () {
         given:
         def POD_NAME = 'pod-xyz'
@@ -628,7 +602,7 @@ class K8sTaskHandlerTest extends Specification {
         def POD_NAME = 'pod-xyz'
         def client = Mock(K8sClient)
         def handler = Spy(new K8sTaskHandler(client:client, podName: POD_NAME))
-        
+
         when:
         def state = handler.getState()
         then:
@@ -866,7 +840,7 @@ class K8sTaskHandlerTest extends Specification {
         1 * k8sConfig.getPodOptions() >> new PodOptions([[env: 'FUSION_BUCKETS', value: 's3://nextflow-ci'], [privileged: true]])
         and:
         1 * handler.taskPodOptions() >> new PodOptions([:])
-        and: 
+        and:
         opts == new PodOptions([[env: 'FUSION_BUCKETS', value: 's3://nextflow-ci'], [privileged: true]])
     }
 

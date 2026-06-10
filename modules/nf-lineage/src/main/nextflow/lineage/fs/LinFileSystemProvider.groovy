@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2025, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,7 +39,6 @@ import java.nio.file.spi.FileSystemProvider
 import groovy.transform.CompileStatic
 import nextflow.lineage.config.LineageConfig
 import nextflow.util.TestOnly
-
 /**
  * File System Provider for LID Paths
  *
@@ -216,8 +215,9 @@ class LinFileSystemProvider extends FileSystemProvider {
             return getDirectoryStreamFromSubPath(lid)
         return getDirectoryStreamFromRealPath(real, lid)
     }
+
     private static DirectoryStream<Path> getDirectoryStreamFromSubPath(LinPath lid){
-        List<Path> paths = lid.getSubPaths()
+        final paths = lid.getSubPaths()
         if( !paths )
             throw new FileNotFoundException("Sub paths for '$lid' do not exist")
         return new DirectoryStream<Path>() {
@@ -225,7 +225,9 @@ class LinFileSystemProvider extends FileSystemProvider {
                 return paths.iterator()
             }
 
-            void close() {}
+            void close() {
+                paths.close()
+            }
         }
     }
     private DirectoryStream<Path> getDirectoryStreamFromRealPath(Path real, LinPath lid) {

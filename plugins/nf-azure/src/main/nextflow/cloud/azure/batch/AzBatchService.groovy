@@ -1,5 +1,5 @@
 /*
- * Copyright 2021, Microsoft Corp
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeoutException
-import java.util.function.Predicate
+import dev.failsafe.function.CheckedPredicate
 
 import com.azure.compute.batch.BatchClient
 import com.azure.compute.batch.BatchClientBuilder
@@ -81,6 +81,7 @@ import groovy.transform.Memoized
 import groovy.util.logging.Slf4j
 import nextflow.Global
 import nextflow.Session
+import nextflow.cloud.azure.config.AzBatchOpts
 import nextflow.cloud.azure.config.AzConfig
 import nextflow.cloud.azure.config.AzFileShareOpts
 import nextflow.cloud.azure.config.AzPoolOpts
@@ -119,7 +120,7 @@ class AzBatchService implements Closeable {
 
     AzBatchService(AzBatchExecutor executor) {
         assert executor
-        this.config = executor.config
+        this.config = executor.azConfig
     }
 
     protected AzVmPoolSpec getPoolSpec(String poolId) {
@@ -243,7 +244,7 @@ class AzBatchService implements Closeable {
 
         // Calculate weighted scores
         double score = 0.0
-        
+
         // CPU score - heavily weight exact matches
         double cpuScore = Math.abs(cpus - vmCores)
         score += cpuScore * 10  // Give more weight to CPU match
@@ -257,7 +258,7 @@ class AzBatchService implements Closeable {
             score += memScore
         }
 
-        // Disk score if specified  
+        // Disk score if specified
         if( disk ) {
             double diskGb = disk.toGiga()
             if( diskGb > vmDiskGb )
@@ -330,7 +331,7 @@ class AzBatchService implements Closeable {
 
     protected int diskSlots(float disk, float vmDisk, int vmCpus) {
         BigDecimal result = disk / (vmDisk / vmCpus)
-        log.warn("[AZURE BATCH] diskSlots: disk=${disk}, vmDisk=${vmDisk}, vmCpus=${vmCpus}, result=${result}")
+        log.debug("[AZURE BATCH] diskSlots: disk=${disk}, vmDisk=${vmDisk}, vmCpus=${vmCpus}, result=${result}")
         result.setScale(0, RoundingMode.UP).intValue()
     }
 
@@ -449,9 +450,58 @@ class AzBatchService implements Closeable {
         if (config.batch().jobMaxWallClockTime) {
             content.setConstraints(createJobConstraints(config.batch().jobMaxWallClockTime))
         }
-        
-        apply(() -> client.createJob(content))
+
+        applyCreateJob(content)
         return jobId
+    }
+
+    protected void applyCreateJob(BatchJobCreateContent content) {
+        final maxRetries = config.batch().maxJobQuotaRetries
+        final retryDelay = config.batch().jobQuotaRetryDelay
+
+        // define retry condition for job quota errors
+        final cond = new CheckedPredicate<? extends Throwable>() {
+            @Override
+            boolean test(Throwable t) {
+                return t instanceof HttpResponseException && isJobQuotaError((HttpResponseException) t)
+            }
+        }
+
+        final listener = new EventListener<ExecutionAttemptedEvent<Object>>() {
+            @Override
+            void accept(ExecutionAttemptedEvent<Object> event) throws Throwable {
+                log.warn "Azure Batch active job quota reached - waiting ${retryDelay} before retry (attempt ${event.attemptCount} of ${maxRetries})"
+            }
+        }
+
+        // create a retry policy with fixed delay for quota errors
+        final policy = RetryPolicy.builder()
+                .handleIf(cond)
+                .withDelay(Duration.ofMillis(retryDelay.toMillis()))
+                .withMaxAttempts(maxRetries + 1)
+                .onRetry(listener)
+                .build()
+
+        try {
+            Failsafe.with(policy).get(() -> { createJobRequest(content); return null })
+        }
+        catch (HttpResponseException e) {
+            if (isJobQuotaError(e))
+                throw new IllegalStateException("Azure Batch active job quota reached - exceeded maximum number of retries ($maxRetries). Consider increasing 'azure.batch.maxJobQuotaRetries' or reducing the number of concurrent jobs", e)
+            throw e
+        }
+    }
+
+    protected void createJobRequest(BatchJobCreateContent content) {
+        apply(() -> client.createJob(content))
+    }
+
+    protected boolean isJobQuotaError(HttpResponseException e) {
+        if (e.response.statusCode != 409)
+            return false
+        if (e.message?.contains('ActiveJobAndScheduleQuotaReached'))
+            return true
+        return toString(e.response.body)?.contains('ActiveJobAndScheduleQuotaReached')
     }
 
     String makeJobId(TaskRun task) {
@@ -508,12 +558,26 @@ class AzBatchService implements Closeable {
 
         // Handle Fusion settings
         final fusionEnabled = FusionHelper.isFusionEnabled((Session)Global.session)
-        final launcher = fusionEnabled ? FusionScriptLauncher.create(task.toTaskBean(), 'az') : null
+        String fusionCmd = null
         if( fusionEnabled ) {
+            // Create the FusionScriptLauncher from the TaskBean
+            final taskBean = task.toTaskBean()
+            final launcher = FusionScriptLauncher.create(taskBean, 'az')
+
+            // Add container options
             opts += "--privileged "
-            for( Map.Entry<String,String> it : launcher.fusionEnv() ) {
-                opts += "-e $it.key=$it.value "
+
+            // Add all environment variables from the launcher
+            final fusionEnv = launcher.fusionEnv()
+            if( fusionEnv ) {
+                for( Map.Entry<String,String> it : fusionEnv ) {
+                    opts += "-e $it.key=$it.value "
+                }
             }
+
+            // Get the fusion submit command
+            final List<String> cmdList = launcher.fusionSubmitCli(task)
+            fusionCmd = cmdList ? String.join(' ', cmdList) : null
         }
 
         // Create container settings
@@ -521,15 +585,13 @@ class AzBatchService implements Closeable {
                 .setContainerRunOptions(opts)
 
         // submit command line
-        final String cmd = fusionEnabled
-                ? launcher.fusionSubmitCli(task).join(' ')
-                : "bash -o pipefail -c 'bash ${TaskRun.CMD_RUN} 2>&1 | tee ${TaskRun.CMD_LOG}'"
+        final String cmd = fusionEnabled && fusionCmd
+                    ? fusionCmd
+                    : "bash -o pipefail -c 'bash ${TaskRun.CMD_RUN} 2>&1 | tee ${TaskRun.CMD_LOG}'"
         // cpus and memory
         final slots = computeSlots(task, pool)
         // max wall time
-        final constraints = new BatchTaskConstraints()
-        if( task.config.getTime() )
-            constraints.setMaxWallClockTime( Duration.of(task.config.getTime().toMillis(), ChronoUnit.MILLIS) )
+        final constraints = taskConstraints(task)
 
         log.trace "[AZURE BATCH] Submitting task: $taskId, cpus=${task.config.getCpus()}, mem=${task.config.getMemory()?:'-'}, slots: $slots"
         return new BatchTaskCreateContent(taskId, cmd)
@@ -539,6 +601,19 @@ class AzBatchService implements Closeable {
                 .setOutputFiles(outputFileUrls(task, sas))
                 .setRequiredSlots(slots)
                 .setConstraints(constraints)
+    }
+
+    /**
+     * Create task constraints based on the task configuration
+     *
+     * @param task The task run to create constraints for
+     * @return The BatchTaskConstraints object
+     */
+    protected BatchTaskConstraints taskConstraints(TaskRun task) {
+        final constraints = new BatchTaskConstraints()
+        if( task.config.getTime() )
+            constraints.setMaxWallClockTime( Duration.of(task.config.getTime().toMillis(), ChronoUnit.MILLIS) )
+        return constraints
     }
 
     AzTaskKey runTask(String poolId, String jobId, TaskRun task) {
@@ -599,6 +674,13 @@ class AzBatchService implements Closeable {
         List<OutputFile> result = new ArrayList<>(20)
         result << destFile(TaskRun.CMD_EXIT, task.workDir, sas)
         result << destFile(TaskRun.CMD_LOG, task.workDir, sas)
+        result << destFile(TaskRun.CMD_OUTFILE, task.workDir, sas)
+        result << destFile(TaskRun.CMD_ERRFILE, task.workDir, sas)
+        result << destFile(TaskRun.CMD_SCRIPT, task.workDir, sas)
+        result << destFile(TaskRun.CMD_RUN, task.workDir, sas)
+        result << destFile(TaskRun.CMD_STAGE, task.workDir, sas)
+        result << destFile(TaskRun.CMD_TRACE, task.workDir, sas)
+        result << destFile(TaskRun.CMD_ENV, task.workDir, sas)
         return result
     }
 
@@ -802,7 +884,7 @@ class AzBatchService implements Closeable {
         }
 
         // otherwise return a StartTask object with the start task command and resource files
-        return new BatchStartTask(startCmd.join('; '))
+        return new BatchStartTask(startCmd.join(' && '))
             .setResourceFiles(resourceFiles)
             .setUserIdentity(userIdentity(opts.privileged, null, AutoUserScope.POOL))
     }
@@ -910,14 +992,14 @@ class AzBatchService implements Closeable {
             // Get pool lifetime since creation.
             lifespan = time() - time("{{poolCreationTime}}");
             interval = TimeInterval_Minute * {{scaleInterval}};
-            
+
             // Compute the target nodes based on pending tasks.
             // \$PendingTasks == The sum of \$ActiveTasks and \$RunningTasks
             \$samples = \$PendingTasks.GetSamplePercent(interval);
             \$tasks = \$samples < 70 ? max(0, \$PendingTasks.GetSample(1)) : max( \$PendingTasks.GetSample(1), avg(\$PendingTasks.GetSample(interval)));
             \$targetVMs = \$tasks > 0 ? \$tasks : max(0, \$TargetDedicatedNodes/2);
             targetPoolSize = max(0, min(\$targetVMs, {{maxVmCount}}));
-            
+
             // For first interval deploy 1 node, for other intervals scale up/down as per tasks.
             \$${target} = lifespan < interval ? {{vmCount}} : targetPoolSize;
             \$NodeDeallocationOption = taskcompletion;
@@ -1029,12 +1111,12 @@ class AzBatchService implements Closeable {
      * @param cond A predicate that determines when a retry should be triggered
      * @return The {@link RetryPolicy} instance
      */
-    protected <T> RetryPolicy<T> retryPolicy(Predicate<? extends Throwable> cond) {
+    protected <T> RetryPolicy<T> retryPolicy(CheckedPredicate<? extends Throwable> cond) {
         final cfg = config.retryConfig()
         final listener = new EventListener<ExecutionAttemptedEvent<T>>() {
             @Override
             void accept(ExecutionAttemptedEvent<T> event) throws Throwable {
-                log.debug("Azure TooManyRequests response error - attempt: ${event.attemptCount}; reason: ${event.lastFailure.message}")
+                log.debug("Azure TooManyRequests response error - attempt: ${event.attemptCount}; reason: ${event.lastException.message}")
             }
         }
         return RetryPolicy.<T>builder()
@@ -1057,7 +1139,7 @@ class AzBatchService implements Closeable {
      */
     protected <T> T apply(CheckedSupplier<T> action) {
         // define the retry condition
-        final cond = new Predicate<? extends Throwable>() {
+        final cond = new CheckedPredicate<? extends Throwable>() {
             @Override
             boolean test(Throwable t) {
                 if( t instanceof HttpResponseException && t.response.statusCode in RETRY_CODES )

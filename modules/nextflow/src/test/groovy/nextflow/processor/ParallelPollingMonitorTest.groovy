@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -116,6 +116,28 @@ class ParallelPollingMonitorTest extends Specification {
         and:
         0           |   1    | false | false
         10          |   1    | false | false
+    }
+
+    def 'should inherit array size validation from parent TaskPollingMonitor' () {
+        given:
+        def session = Mock(Session)
+        def throttlingExecutor = Mock(ThrottlingExecutor)
+        def monitor = new ParallelPollingMonitor(throttlingExecutor, [name: 'foo', session: session, capacity: 5, pollInterval: Duration.of('1min')])
+        and:
+        def processor = Mock(TaskProcessor)
+        def arrayHandler = Mock(TaskHandler) {
+            getTask() >> Mock(TaskArrayRun) {
+                getName() >> 'oversized_array'
+                getArraySize() >> 10
+                getProcessor() >> processor
+            }
+        }
+
+        when:
+        monitor.canSubmit(arrayHandler)
+        then:
+        def e = thrown(IllegalArgumentException)
+        e.message.contains("Process 'oversized_array' declares array size (10) which exceeds the executor queue size (5)")
     }
 
 }

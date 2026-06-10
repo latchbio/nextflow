@@ -13,7 +13,7 @@ nextflow.enable.dsl=1
 
 params.str = 'Hello world!'
 
-process splitLetters {
+process split_letters {
     output:
     file 'chunk_*' into letters
 
@@ -23,7 +23,7 @@ process splitLetters {
     """
 }
 
-process convertToUpper {
+process convert_to_upper {
     input:
     file x from letters.flatten()
 
@@ -48,7 +48,7 @@ You can see the DSL1 Nextflow script from above written in DSL2 here:
 ```nextflow
 params.str = 'Hello world!'
 
-process splitLetters {
+process split_letters {
     output:
     path 'chunk_*'
 
@@ -58,7 +58,7 @@ process splitLetters {
     """
 }
 
-process convertToUpper {
+process convert_to_upper {
     input:
     path x
 
@@ -72,7 +72,7 @@ process convertToUpper {
 }
 
 workflow {
-    splitLetters | flatten | convertToUpper | view { v -> v.trim() }
+    split_letters | flatten | convert_to_upper | view { v -> v.trim() }
 }
 ```
 
@@ -100,7 +100,7 @@ Similarly, in DSL2, process outputs can be consumed by multiple consumers automa
 
 In DSL1, the entire Nextflow pipeline must be defined in a single file. For example, `main.nf`. This restriction becomes cumbersome as a pipeline grows and hinders the sharing and reuse of pipeline components.
 
-DSL2 introduces the concept of "module scripts" (or "modules" for short), which are Nextflow scripts that can be "included" by other scripts. While modules are not essential to migrating to DSL2, nor are they mandatory in DSL2, modules can help you organize a large pipeline into multiple smaller files and take advantage of modules created by others. See {ref}`module-page` to learn more about modules.
+DSL2 introduces the concept of "module scripts" (or "modules" for short), which are Nextflow scripts that can be "included" by other scripts. While modules are not essential to migrating to DSL2, nor are they mandatory in DSL2, modules can help you organize a large pipeline into multiple smaller files and take advantage of modules created by others. See {ref}`modules-page` to learn more about modules.
 
 :::{note}
 DSL2 scripts cannot exceed 64 KB in size. Split large DSL1 scripts into modules to avoid this limit.
@@ -119,7 +119,7 @@ DSL2 scripts cannot exceed 64 KB in size. Split large DSL1 scripts into modules 
 - Unqualified value and file elements in a tuple declaration are no longer allowed. Use an explicit `val` or `path` qualifier. For example:
 
   ```nextflow
-  process foo {
+  process sam2bam {
       input:
       tuple X, 'some-file.sam'
 
@@ -136,7 +136,7 @@ DSL2 scripts cannot exceed 64 KB in size. Split large DSL1 scripts into modules 
   Use:
 
   ```nextflow
-  process foo {
+  process sam2bam {
       input:
       tuple val(X), path('some-file.sam')
 
@@ -181,23 +181,23 @@ An early preview of DSL2 was available in 2020. Note that some of that early DSL
   For example:
 
   ```nextflow
-  include './some/library'
-  include bar from './other/library'
+  include './modules/hello'
+  include bye from './modules/bye'
 
   workflow {
-      foo()
-      bar()
+      hello()
+      bye()
   }
   ```
 
   Should be replaced with:
 
   ```nextflow
-  include { foo } from './some/library'
-  include { bar } from './other/library'
+  include { hello } from './modules/hello'
+  include { bye } from './modules/bye'
 
   workflow {
-      foo()
-      bar()
+      hello()
+      bye()
   }
   ```

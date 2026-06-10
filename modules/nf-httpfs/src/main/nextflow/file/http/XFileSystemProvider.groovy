@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -200,7 +200,7 @@ abstract class XFileSystemProvider extends FileSystemProvider {
         if ( conn instanceof HttpURLConnection && conn.getResponseCode() in REDIRECT_CODES && attempt < MAX_REDIRECT_HOPS ) {
             final header = InsensitiveMap.of(conn.getHeaderFields())
             final location = header.get("Location")?.get(0)
-            log.debug "Remote redirect location: $location"
+            log.debug "Remote redirect location=$location; attempt=$attempt"
             final newUrl = new URI(absLocation(location,url)).toURL()
             if( url.protocol=='https' && newUrl.protocol=='http' )
                 throw new IOException("Refuse to follow redirection from HTTPS to HTTP (unsafe) URL - origin: $url - target: $newUrl")
@@ -483,11 +483,17 @@ abstract class XFileSystemProvider extends FileSystemProvider {
         if( conn instanceof FtpURLConnection ) {
             return new XFileAttributes(null,-1)
         }
-        if ( conn instanceof HttpURLConnection && conn.getResponseCode() in [200, 301, 302, 307, 308]) {
-            final header = conn.getHeaderFields()
-            return readHttpAttributes(header)
+        if( conn !instanceof HttpURLConnection ) {
+            return null
         }
-        return null
+        try {
+            if( conn.getResponseCode() in [200, 301, 302, 307, 308] )
+                return readHttpAttributes(conn.getHeaderFields())
+            return null
+        }
+        finally {
+            ((HttpURLConnection) conn).disconnect()
+        }
     }
 
     protected XFileAttributes readHttpAttributes(Map<String,List<String>> header) {

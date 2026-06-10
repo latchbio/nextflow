@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,15 +21,53 @@ import java.util.List;
 import java.util.Map;
 
 import groovy.lang.Closure;
-import nextflow.script.types.NextflowMetadata;
-import nextflow.script.types.WorkflowMetadata;
+import groovy.transform.NamedParam;
+import groovy.transform.NamedParams;
+import nextflow.script.namespaces.ChannelNamespace;
+import nextflow.script.namespaces.LogNamespace;
+import nextflow.script.namespaces.NextflowNamespace;
+import nextflow.script.namespaces.WorkflowNamespace;
+import nextflow.script.types.Record;
+import nextflow.script.types.Tuple;
 
 /**
- * The built-in constants and functions in a script.
+ * The built-in namespaces, constants, and functions in a script.
  *
  * @author Ben Sherman <bentshermann@gmail.com>
  */
 public interface ScriptDsl extends DslScope {
+
+    // namespaces
+
+    @Constant("channel")
+    @Description("""
+        The `channel` namespace contains the built-in channel factories.
+
+        [Read more](https://nextflow.io/docs/latest/reference/channel.html)
+    """)
+    ChannelNamespace getChannel();
+
+    @Constant("log")
+    @Description("""
+        The `log` namepsace contains functions for logging messages to the console.
+
+        [Read more](https://nextflow.io/docs/latest/reference/stdlib-namespaces.html#log)
+    """)
+    LogNamespace getLog();
+
+    @Constant("nextflow")
+    @Description("""
+        The `nextflow` namespace contains information about the current Nextflow runtime.
+    """)
+    NextflowNamespace getNextflow();
+
+    @Constant("workflow")
+    @Description("""
+        The `workflow` namespace contains information about the current workflow run.
+    """)
+    WorkflowNamespace getWorkflow();
+
+    // constants
 
     @Deprecated
     @Constant("baseDir")
@@ -44,23 +82,11 @@ public interface ScriptDsl extends DslScope {
     """)
     Path getLaunchDir();
 
-    @Constant("log")
-    @Description("""
-        Logger which can be used to log messages to the console.
-    """)
-    Object getLog();
-
     @Constant("moduleDir")
     @Description("""
         The directory where a module script is located (equivalent to `projectDir` if used in the main script).
     """)
     Path getModuleDir();
-
-    @Constant("nextflow")
-    @Description("""
-        Map of Nextflow runtime information.
-    """)
-    NextflowMetadata getNextflow();
 
     @Constant("projectDir")
     @Description("""
@@ -80,11 +106,7 @@ public interface ScriptDsl extends DslScope {
     """)
     Path getWorkDir();
 
-    @Constant("workflow")
-    @Description("""
-        Map of workflow runtime information.
-    """)
-    WorkflowMetadata getWorkflow();
+    // functions
 
     @Description("""
         Create a branch criteria to use with the `branch` operator.
@@ -112,12 +134,36 @@ public interface ScriptDsl extends DslScope {
 
         *NOTE: This function will return a collection if the glob pattern yields zero or multiple files. Use `files()` to get a collection of files.*
     """)
-    Path file(Map<String,?> opts, String filePattern);
+    Path file(
+        @NamedParams({
+            @NamedParam(value = "checkIfExists", type = Boolean.class),
+            @NamedParam(value = "followLinks", type = Boolean.class),
+            @NamedParam(value = "glob", type = Boolean.class),
+            @NamedParam(value = "hidden", type = Boolean.class),
+            @NamedParam(value = "maxDepth", type = Integer.class),
+            @NamedParam(value = "type", type = String.class),
+        })
+        Map<String,?> opts,
+        String filePattern
+    );
+    Path file(String filePattern);
 
     @Description("""
         Get a collection of files from a file name or glob pattern.
     """)
-    Collection<Path> files(Map<String,?> opts, String filePattern);
+    Collection<Path> files(
+        @NamedParams({
+            @NamedParam(value = "checkIfExists", type = Boolean.class),
+            @NamedParam(value = "followLinks", type = Boolean.class),
+            @NamedParam(value = "glob", type = Boolean.class),
+            @NamedParam(value = "hidden", type = Boolean.class),
+            @NamedParam(value = "maxDepth", type = Integer.class),
+            @NamedParam(value = "type", type = String.class),
+        })
+        Map<String,?> opts,
+        String filePattern
+    );
+    Collection<Path> files(String filePattern);
 
     @Description("""
         Create a grouping key to use with the [groupTuple](https://nextflow.io/docs/latest/operator.html#grouptuple) operator.
@@ -150,9 +196,15 @@ public interface ScriptDsl extends DslScope {
     void println(Object value);
 
     @Description("""
+        Create a record from the given named arguments.
+    """)
+    Record record(Map<String,?> opts);
+
+    @Description("""
         Send an email.
     """)
     void sendMail(Map<String,?> params);
+    void sendMail(Closure params);
 
     @Description("""
         Sleep for the given number of milliseconds.
@@ -162,6 +214,6 @@ public interface ScriptDsl extends DslScope {
     @Description("""
         Create a tuple from the given arguments.
     """)
-    List<?> tuple(Object... args);
+    Tuple tuple(Object... args);
 
 }

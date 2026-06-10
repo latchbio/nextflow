@@ -111,6 +111,79 @@ Copying a map with the `+` operator is a safer way to modify maps in Nextflow, s
 
 See {ref}`stdlib-types-map` for the set of available map operations.
 
+(script-records)=
+
+## Records
+
+Records are used to store a set of related fields, where each field can have its own type. They are created using the `record` function:
+
+```nextflow
+person = record(name: 'Alice', age: 42, is_alive: true)
+```
+
+Record fields are accessed by name:
+
+```nextflow
+name = person.name
+age = person.age
+is_alive = person.is_alive
+```
+
+Records are immutable -- once a record is created, it cannot be modified. Use record operations to create new records instead. 
+
+For example:
+
+```nextflow
+person + record(age: 43) - ['is_alive']
+
+// record(name: 'Alice', age: 43)
+```
+
+See {ref}`stdlib-types-record` for the set of available record operations.
+
+(script-tuples)=
+
+## Tuples
+
+Tuples are used to store a fixed sequence of heterogeneous values. They are created using the `tuple` function:
+
+```nextflow
+person = tuple('Alice', 42, true)
+```
+
+Tuple elements are accessed by index:
+
+```nextflow
+name = person[0]
+age = person[1]
+is_alive = person[2]
+```
+
+Tuples can be destructured in assignments:
+
+```nextflow
+(name, age, is_alive) = person
+```
+
+As well as closure parameters:
+
+```nextflow
+coords = [
+    tuple(1, 2),
+    tuple(2, 4),
+    tuple(3, 6),
+    tuple(4, 8)
+]
+
+coords.each { x, y ->
+    println "x=$x, y=$y"
+}
+```
+
+Tuples are immutable -- once a tuple is created, its elements cannot be modified.
+
+See {ref}`stdlib-types-tuple` for the set of available tuple operations.
+
 (script-operators)=
 
 ## Operators
@@ -118,7 +191,7 @@ See {ref}`stdlib-types-map` for the set of available map operations.
 Operators are symbols that perform specific functions on one or more values, and generally make code easier to read. This section highlights some of the most commonly used operators.
 
 :::{note}
-Operators in this context are different from *channel operators*, which are specialized functions for working with channels. See {ref}`channel-page` for more information.
+Operators in this context are different from *channel operators*, which are specialized functions for working with channels. See {ref}`dataflow-page` for more information.
 :::
 
 The `==` and `!=` operators can be used to test whether any two values are equal (or not equal):
@@ -136,9 +209,9 @@ The `assert` keyword simply tests a condition and raises an error if the conditi
 Comparison operators can be used to compare two values:
 
 ```nextflow
-assert 3 < 3.14         // numbers are compared as, well, numbers
+assert 3 < 3.14             // numbers are compared as numbers
 assert 3 <= 3
-assert 'foo' > 'bar'    // strings are compared alphabetically
+assert 'hello' < 'world'    // strings are compared alphabetically
 ```
 
 Logical operators can be used to perform Boolean logic:
@@ -152,8 +225,8 @@ assert !true == false           // logical NOT
 The `in` and `!in` operators can be used to test *membership*, i.e. whether a collection contains a value:
 
 ```nextflow
-assert 'lo wo' in 'Hello world!'
 assert 2 in [1, 2, 3]
+assert 'a' in [a: 1, b: 2, c: 3]
 ```
 
 Arithmetic operators can be used to do math:
@@ -297,15 +370,15 @@ Regular expressions are the Swiss Army knife of text processing. They provide th
 Use `=~` to check whether a given pattern occurs anywhere in a string:
 
 ```nextflow
-assert 'foo' =~ /foo/
-assert 'foobar' =~ /foo/
+assert 'hello' =~ /hello/
+assert 'hello world' =~ /hello/
 ```
 
 Use `==~` to check whether a string matches a given regular expression pattern exactly.
 
 ```nextflow
-assert 'foo' ==~ /foo/
-assert !('foobar' ==~ /foo/)
+assert 'hello' ==~ /hello/
+assert !('hello world' ==~ /hello/)
 ```
 
 ### String replacement
@@ -488,4 +561,4 @@ workflow {
 }
 ```
 
-See {ref}`workflow-page`, {ref}`process-page`, and {ref}`module-page`  for more information about how to use these features in your Nextflow scripts.
+See {ref}`Workflows <workflow-page>`, {ref}`Processes <process-page>`, and {ref}`Modules <modules-page>` for more information about how to use these features in your Nextflow scripts.

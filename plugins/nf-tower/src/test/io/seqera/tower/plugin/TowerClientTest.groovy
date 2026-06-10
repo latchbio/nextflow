@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,29 +12,18 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package io.seqera.tower.plugin
 
-import java.nio.file.Files
+import java.net.http.HttpResponse
 import java.time.Instant
-import java.time.OffsetDateTime
-import java.time.ZoneId
 
-import nextflow.Session
-import nextflow.cloud.types.CloudMachineInfo
-import nextflow.cloud.types.PriceModel
-import nextflow.container.ContainerConfig
-import nextflow.container.resolver.ContainerMeta
-import nextflow.exception.AbortOperationException
-import nextflow.script.ScriptBinding
-import nextflow.script.WorkflowMetadata
-import nextflow.trace.TraceRecord
-import nextflow.trace.WorkflowStats
-import nextflow.trace.WorkflowStatsObserver
-import nextflow.util.ProcessHelper
-import nextflow.util.SimpleHttpClient
+import com.github.tomakehurst.wiremock.WireMockServer
+import com.github.tomakehurst.wiremock.client.WireMock
+import io.seqera.http.HxClient
+import nextflow.exception.AbortRunException
+import nextflow.util.Duration
 import spock.lang.Specification
 /**
  *
@@ -64,58 +53,6 @@ class TowerClientTest extends Specification {
         then:
         thrown(Exception)
     }
-
-    def 'should create message map' () {
-        given:
-        def session = Mock(Session)
-        def params = new ScriptBinding.ParamsMap(x: "hello")
-        def meta = Mock(WorkflowMetadata)
-
-        def tower = Spy(TowerClient)
-        tower.@runName = session.runName
-        tower.@workflowId = '12ef'
-        tower.@terminated = true
-
-        when:
-        def map = tower.makeCompleteReq(session)
-        then:
-        1 * session.getWorkflowMetadata() >> meta
-        1 * session.getParams() >> params
-        1 * meta.toMap() >> [foo:1, bar:2, container: [p1: 'c1', p2: 'c2']]
-        1 * tower.getMetricsList() >> [[process:'foo', cpu: [min: 1, max:5], time: [min: 6, max: 9]]]
-        1 * tower.getWorkflowProgress(false) >> new WorkflowProgress()
-        1 * tower.getOutFile() >> 'bar.out'
-        1 * tower.getLogFile() >> 'foo.out'
-        1 * tower.getOperationId() >> 'op-12345'
-        then:
-        map.workflow.foo == 1
-        map.workflow.bar == 2
-        map.workflow.id == '12ef'
-        map.workflow.params == [x: 'hello']
-        map.workflow.container == null
-        map.metrics == [[process:'foo', cpu: [min: 1, max:5], time: [min: 6, max: 9]]]
-        map.progress == new WorkflowProgress()
-        and:
-        aroundNow(map.instant)
-        and:
-        map.workflow.outFile == 'bar.out'
-        map.workflow.logFile == 'foo.out'
-        map.workflow.operationId == 'op-12345'
-    }
-
-    def 'should capitalise underscores' () {
-        given:
-        def tower = new TowerClient()
-
-        expect:
-        tower.underscoreToCamelCase(STR) == EXPECTED
-        where:
-        STR         | EXPECTED
-        'abc'       | 'abc'
-        'a_b_c'     | 'aBC'
-        'foo__bar'  | 'fooBar'
-    }
-    
 
     def 'should validate URL' () {
         given:
@@ -152,194 +89,84 @@ class TowerClientTest extends Specification {
     }
 
     def 'should get access token' () {
-        given:
-        def session = Mock(Session)
-
         when:
-        def observer = new TowerClient(session: session, env: [TOWER_ACCESS_TOKEN: 'xyz'])
-        def result = observer.getAccessToken()
+        def config = new TowerConfig([accessToken: 'abc'], [TOWER_ACCESS_TOKEN: 'xyz'])
+        def client = new TowerClient(config)
         then:
-        session.getConfig() >> [tower:[accessToken: 'abc'] ]
-        and:
         // the token in the config overrides the one in the env
-        result == 'abc'
+        client.getAccessToken() == 'abc'
 
         when:
-        observer = new TowerClient(session: session, env: [TOWER_ACCESS_TOKEN: 'xyz', TOWER_WORKFLOW_ID: '111222333'])
-        result = observer.getAccessToken()
+        config = new TowerConfig([accessToken: 'abc'], [TOWER_ACCESS_TOKEN: 'xyz', TOWER_WORKFLOW_ID: '111222333'])
+        client = new TowerClient(config)
         then:
-        session.getConfig() >> [tower:[accessToken: 'abc'] ]
-        and:
         // the token from the env is taken because is a tower launch aka TOWER_WORKFLOW_ID is set
-        result == 'xyz'
+        client.getAccessToken() == 'xyz'
 
         when:
-        observer = new TowerClient(session: session, env: [TOWER_ACCESS_TOKEN: 'xyz'])
-        result = observer.getAccessToken()
+        config = new TowerConfig([:], [TOWER_ACCESS_TOKEN: 'xyz'])
+        client = new TowerClient(config)
         then:
-        session.getConfig() >> [:]
-        and:
-        result == 'xyz'
+        client.getAccessToken() == 'xyz'
 
         when:
-        observer = new TowerClient(session: session, env:[:])
-        observer.getAccessToken()
+        def c = new TowerClient()
+        c.getAccessToken()
         then:
-        session.getConfig() >> [:]
-        then:
-        thrown(AbortOperationException)
+        thrown(AbortRunException)
     }
 
-    def 'should post task records' () {
+    def 'should set the auth token' () {
         given:
-        def URL = 'http://foo.com'
-        def PROGRESS = Mock(WorkflowProgress) { getRunning()>>1; getSucceeded()>>2; getFailed()>>3 }
-        def client = Mock(SimpleHttpClient)
-        def observer = Spy(TowerClient)
-        observer.@httpClient = client
-        observer.@workflowId = 'xyz-123'
-        
-        def nowTs = System.currentTimeMillis()
-        def submitTs = nowTs-2000
-        def startTs = nowTs-1000
-
-        def trace = new TraceRecord([
-                taskId: 10,
-                process: 'foo',
-                workdir: "/work/dir",
-                cpus: 1,
-                submit: submitTs,
-                start: startTs,
-                complete: nowTs ])
-        trace.executorName= 'batch'
-        trace.machineInfo = new CloudMachineInfo('m4.large', 'eu-west-1b', PriceModel.spot)
-        trace.containerMeta = new ContainerMeta(requestId: '12345', sourceImage: 'ubuntu:latest', targetImage: 'wave.io/12345/ubuntu:latest')
-        when:
-        def req = observer.makeTasksReq([trace])
-        then:
-        observer.getWorkflowProgress(true) >> PROGRESS
+        def http = Mock(HxClient.Builder)
+        def client = new TowerClient()
         and:
-        req.tasks[0].taskId == 10
-        req.tasks[0].process == 'foo'
-        req.tasks[0].workdir == "/work/dir"
-        req.tasks[0].cpus == 1
-        req.tasks[0].submit == OffsetDateTime.ofInstant(Instant.ofEpochMilli(submitTs), ZoneId.systemDefault())
-        req.tasks[0].start == OffsetDateTime.ofInstant(Instant.ofEpochMilli(startTs), ZoneId.systemDefault())
-        req.tasks[0].executor == 'batch'
-        req.tasks[0].machineType == 'm4.large'
-        req.tasks[0].cloudZone == 'eu-west-1b'
-        req.tasks[0].priceModel == 'spot'
-        and:
-        req.progress.running == 1
-        req.progress.succeeded == 2
-        req.progress.failed == 3
-        and:
-        req.containers[0].requestId == '12345'
-        req.containers[0].sourceImage == 'ubuntu:latest'
-        req.containers[0].targetImage == 'wave.io/12345/ubuntu:latest'
-        and:
-        aroundNow(req.instant)
+        def SIMPLE = '4ffbf1009ebabea77db3d72efefa836dfbb71271'
+        def BEARER = 'eyJ0aWQiOiA1fS5jZmM1YjVhOThjZjM2MTk1NjBjZWU1YmMwODUxYzA1ZjkzMDdmN2Iz'
 
         when:
-        observer.sendHttpMessage(URL, req)
+        client.setupClientAuth(http, SIMPLE)
         then:
-        1 * client.sendHttpMessage(URL, _, 'POST') >> null
+        1 * http.basicAuth('@token:' + SIMPLE) >> http
 
+        when:
+        client.setupClientAuth(http, SIMPLE)
+        then:
+        1 * http.basicAuth('@token:' + SIMPLE) >> http
+
+        when:
+        client.setupClientAuth(http, BEARER)
+        then:
+        1 * http.bearerToken(BEARER) >> http
+        1 * http.refreshToken(_) >> http
+        1 * http.refreshTokenUrl(_) >> http
     }
 
-
-    static now_millis = System.currentTimeMillis()
-    static now_instant = OffsetDateTime.ofInstant(Instant.ofEpochMilli(now_millis), ZoneId.systemDefault())
-
-    def 'should fix field types' () {
+    def 'should get trace endpoint' () {
+        given:
+        def client = new TowerClient()
+        client.@endpoint = TowerClient.DEF_ENDPOINT_URL
 
         expect:
-        TowerClient.fixTaskField(FIELD,VALUE) == EXPECTED
-
-        where:
-        FIELD       | VALUE         | EXPECTED
-        'foo'       | 'hola'        | 'hola'
-        'submit'    | now_millis    | now_instant
-        'start'     | now_millis    | now_instant
-        'complete'  | now_millis    | now_instant
-        'complete'  | 0             | null
+        client.getUrlTraceCreate(null) == 'https://api.cloud.seqera.io/trace/create'
+        client.getUrlTraceBegin(null, '12345') == 'https://api.cloud.seqera.io/trace/12345/begin'
+        client.getUrlTraceProgress(null, '12345') == 'https://api.cloud.seqera.io/trace/12345/progress'
+        client.getUrlTraceHeartbeat(null, '12345') == 'https://api.cloud.seqera.io/trace/12345/heartbeat'
+        client.getUrlTraceComplete(null, '12345') == 'https://api.cloud.seqera.io/trace/12345/complete'
     }
 
-
-    def 'should create workflow json' () {
-
+    def 'should get trace endpoint with workspace' () {
         given:
-        def sessionId = UUID.randomUUID()
-        def dir = Files.createTempDirectory('test')
-        def http = Mock(SimpleHttpClient)
-        TowerClient client = Spy(new TowerClient([httpClient: http, env: ENV]))
-        and:
-        client.getOperationId() >> 'op-112233'
-        client.getLogFile() >> 'log.file'
-        client.getOutFile() >> 'out.file'
-
-        and:
-        def session = Mock(Session)
-        session.getUniqueId() >> sessionId
-        session.getRunName() >> 'foo'
-        session.config >> [:]
-        session.containerConfig >> new ContainerConfig()
-        session.getParams() >> new ScriptBinding.ParamsMap([foo:'Hello', bar:'World'])
-
-        def meta = new WorkflowMetadata(
-                session: session,
-                projectName: 'the-project-name',
-                repository: 'git://repo.com/foo' )
-        session.getWorkflowMetadata() >> meta
-        session.getStatsObserver() >> Mock(WorkflowStatsObserver) { getStats() >> new WorkflowStats() }
-
-        when:
-        def req1 = client.makeCreateReq(session)
-        then:
-        req1.sessionId == sessionId.toString()
-        req1.runName == 'foo'
-        req1.projectName == 'the-project-name'
-        req1.repository == 'git://repo.com/foo'
-        req1.workflowId == WORKFLOW_ID
-        and:
-        aroundNow(req1.instant)
-
-        when:
-        def req = client.makeBeginReq(session)
-        then:
-        client.getWorkflowId() >> '12345'
-        and:
-        req.workflow.id == '12345'
-        req.workflow.params == [foo:'Hello', bar:'World']
-        req.workflow.outFile == 'out.file'
-        req.workflow.logFile == 'log.file'
-        req.workflow.operationId == 'op-112233'
-        and:
-        req.towerLaunch == TOWER_LAUNCH
-        and:
-        aroundNow(req.instant)
-
-        cleanup:
-        dir?.deleteDir()
-
-        where:
-        ENV                         | WORKFLOW_ID   | TOWER_LAUNCH
-        [:]                         | null          | false
-        [TOWER_WORKFLOW_ID: '1234'] | '1234'        | true
-
-    }
-
-    def 'should convert map' () {
-        given:
-        def tower = new TowerClient()
+        def client = new TowerClient()
+        client.@endpoint = TowerClient.DEF_ENDPOINT_URL
 
         expect:
-        tower.mapToString(null)  == null
-        tower.mapToString('ciao') == 'ciao'
-        tower.mapToString([:]) == null
-        tower.mapToString([p:'foo', q:'bar']) == null
+        client.getUrlTraceCreate('300') == 'https://api.cloud.seqera.io/trace/create?workspaceId=300'
+        client.getUrlTraceBegin('300', '12345') == 'https://api.cloud.seqera.io/trace/12345/begin?workspaceId=300'
+        client.getUrlTraceProgress('300', '12345') == 'https://api.cloud.seqera.io/trace/12345/progress?workspaceId=300'
+        client.getUrlTraceHeartbeat('300', '12345') == 'https://api.cloud.seqera.io/trace/12345/heartbeat?workspaceId=300'
+        client.getUrlTraceComplete('300', '12345') == 'https://api.cloud.seqera.io/trace/12345/complete?workspaceId=300'
     }
-
 
     def 'should load schema col len' () {
         given:
@@ -353,175 +180,131 @@ class TowerClientTest extends Specification {
         schema.get('workflow.projectDir') == 255
     }
 
-    def 'should create init request' () {
+    def 'should handle HTTP request with content'() {
+        given: 'a TowerClient'
+        def tower = new TowerClient()
+        def content = '{"test": "data"}'
+        def request = tower.makeRequest('http://example.com/test', content, 'POST')
+
+        expect: 'the request should be created with the content'
+        request != null
+        request.method() == 'POST'
+        request.uri().toString() == 'http://example.com/test'
+    }
+
+    def 'should send http message' () {
         given:
-        def uuid = UUID.randomUUID()
-        def client = new TowerClient(env: [TOWER_WORKFLOW_ID: 'x123'])
-        def meta = Mock(WorkflowMetadata) {
-            getProjectName() >> 'the-project-name'
-            getRepository() >> 'git://repo.com/foo'
+        def client = Mock(HxClient)
+        def tower = new TowerClient()
+        tower.@httpClient = client
+
+        when:
+        def resp = tower.sendHttpMessage('http://foo.com', [foo: 'bar'], 'POST')
+        then:
+        1 * client.sendAsString(_) >> Mock(HttpResponse) { statusCode() >> 200; body() >> '{}' }
+        and:
+        !resp.error
+        resp.code == 200
+    }
+
+    def 'should return error response on http request timeout' () {
+        given: 'a WireMock server that hangs for 5 seconds'
+        def wireMock = new WireMockServer(0)
+        wireMock.start()
+        wireMock.stubFor(
+            WireMock.post(WireMock.anyUrl())
+                .willReturn(WireMock.aResponse()
+                    .withFixedDelay(5_000)
+                    .withStatus(200)
+                    .withBody('{}'))
+        )
+
+        and: 'a TowerClient whose requests carry a 200ms timeout'
+        TowerConfig config = Mock(TowerConfig) {
+            getHttpReadTimeout() >> Duration.of('200 ms')
+            getHttpConnectTimeout() >> Duration.of('5 s')
+            getEndpoint() >> wireMock.baseUrl()
+            getAccessToken() >> 'token'
         }
-        def session = Mock(Session) {
-            getUniqueId() >> uuid
-            getRunName() >> 'foo_bar'
-            getWorkflowMetadata() >> meta
+        TowerClient client = new TowerClient(config)
+
+        when:
+        def response = client.sendHttpMessage("${wireMock.baseUrl()}/trace/create", [runName: 'test'], 'POST')
+
+        then: 'a timeout produces an error response with code 0'
+        response.code == 0
+        response.message.contains('Unable to connect')
+
+        cleanup:
+        wireMock.stop()
+    }
+
+    def 'should build URL without query params'() {
+        given:
+        def client = new TowerClient()
+        client.@endpoint = 'https://api.cloud.seqera.io'
+
+        when:
+        def url = client.buildUrl( '/workflow/launch', [:])
+
+        then:
+        url == 'https://api.cloud.seqera.io/workflow/launch'
+    }
+
+    def 'should build URL with query params'() {
+        given:
+        def client = new TowerClient()
+        client.@endpoint = 'https://api.cloud.seqera.io'
+
+        when:
+        def url = client.buildUrl( '/workflow/launch', [workspaceId: '12345'])
+
+        then:
+        url.contains('https://api.cloud.seqera.io/workflow/launch?')
+        url.contains('workspaceId=12345')
+    }
+
+    def 'should URL encode query params'() {
+        given:
+        def client = new TowerClient()
+        client.@endpoint = 'https://api.cloud.seqera.io'
+
+        when:
+        def url = client.buildUrl( '/workflow', [name: 'test workflow'])
+
+        then:
+        url.contains('name=test+workflow')
+    }
+
+    def 'should send AbortRunException in selected client calls'() {
+        given:
+        def client = Spy(new TowerClient(new TowerConfig([:], [TOWER_ACCESS_TOKEN: 'token']))){
+            sendHttpMessage(_,_,_) >> new TowerClient.Response(401)
         }
 
         when:
-        def req = client.makeCreateReq(session)
+        client.traceCreate([:], '1234')
         then:
-        req.sessionId == uuid.toString()
-        req.runName == 'foo_bar'
-        req.projectName == 'the-project-name'
-        req.repository == 'git://repo.com/foo'
-        req.workflowId == 'x123'
-        and:
-        aroundNow(req.instant)
-
-        and:
-        client.towerLaunch
-    }
-
-    def 'should post create request' () {
-        given:
-        def uuid = UUID.randomUUID()
-        def meta = Mock(WorkflowMetadata) {
-            getProjectName() >> 'the-project-name'
-            getRepository() >> 'git://repo.com/foo'
-        }
-        def session = Mock(Session) {
-            getUniqueId() >> uuid
-            getRunName() >> 'foo_bar'
-            getWorkflowMetadata() >> meta
-        }
-
-        TowerClient client = Spy(TowerClient, constructorArgs: [session, 'https://tower.nf'])
+        thrown(AbortRunException)
 
         when:
-        client.onFlowCreate(session)
+        client.traceBegin([:], '1234', '5678')
         then:
-        1 * client.getAccessToken() >> 'secret'
-        1 * client.makeCreateReq(session) >> [runName: 'foo']
-        1 * client.sendHttpMessage('https://tower.nf/trace/create', [runName: 'foo'], 'POST') >> new TowerClient.Response(200, '{"workflowId":"xyz123"}')
-        and:
-        client.runName == 'foo_bar'
-        client.runId == uuid.toString()
-        and:
-        client.workflowId == 'xyz123'
-        !client.towerLaunch
-
-    }
-
-    def 'should get trace endpoint' () {
-        given:
-        def tower = new TowerClient(Mock(Session), 'https://tower.nf')
-        tower.workflowId = '12345'
-
-        expect:
-        tower.getUrlTraceCreate() == 'https://tower.nf/trace/create'
-        tower.getUrlTraceBegin() == 'https://tower.nf/trace/12345/begin'
-        tower.getUrlTraceProgress() == 'https://tower.nf/trace/12345/progress'
-        tower.getUrlTraceHeartbeat() == 'https://tower.nf/trace/12345/heartbeat'
-        tower.getUrlTraceComplete() == 'https://tower.nf/trace/12345/complete'
-    }
-
-    def 'should get trace endpoint with workspace' () {
-        given:
-        def tower = new TowerClient(Mock(Session),'https://tower.nf')
-        tower.workflowId = '12345'
-        tower.workspaceId = '300'
-
-        expect:
-        tower.getUrlTraceCreate() == 'https://tower.nf/trace/create?workspaceId=300'
-        tower.getUrlTraceBegin() == 'https://tower.nf/trace/12345/begin?workspaceId=300'
-        tower.getUrlTraceProgress() == 'https://tower.nf/trace/12345/progress?workspaceId=300'
-        tower.getUrlTraceHeartbeat() == 'https://tower.nf/trace/12345/heartbeat?workspaceId=300'
-        tower.getUrlTraceComplete() == 'https://tower.nf/trace/12345/complete?workspaceId=300'
-    }
-
-    def 'should set the auth token' () {
-        given:
-        def http = Mock(SimpleHttpClient)
-        def session = Mock(Session)
-        TowerClient client = Spy(TowerClient, constructorArgs: [session, 'https://tower.nf'])
-        and:
-        def SIMPLE = '4ffbf1009ebabea77db3d72efefa836dfbb71271'
-        def BEARER = 'eyJ0aWQiOiA1fS5jZmM1YjVhOThjZjM2MTk1NjBjZWU1YmMwODUxYzA1ZjkzMDdmN2Iz'
+        thrown(AbortRunException)
 
         when:
-        client.setAuthToken(http, SIMPLE)
+        client.traceProgress([:], '1234', '5678')
         then:
-        http.setBasicToken('@token:' + SIMPLE) >> null
+        thrown(AbortRunException)
 
         when:
-        client.setAuthToken(http, SIMPLE)
+        client.traceComplete([:], '1234', '5678')
         then:
-        http.setBasicToken('@token:' + SIMPLE) >> null
+        notThrown(AbortRunException)
 
         when:
-        client.setAuthToken(http, BEARER)
+        client.traceHeartbeat([:], '1234', '5678')
         then:
-        http.setBearerToken(BEARER) >> null
-    }
-
-    def 'should fetch workflow meta' () {
-        given:
-        def client = Spy(new TowerClient(env: ENV))
-
-        expect:
-        client.getOperationId() == OP_ID
-        client.getLogFile() == LOG_FILE
-        client.getOutFile() == OUT_FILE
-
-        where:
-        OP_ID                                           | OUT_FILE      | LOG_FILE    | ENV
-        null                                            | null          | null        | [:]
-        "local-platform::${ProcessHelper.selfPid()}"    | null          | null        | [TOWER_ALLOW_NEXTFLOW_LOGS:'true']
-        'aws-batch::1234z'                              | 'xyz.out'     | 'hola.log'  | [TOWER_ALLOW_NEXTFLOW_LOGS:'true', AWS_BATCH_JOB_ID: '1234z', NXF_OUT_FILE: 'xyz.out', NXF_LOG_FILE: 'hola.log']
-    }
-
-    def 'should deduplicate containers' () {
-        given:
-        def client = Spy(new TowerClient())
-        and:
-        def c1 = new ContainerMeta(requestId: '12345', sourceImage: 'ubuntu:latest', targetImage: 'wave.io/12345/ubuntu:latest')
-        def c2 = new ContainerMeta(requestId: '54321', sourceImage: 'ubuntu:latest', targetImage: 'wave.io/54321/ubuntu:latest')
-        and:
-        def trace1 = new TraceRecord(
-                taskId: 1,
-                process: 'foo',
-                workdir: "/work/dir",
-                cpus: 1,
-                submit: System.currentTimeMillis(),
-                start: System.currentTimeMillis(),
-                complete: System.currentTimeMillis())
-        trace1.containerMeta = c1
-        and:
-        def trace2 = new TraceRecord(
-            taskId: 2,
-            process: 'foo',
-            workdir: "/work/dir",
-            cpus: 1,
-            submit: System.currentTimeMillis(),
-            start: System.currentTimeMillis(),
-            complete: System.currentTimeMillis())
-        trace2.containerMeta = c2
-        and:
-        def trace3 = new TraceRecord(
-            taskId: 3,
-            process: 'foo',
-            workdir: "/work/dir",
-            cpus: 1,
-            submit: System.currentTimeMillis(),
-            start: System.currentTimeMillis(),
-            complete: System.currentTimeMillis())
-        trace3.containerMeta = c2
-
-        expect:
-        client.getNewContainers([trace1]) == [c1]
-        and:
-        client.getNewContainers([trace1]) == []
-        and:
-        client.getNewContainers([trace1, trace2, trace3]) == [c2]
+        notThrown(AbortRunException)
     }
 }

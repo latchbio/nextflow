@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2025, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package nextflow.k8s.client
 
+import groovy.util.logging.Slf4j
 import nextflow.util.Duration
 
 import javax.net.ssl.KeyManager
@@ -31,6 +32,7 @@ import groovy.transform.EqualsAndHashCode
  */
 @EqualsAndHashCode
 @CompileStatic
+@Slf4j
 class ClientConfig {
 
     boolean verifySsl
@@ -47,6 +49,13 @@ class ClientConfig {
 
     String token
 
+    /**
+     * Filesystem path of the token, when the token was loaded from a file.
+     * Used to re-read the token after expiry — kubelet rotates projected
+     * service-account tokens in place by overwriting the mounted file.
+     */
+    Path tokenPath
+
     byte[] sslCert
 
     byte[] clientCert
@@ -55,7 +64,7 @@ class ClientConfig {
 
     KeyManager[] keyManagers
 
-    Integer maxErrorRetry = 4
+    K8sRetryConfig retryConfig
 
     /**
      * Timeout when reading from Input stream when a connection is established to a resource.
@@ -77,11 +86,11 @@ class ClientConfig {
     String getNamespace() { namespace ?: 'default' }
 
     ClientConfig() {
-
+        retryConfig = new K8sRetryConfig()
     }
 
     String toString() {
-        "${this.class.getSimpleName()}[ server=$server, namespace=$namespace, serviceAccount=$serviceAccount, token=${cut(token)}, sslCert=${cut(sslCert)}, clientCert=${cut(clientCert)}, clientKey=${cut(clientKey)}, verifySsl=$verifySsl, fromFile=$isFromCluster, httpReadTimeout=$httpReadTimeout, httpConnectTimeout=$httpConnectTimeout, maxErrorRetry=$maxErrorRetry ]"
+        "${this.class.getSimpleName()}[ server=$server, namespace=$namespace, serviceAccount=$serviceAccount, token=${cut(token)}, sslCert=${cut(sslCert)}, clientCert=${cut(clientCert)}, clientKey=${cut(clientKey)}, verifySsl=$verifySsl, fromFile=$isFromCluster, httpReadTimeout=$httpReadTimeout, httpConnectTimeout=$httpConnectTimeout, retryConfig=$retryConfig ]"
     }
 
     private String cut(String str) {
@@ -106,8 +115,10 @@ class ClientConfig {
 
         if( opts.token )
             result.token = opts.token
-        else if( opts.tokenFile )
-            result.token = Paths.get(opts.tokenFile.toString()).getText('UTF-8')
+        else if( opts.tokenFile ) {
+            result.tokenPath = Paths.get(opts.tokenFile.toString())
+            result.token = result.tokenPath.getText('UTF-8')
+        }
 
         result.namespace = namespace ?: opts.namespace ?: 'default'
 
@@ -131,9 +142,6 @@ class ClientConfig {
         else if( opts.clientKeyFile )
             result.clientKey = Paths.get(opts.clientKeyFile.toString()).bytes
 
-        if( opts.maxErrorRetry )
-            result.maxErrorRetry = opts.maxErrorRetry as Integer
-
         return result
     }
 
@@ -144,7 +152,8 @@ class ClientConfig {
             result.token = user.token
 
         else if( user.tokenFile ) {
-            result.token = Paths.get(user.tokenFile.toString()).getText('UTF-8')
+            result.tokenPath = Paths.get(user.tokenFile.toString())
+            result.token = result.tokenPath.getText('UTF-8')
         }
 
         if( user."client-certificate" )

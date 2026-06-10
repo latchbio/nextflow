@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,11 +55,6 @@ class ScriptRunner {
     private ScriptFile scriptFile
 
     /**
-     * The script result
-     */
-    private def result
-
-    /**
      * Simulate execution and exit
      */
     private boolean preview
@@ -107,27 +102,21 @@ class ScriptRunner {
     @Deprecated BaseScript getScriptObj() { scriptLoader.getScript() }
 
     /**
-     * @return The result produced by the script execution
-     */
-    def getResult() { result }
-
-
-    /**
-     * Execute a Nextflow script, it does the following:
-     * <li>parse the script
-     * <li>launch script execution
-     * <li>await for all tasks completion
+     * Execute a Nextflow script:
+     * 1. compile and load the script
+     * 2. execute the script
+     * 3. await for all tasks to complete
      *
-     * @param scriptFile The file containing the script to be executed
-     * @param args The arguments to be passed to the script
-     * @return The result as returned by the {@code #run} method
+     * @param args command-line positional arguments
+     * @param cliParams parameters specified on the command-line
+     * @param configParams parameters specified in the config
+     * @param entryName named workflow entrypoint
      */
-
-    def execute( List<String> args = null, String entryName=null ) {
+    def execute( List<String> args=null, Map<String,?> cliParams=null, Map<String,?> configParams=null, String entryName=null ) {
         assert scriptFile
 
         // init session
-        session.init(scriptFile, args)
+        session.init(scriptFile, args, cliParams, configParams)
 
         // start session
         session.start()
@@ -154,8 +143,6 @@ class ScriptRunner {
         if( !session.success ) {
             throw new AbortRunException()
         }
-
-        return result
     }
 
     protected String scriptFiles0() {
@@ -220,10 +207,6 @@ class ScriptRunner {
         }
     }
 
-    def normalizeOutput(output) {
-        return output
-    }
-
     protected void parseScript( ScriptFile scriptFile, String entryName ) {
         scriptLoader = ScriptLoaderFactory.create(session)
                             .setEntryName(entryName)
@@ -244,8 +227,6 @@ class ScriptRunner {
         assert scriptLoader, "Missing script instance to run"
         // -- launch the script execution
         scriptLoader.runScript()
-        // -- normalise output
-        result = normalizeOutput(scriptLoader.getResult())
         // -- ignite dataflow network
         session.fireDataflowNetwork(preview)
     }

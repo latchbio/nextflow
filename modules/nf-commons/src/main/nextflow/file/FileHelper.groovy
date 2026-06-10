@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,6 +49,7 @@ import nextflow.extension.FilesEx
 import nextflow.plugin.Plugins
 import nextflow.util.CacheHelper
 import nextflow.util.Escape
+import nextflow.util.StringUtils
 /**
  * Provides some helper method handling files
  *
@@ -361,7 +362,7 @@ class FileHelper {
         return asPath(toPathURI(str))
     }
 
-    static final private Map<String,String> PLUGINS_MAP = [s3:'nf-amazon', gs:'nf-google', az:'nf-azure']
+    static final private Map<String,String> PLUGINS_MAP = [s3:'nf-amazon', gs:'nf-google', az:'nf-azure', seqera:'nf-tower']
 
     static final private Map<String,Boolean> SCHEME_CHECKED = new HashMap<>()
 
@@ -372,6 +373,7 @@ class FileHelper {
         // find out the default plugin for the given scheme and try to load it
         final pluginId = PLUGINS_MAP.get(scheme)
         if( pluginId ) try {
+            log.debug "Detected required plugin '$pluginId'"
             if( Plugins.startIfMissing(pluginId) ) {
                 log.debug "Started plugin '$pluginId' required to handle file: $str"
                 // return true to signal a new plugin was loaded
@@ -618,7 +620,7 @@ class FileHelper {
     }
 
     /**
-     *  Caches File system providers
+     * Caches File system providers
      */
     @PackageScope
     static final Map<String, FileSystemProvider> providersMap = [:]
@@ -722,7 +724,7 @@ class FileHelper {
             try { fs = provider.getFileSystem(uri) }
             catch( FileSystemNotFoundException e ) { fs=null }
             if( !fs ) {
-                log.debug "Creating a file system instance for provider: ${provider.class.simpleName}"
+                log.debug "Creating a file system instance for provider: ${provider.class.simpleName}; config=${StringUtils.stripSecrets(config)}"
                 fs = provider.newFileSystem(uri, config!=null ? config : envFor(uri.scheme))
             }
             return fs
@@ -879,7 +881,9 @@ class FileHelper {
 
             @Override
             FileVisitResult visitFile(Path fullPath, BasicFileAttributes attrs) throws IOException {
-                final path = folder.relativize(fullPath)
+                final path = fullPath.isAbsolute()
+                    ? folder.relativize(fullPath)
+                    : fullPath
                 log.trace "visitFiles > file=$path; includeFile=$includeFile; matches=${matcher.matches(path)}; isRegularFile=${attrs.isRegularFile()}"
 
                 if (includeFile && matcher.matches(path) && (attrs.isRegularFile() || (options.followLinks == false && attrs.isSymbolicLink())) && (includeHidden || !isHidden(fullPath))) {
@@ -911,7 +915,9 @@ class FileHelper {
     }
 
     static protected Path relativize0(Path folder, Path fullPath) {
-        def result = folder.relativize(fullPath)
+        final result = fullPath.isAbsolute()
+            ? folder.relativize(fullPath)
+            : fullPath
         String str
         if( folder.is(FileSystems.default) || !(str=result.toString()).endsWith('/') )
             return result

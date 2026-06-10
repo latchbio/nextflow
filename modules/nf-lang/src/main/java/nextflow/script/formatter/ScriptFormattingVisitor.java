@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,23 +15,32 @@
  */
 package nextflow.script.formatter;
 
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import nextflow.script.ast.AssignmentExpression;
 import nextflow.script.ast.FeatureFlagNode;
 import nextflow.script.ast.FunctionNode;
-import nextflow.script.ast.IncludeModuleNode;
+import nextflow.script.ast.IncludeEntryNode;
 import nextflow.script.ast.IncludeNode;
 import nextflow.script.ast.OutputBlockNode;
 import nextflow.script.ast.OutputNode;
-import nextflow.script.ast.ParamNode;
+import nextflow.script.ast.ParamNodeV1;
+import nextflow.script.ast.ParamBlockNode;
 import nextflow.script.ast.ProcessNode;
+import nextflow.script.ast.ProcessNodeV1;
+import nextflow.script.ast.ProcessNodeV2;
+import nextflow.script.ast.RecordNode;
 import nextflow.script.ast.ScriptNode;
 import nextflow.script.ast.ScriptVisitorSupport;
+import nextflow.script.ast.TupleParameter;
 import nextflow.script.ast.WorkflowNode;
 import org.codehaus.groovy.ast.ClassNode;
+import org.codehaus.groovy.ast.Parameter;
 import org.codehaus.groovy.ast.expr.EmptyExpression;
+import org.codehaus.groovy.ast.expr.Expression;
 import org.codehaus.groovy.ast.expr.PropertyExpression;
 import org.codehaus.groovy.ast.expr.VariableExpression;
 import org.codehaus.groovy.ast.stmt.BlockStatement;
@@ -97,12 +106,12 @@ public class ScriptFormattingVisitor extends ScriptVisitorSupport {
         // -- prepare alignment widths if needed
         if( options.harshilAlignment() ) {
             maxIncludeWidth = scriptNode.getIncludes().stream()
-                .flatMap(in -> in.modules.stream())
+                .flatMap(in -> in.entries.stream())
                 .map(this::getIncludeWidth)
                 .max(Integer::compare).orElse(0);
 
-            maxParamWidth = scriptNode.getParams().stream()
-                .map(this::getParamWidth)
+            maxParamWidth = scriptNode.getParamsV1().stream()
+                .map(ScriptFormattingVisitor::parameterWidth)
                 .max(Integer::compare).orElse(0);
         }
 
@@ -117,10 +126,14 @@ public class ScriptFormattingVisitor extends ScriptVisitorSupport {
                 visitInclude(in);
             else if( decl instanceof OutputBlockNode obn )
                 visitOutputs(obn);
-            else if( decl instanceof ParamNode pn )
-                visitParam(pn);
+            else if( decl instanceof ParamBlockNode pbn )
+                visitParams(pbn);
+            else if( decl instanceof ParamNodeV1 pn )
+                visitParamV1(pn);
             else if( decl instanceof ProcessNode pn )
                 visitProcess(pn);
+            else if( decl instanceof RecordNode rn )
+                visitRecord(rn);
             else if( decl instanceof WorkflowNode wn )
                 visitWorkflow(wn);
         }
@@ -148,7 +161,7 @@ public class ScriptFormattingVisitor extends ScriptVisitorSupport {
         fmt.append("include {");
         if( wrap )
             fmt.incIndent();
-        for( int i = 0; i < node.modules.size(); i++ ) {
+        for( int i = 0; i < node.entries.size(); i++ ) {
             if( wrap ) {
                 fmt.appendNewLine();
                 fmt.appendIndent();
@@ -156,17 +169,17 @@ public class ScriptFormattingVisitor extends ScriptVisitorSupport {
             else {
                 fmt.append(' ');
             }
-            var module = node.modules.get(i);
-            fmt.append(module.name);
-            if( module.alias != null ) {
+            var entry = node.entries.get(i);
+            fmt.append(entry.name);
+            if( entry.alias != null ) {
                 fmt.append(" as ");
-                fmt.append(module.alias);
+                fmt.append(entry.alias);
             }
-            if( !wrap && node.modules.size() == 1 && options.harshilAlignment() ) {
-                var padding = maxIncludeWidth - getIncludeWidth(module);
+            if( !wrap && node.entries.size() == 1 && options.harshilAlignment() ) {
+                var padding = maxIncludeWidth - getIncludeWidth(entry);
                 fmt.append(" ".repeat(padding));
             }
-            if( i + 1 < node.modules.size() )
+            if( i + 1 < node.entries.size() )
                 fmt.append(" ;");
         }
         if( wrap ) {
@@ -181,19 +194,42 @@ public class ScriptFormattingVisitor extends ScriptVisitorSupport {
         fmt.appendNewLine();
     }
 
-    protected int getIncludeWidth(IncludeModuleNode module) {
-        return module.alias != null
-            ? module.name.length() + 4 + module.alias.length()
-            : module.name.length();
+    private int getIncludeWidth(IncludeEntryNode entry) {
+        return entry.alias != null
+            ? entry.name.length() + 4 + entry.alias.length()
+            : entry.name.length();
     }
 
     @Override
-    public void visitParam(ParamNode node) {
+    public void visitParams(ParamBlockNode node) {
+        fmt.appendLeadingComments(node);
+        fmt.append("params {\n");
+        fmt.incIndent();
+        for( var param : node.declarations ) {
+            fmt.appendLeadingComments(param);
+            fmt.appendIndent();
+            fmt.append(param.getName());
+            if( fmt.hasType(param) ) {
+                fmt.append(": ");
+                fmt.visitTypeAnnotation(param.getType());
+            }
+            if( param.hasInitialExpression() ) {
+                fmt.append(" = ");
+                fmt.visit(param.getInitialExpression());
+            }
+            fmt.appendNewLine();
+        }
+        fmt.decIndent();
+        fmt.append("}\n");
+    }
+
+    @Override
+    public void visitParamV1(ParamNodeV1 node) {
         fmt.appendLeadingComments(node);
         fmt.appendIndent();
         fmt.visit(node.target);
         if( maxParamWidth > 0 ) {
-            var padding = maxParamWidth - getParamWidth(node);
+            var padding = maxParamWidth - parameterWidth(node);
             fmt.append(" ".repeat(padding));
         }
         fmt.append(" = ");
@@ -201,7 +237,7 @@ public class ScriptFormattingVisitor extends ScriptVisitorSupport {
         fmt.appendNewLine();
     }
 
-    protected int getParamWidth(ParamNode node) {
+    private static int parameterWidth(ParamNodeV1 node) {
         var target = (PropertyExpression) node.target;
         var name = target.getPropertyAsString();
         return name != null ? name.length() : 0;
@@ -217,86 +253,120 @@ public class ScriptFormattingVisitor extends ScriptVisitorSupport {
         }
         fmt.append(" {\n");
         fmt.incIndent();
-        if( node.takes instanceof BlockStatement ) {
+        var takes = node.getParameters();
+        if( takes.length > 0 ) {
             fmt.appendIndent();
             fmt.append("take:\n");
-            visitWorkflowTakes(asBlockStatements(node.takes));
-            fmt.appendNewLine();
+            visitTypedInputs(takes);
         }
-        if( node.main instanceof BlockStatement ) {
-            if( node.takes instanceof BlockStatement || node.emits instanceof BlockStatement || node.publishers instanceof BlockStatement ) {
+        if( !node.main.isEmpty() ) {
+            if( takes.length > 0 || !node.emits.isEmpty() || !node.publishers.isEmpty() ) {
+                fmt.appendNewLine();
                 fmt.appendIndent();
                 fmt.append("main:\n");
             }
             fmt.visit(node.main);
         }
-        if( node.emits instanceof BlockStatement ) {
+        if( !node.emits.isEmpty() ) {
             fmt.appendNewLine();
             fmt.appendIndent();
             fmt.append("emit:\n");
-            visitWorkflowEmits(asBlockStatements(node.emits));
+            visitTypedOutputs(asBlockStatements(node.emits));
         }
-        if( node.publishers instanceof BlockStatement ) {
+        if( !node.publishers.isEmpty() ) {
             fmt.appendNewLine();
             fmt.appendIndent();
             fmt.append("publish:\n");
-            fmt.visit(node.publishers);
+            visitWorkflowPublishers(asBlockStatements(node.publishers));
+        }
+        if( !node.onComplete.isEmpty() ) {
+            fmt.appendNewLine();
+            fmt.appendIndent();
+            fmt.append("onComplete:\n");
+            fmt.visit(node.onComplete);
+        }
+        if( !node.onError.isEmpty() ) {
+            fmt.appendNewLine();
+            fmt.appendIndent();
+            fmt.append("onError:\n");
+            fmt.visit(node.onError);
         }
         fmt.decIndent();
         fmt.append("}\n");
     }
 
-    protected void visitWorkflowTakes(List<Statement> takes) {
-        var alignmentWidth = options.harshilAlignment()
-            ? getMaxParameterWidth(takes)
-            : 0;
-
-        for( var stmt : takes ) {
-            var ve = asVarX(stmt);
+    private void visitTypedInputs(Parameter[] inputs) {
+        for( var input : inputs ) {
             fmt.appendIndent();
-            fmt.visit(ve);
-            if( fmt.hasTrailingComment(stmt) ) {
-                if( alignmentWidth > 0 ) {
-                    var padding = alignmentWidth - ve.getName().length();
-                    fmt.append(" ".repeat(padding));
-                }
-                fmt.appendTrailingComment(stmt);
+            if( input instanceof TupleParameter tp ) {
+                visitStructuredInput(tp);
             }
+            else {
+                visitTypedInput(input);
+            }
+            fmt.appendTrailingComment(input);
             fmt.appendNewLine();
         }
     }
 
-    protected void visitWorkflowEmits(List<Statement> emits) {
+    private void visitStructuredInput(TupleParameter tp) {
+        var isRecord = "Record".equals(tp.getType().getNameWithoutPackage());
+        var wrap = isRecord;
+
+        fmt.append(isRecord ? "record" : "tuple");
+        fmt.append('(');
+        if( wrap )
+            fmt.incIndent();
+        for( int i = 0; i < tp.components.length; i++ ) {
+            var p = tp.components[i];
+            if( wrap ) {
+                fmt.appendNewLine();
+                fmt.appendIndent();
+            }
+            fmt.append(p.getName());
+            if( fmt.hasType(p) ) {
+                fmt.append(": ");
+                fmt.visitTypeAnnotation(p.getType());
+            }
+            if( i < tp.components.length - 1 )
+                fmt.append(wrap ? "," : ", ");
+        }
+        if( wrap ) {
+            fmt.appendNewLine();
+            fmt.decIndent();
+            fmt.appendIndent();
+        }
+        fmt.append(')');
+    }
+
+    private void visitTypedInput(Parameter node) {
+        fmt.append(node.getName());
+        if( fmt.hasType(node) ) {
+            fmt.append(": ");
+            fmt.visitTypeAnnotation(node.getType());
+        }
+    }
+
+    private void visitTypedOutputs(List<Statement> outputs) {
         var alignmentWidth = options.harshilAlignment()
-            ? getMaxParameterWidth(emits)
+            ? maxParameterWidth(outputs)
             : 0;
 
-        for( var stmt : emits ) {
+        for( var stmt : outputs ) {
             var stmtX = (ExpressionStatement)stmt;
-            var emit = stmtX.getExpression();
-            if( emit instanceof AssignmentExpression assign ) {
-                var ve = (VariableExpression)assign.getLeftExpression();
+            var output = stmtX.getExpression();
+            var target =
+                output instanceof AssignmentExpression ae ? (VariableExpression)ae.getLeftExpression() :
+                output instanceof VariableExpression ve ? ve :
+                null;
+            var source =
+                output instanceof AssignmentExpression ae ? ae.getRightExpression() :
+                null;
+
+            if( target != null ) {
                 fmt.appendIndent();
-                fmt.visit(ve);
-                if( alignmentWidth > 0 ) {
-                    var padding = alignmentWidth - ve.getName().length();
-                    fmt.append(" ".repeat(padding));
-                }
-                fmt.append(" = ");
-                fmt.visit(assign.getRightExpression());
+                visitOutputAssignment(target, source, alignmentWidth);
                 fmt.appendTrailingComment(stmt);
-                fmt.appendNewLine();
-            }
-            else if( emit instanceof VariableExpression ve ) {
-                fmt.appendIndent();
-                fmt.visit(ve);
-                if( fmt.hasTrailingComment(stmt) ) {
-                    if( alignmentWidth > 0 ) {
-                        var padding = alignmentWidth - ve.getName().length();
-                        fmt.append(" ".repeat(padding));
-                    }
-                    fmt.appendTrailingComment(stmt);
-                }
                 fmt.appendNewLine();
             }
             else {
@@ -305,48 +375,158 @@ public class ScriptFormattingVisitor extends ScriptVisitorSupport {
         }
     }
 
-    protected int getMaxParameterWidth(List<Statement> statements) {
+    private void visitWorkflowPublishers(List<Statement> publishers) {
+        var alignmentWidth = options.harshilAlignment()
+            ? maxParameterWidth(publishers)
+            : 0;
+
+        for( var stmt : publishers ) {
+            var stmtX = (ExpressionStatement)stmt;
+            var emit = (AssignmentExpression)stmtX.getExpression();
+            var target = (VariableExpression)emit.getLeftExpression();
+            var source = emit.getRightExpression();
+
+            fmt.appendIndent();
+            visitOutputAssignment(target, source, alignmentWidth);
+            fmt.appendTrailingComment(stmt);
+            fmt.appendNewLine();
+        }
+    }
+
+    private static int maxParameterWidth(List<Statement> statements) {
         if( statements.size() == 1 )
             return 0;
 
-        int maxWidth = 0;
-        for( var stmt : statements ) {
-            var stmtX = (ExpressionStatement)stmt;
-            var emit = stmtX.getExpression();
-            int width = 0;
-            if( emit instanceof VariableExpression ve ) {
-                width = ve.getName().length();
-            }
-            else if( emit instanceof AssignmentExpression assign ) {
-                var target = (VariableExpression)assign.getLeftExpression();
-                width = target.getName().length();
-            }
+        return statements.stream()
+            .map((stmt) -> {
+                var stmtX = (ExpressionStatement)stmt;
+                var emit = stmtX.getExpression();
+                if( emit instanceof VariableExpression ve ) {
+                    return ve.getName().length();
+                }
+                if( emit instanceof AssignmentExpression assign ) {
+                    var target = (VariableExpression)assign.getLeftExpression();
+                    return target.getName().length();
+                }
+                return 0;
+            })
+            .max(Integer::compare).orElse(0);
+    }
 
-            if( maxWidth < width )
-                maxWidth = width;
+    private void visitOutputAssignment(VariableExpression target, Expression source, int alignmentWidth) {
+        fmt.append(target.getText());
+        if( (fmt.hasType(target) || source != null) && alignmentWidth > 0 ) {
+            var padding = alignmentWidth - target.getName().length();
+            fmt.append(" ".repeat(padding));
         }
-        return maxWidth;
+        if( fmt.hasType(target) ) {
+            if( alignmentWidth > 0 )
+                fmt.append(' ');
+            fmt.append(": ");
+            fmt.visitTypeAnnotation(target.getType());
+        }
+        if( source != null ) {
+            fmt.append(" = ");
+            fmt.visit(source);
+        }
     }
 
     @Override
-    public void visitProcess(ProcessNode node) {
+    public void visitProcessV2(ProcessNodeV2 node) {
         fmt.appendLeadingComments(node);
         fmt.append("process ");
         fmt.append(node.getName());
         fmt.append(" {\n");
         fmt.incIndent();
-        if( node.directives instanceof BlockStatement ) {
+        if( !node.directives.isEmpty() ) {
             visitDirectives(node.directives);
             fmt.appendNewLine();
         }
-        if( node.inputs instanceof BlockStatement ) {
+        var inputs = node.inputs;
+        if( inputs.length > 0 ) {
+            fmt.appendIndent();
+            fmt.append("input:\n");
+            visitTypedInputs(inputs);
+            fmt.appendNewLine();
+        }
+        if( !node.stagers.isEmpty() ) {
+            fmt.appendIndent();
+            fmt.append("stage:\n");
+            visitDirectives(node.stagers);
+            fmt.appendNewLine();
+        }
+        if( !options.maheshForm() ) {
+            if( !node.outputs.isEmpty() ) {
+                visitProcessOutputs(node.outputs);
+                fmt.appendNewLine();
+            }
+            if( !node.topics.isEmpty() ) {
+                visitProcessTopics(node.topics);
+                fmt.appendNewLine();
+            }
+        }
+        if( !(node.when instanceof EmptyExpression) ) {
+            fmt.appendIndent();
+            fmt.append("when:\n");
+            fmt.appendIndent();
+            fmt.visit(node.when);
+            fmt.append("\n\n");
+        }
+        fmt.appendIndent();
+        fmt.append(node.type);
+        fmt.append(":\n");
+        fmt.visit(node.exec);
+        if( !node.stub.isEmpty() ) {
+            fmt.appendNewLine();
+            fmt.appendIndent();
+            fmt.append("stub:\n");
+            fmt.visit(node.stub);
+        }
+        if( options.maheshForm() ) {
+            if( !node.outputs.isEmpty() ) {
+                fmt.appendNewLine();
+                visitProcessOutputs(node.outputs);
+            }
+            if( !node.topics.isEmpty() ) {
+                fmt.appendNewLine();
+                visitProcessTopics(node.topics);
+            }
+        }
+        fmt.decIndent();
+        fmt.append("}\n");
+    }
+
+    private void visitProcessOutputs(Statement outputs) {
+        fmt.appendIndent();
+        fmt.append("output:\n");
+        visitTypedOutputs(asBlockStatements(outputs));
+    }
+
+    private void visitProcessTopics(Statement topics) {
+        fmt.appendIndent();
+        fmt.append("topic:\n");
+        fmt.visit(topics);
+    }
+
+    @Override
+    public void visitProcessV1(ProcessNodeV1 node) {
+        fmt.appendLeadingComments(node);
+        fmt.append("process ");
+        fmt.append(node.getName());
+        fmt.append(" {\n");
+        fmt.incIndent();
+        if( !node.directives.isEmpty() ) {
+            visitDirectives(node.directives);
+            fmt.appendNewLine();
+        }
+        if( !node.inputs.isEmpty() ) {
             fmt.appendIndent();
             fmt.append("input:\n");
             visitDirectives(node.inputs);
             fmt.appendNewLine();
         }
-        if( !options.maheshForm() && node.outputs instanceof BlockStatement ) {
-            visitProcessOutputs(node.outputs);
+        if( !options.maheshForm() && !node.outputs.isEmpty() ) {
+            visitProcessOutputsV1(node.outputs);
             fmt.appendNewLine();
         }
         if( !(node.when instanceof EmptyExpression) ) {
@@ -360,21 +540,21 @@ public class ScriptFormattingVisitor extends ScriptVisitorSupport {
         fmt.append(node.type);
         fmt.append(":\n");
         fmt.visit(node.exec);
-        if( !(node.stub instanceof EmptyStatement) ) {
+        if( !node.stub.isEmpty() ) {
             fmt.appendNewLine();
             fmt.appendIndent();
             fmt.append("stub:\n");
             fmt.visit(node.stub);
         }
-        if( options.maheshForm() && node.outputs instanceof BlockStatement ) {
+        if( options.maheshForm() && !node.outputs.isEmpty() ) {
             fmt.appendNewLine();
-            visitProcessOutputs(node.outputs);
+            visitProcessOutputsV1(node.outputs);
         }
         fmt.decIndent();
         fmt.append("}\n");
     }
 
-    private void visitProcessOutputs(Statement outputs) {
+    private void visitProcessOutputsV1(Statement outputs) {
         fmt.appendIndent();
         fmt.append("output:\n");
         visitDirectives(outputs);
@@ -384,18 +564,45 @@ public class ScriptFormattingVisitor extends ScriptVisitorSupport {
     public void visitFunction(FunctionNode node) {
         fmt.appendLeadingComments(node);
         fmt.append("def ");
-        if( Formatter.isLegacyType(node.getReturnType()) ) {
-            fmt.visitTypeAnnotation(node.getReturnType());
-            fmt.append(' ');
-        }
         fmt.append(node.getName());
         fmt.append('(');
         fmt.visitParameters(node.getParameters());
-        fmt.append(") {\n");
+        fmt.append(')');
+        if( fmt.hasType(node.getReturnType()) ) {
+            fmt.append(" -> ");
+            fmt.visitTypeAnnotation(node.getReturnType());
+        }
+        fmt.append(" {\n");
         fmt.incIndent();
         fmt.visit(node.getCode());
         fmt.decIndent();
         fmt.append("}\n");
+    }
+
+    @Override
+    public void visitRecord(RecordNode node) {
+        fmt.appendLeadingComments(node);
+        fmt.append("record ");
+        fmt.append(node.getName());
+        visitRecordBody(node);
+        fmt.appendNewLine();
+    }
+
+    private void visitRecordBody(RecordNode node) {
+        fmt.append(" {\n");
+        fmt.incIndent();
+        for( var fn : node.getFields() ) {
+            fmt.appendIndent();
+            fmt.append(fn.getName());
+            if( fmt.hasType(fn) ) {
+                fmt.append(": ");
+                fmt.visitTypeAnnotation(fn.getType());
+            }
+            fmt.appendNewLine();
+        }
+        fmt.decIndent();
+        fmt.appendIndent();
+        fmt.append("}");
     }
 
     @Override
@@ -429,7 +636,11 @@ public class ScriptFormattingVisitor extends ScriptVisitorSupport {
     public void visitOutput(OutputNode node) {
         fmt.appendLeadingComments(node);
         fmt.appendIndent();
-        fmt.append(node.name);
+        fmt.append(node.getName());
+        if( fmt.hasType(node) ) {
+            fmt.append(": ");
+            fmt.visitTypeAnnotation(node.getType());
+        }
         fmt.append(" {\n");
         fmt.incIndent();
         visitOutputBody((BlockStatement) node.body);
@@ -438,7 +649,7 @@ public class ScriptFormattingVisitor extends ScriptVisitorSupport {
         fmt.append("}\n");
     }
 
-    protected void visitOutputBody(BlockStatement block) {
+    private void visitOutputBody(BlockStatement block) {
         asBlockStatements(block).forEach((stmt) -> {
             var call = asMethodCallX(stmt);
             if( call == null )
@@ -468,7 +679,7 @@ public class ScriptFormattingVisitor extends ScriptVisitorSupport {
         });
     }
 
-    protected void visitDirectives(Statement statement) {
+    private void visitDirectives(Statement statement) {
         asBlockStatements(statement).forEach((stmt) -> {
             var call = asMethodCallX(stmt);
             if( call == null )

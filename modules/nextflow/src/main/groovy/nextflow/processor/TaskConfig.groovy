@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -113,7 +113,7 @@ class TaskConfig extends LazyMap implements Cloneable {
         if( object instanceof LazyMap ) {
             result = ((LazyMap)object).getValue(path.first())
         }
-        else if( Object instanceof Map ) {
+        else if( object instanceof Map ) {
             result = ((Map)object).get(path.first())
         }
         else if( path.size()>1 ) {
@@ -538,6 +538,10 @@ class TaskConfig extends LazyMap implements Cloneable {
         if( opts!=null )
             throw new IllegalArgumentException("Invalid `containerOptions` directive value: $opts [${opts.getClass().getName()}]")
         return CmdLineOptionMap.emptyOption()
+    }
+
+    Map<String, Object> getHints() {
+        return get('hints') as Map<String, Object> ?: Collections.<String,Object>emptyMap()
     }
 
     Map<String, String> getResourceLabels() {

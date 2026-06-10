@@ -312,7 +312,7 @@ NEW           : 'new';
 // PRIVATE       : 'private';
 // PROTECTED     : 'protected';
 // PUBLIC        : 'public';
-// RECORD        : 'record';
+RECORD        : 'record';
 RETURN        : 'return';
 // SEALED        : 'sealed';
 
@@ -348,13 +348,18 @@ INPUT           : 'input';
 OUTPUT          : 'output';
 SCRIPT          : 'script';
 SHELL           : 'shell';
+STAGE           : 'stage';
 STUB            : 'stub';
+TOPIC           : 'topic';
+TUPLE           : 'tuple';
 WHEN            : 'when';
 
 // -- workflow definition
 WORKFLOW        : 'workflow';
 EMIT            : 'emit';
 MAIN            : 'main';
+ONCOMPLETE      : 'onComplete';
+ONERROR         : 'onError';
 PUBLISH         : 'publish';
 TAKE            : 'take';
 

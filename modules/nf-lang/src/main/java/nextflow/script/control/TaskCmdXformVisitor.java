@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ public class TaskCmdXformVisitor extends ClassCodeVisitorSupport {
      * @see LangHelpers.applyPathEscapeAware()
      */
     private static Expression applyEscape(Expression node) {
-        var cn = ClassHelper.makeWithoutCaching("nextflow.ast.LangHelpers");
+        var cn = ClassHelper.makeWithoutCaching("nextflow.util.LangHelpers");
         return callX(classX(cn), "applyPathEscapeAware", args(node));
     }
 

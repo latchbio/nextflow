@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2025, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ class CmdPluginCreateTest extends Specification {
         def args = [
             'create',
             'hello world plugin',
-            'foo',
+            'Foo',
             folder.toAbsolutePath().toString() + '/hello']
 
         when:
@@ -58,7 +58,7 @@ class CmdPluginCreateTest extends Specification {
         Files.exists(folder.resolve('hello/src/test/groovy/foo/plugin/HelloWorldObserverTest.groovy'))
         and:
         Path.of(folder.resolve('hello/settings.gradle').toUri()).text.contains("rootProject.name = 'hello-world-plugin'")
-        Path.of(folder.resolve('hello/build.gradle').toUri()).text.contains("provider = 'foo'")
+        Path.of(folder.resolve('hello/build.gradle').toUri()).text.contains("provider = 'Foo'")
         Path.of(folder.resolve('hello/build.gradle').toUri()).text.contains("className = 'foo.plugin.HelloWorldPlugin'")
         Path.of(folder.resolve('hello/build.gradle').toUri()).text.contains("'foo.plugin.HelloWorldExtension'")
         Path.of(folder.resolve('hello/build.gradle').toUri()).text.contains("'foo.plugin.HelloWorldFactory'")

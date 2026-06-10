@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2025, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ class LinCommandImpl implements CmdLineage.LinCommand {
     private static final Path DEFAULT_HTML_FILE = Path.of("lineage.html")
 
     private static final String ERR_NOT_LOADED = 'Error lineage store not loaded - Check Nextflow configuration'
-    
+
     @Override
     void list(ConfigMap config) {
         final session = new Session(config)
@@ -184,7 +184,9 @@ class LinCommandImpl implements CmdLineage.LinCommand {
         try {
             final params = parseFindArgs(args)
             new LinPropertyValidator().validateQueryParams(params.keySet())
-            println LinUtils.encodeSearchOutputs( store.search(params).keySet().collect { asUriString(it) }, true )
+            try (def stream = store.search(params) ) {
+                stream.forEach { println asUriString(it) }
+            }
         } catch (Throwable e){
             println "Error searching for ${args[0]}. ${e.message}"
         }

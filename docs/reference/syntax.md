@@ -28,11 +28,13 @@ A Nextflow script may contain the following top-level declarations:
 - Shebang
 - Feature flags
 - Include declarations
-- Parameter declarations
+- Params block
+- Parameter declarations (legacy)
 - Workflow definitions
 - Process definitions
 - Function definitions
 - Enum types
+- Record types
 - Output block
 
 Script declarations are in turn composed of statements and expressions.
@@ -71,34 +73,36 @@ A feature flag declaration is an assignment. The target should be a valid {ref}`
 nextflow.preview.recursion = true
 ```
 
+(syntax-include)=
+
 ### Include
 
 An include declaration consists of an *include source* and one or more *include clauses*:
 
 ```nextflow
-include { foo as bar } from './some/module'
+include { hallo as sayHello } from './some/module'
 ```
 
-The include source should be a string literal and should refer to either a local path (e.g. `./module.nf`) or a plugin (e.g. `plugin/nf-hello`). Each include clause should specify a name, and may also specify an *alias*. In the above example, `foo` is included under the alias `bar`.
+The include source should be a string literal and should refer to either a local path (e.g. `./module.nf`) or a plugin (e.g. `plugin/nf-hello`). Each include clause should specify a name, and may also specify an *alias*. In the above example, `hallo` is included under the alias `sayHello`.
 
 Include clauses can be separated by semi-colons or newlines:
 
 ```nextflow
 // semi-colons
-include { foo ; bar as baz } from './some/module'
+include { hallo ; bye as goodbye } from './some/module'
 
 // newlines
 include {
-    foo
-    bar as baz
+    hallo
+    bye as goodbye
 } from './some/module'
 ```
 
 Include clauses can also be specified as separate includes:
 
 ```nextflow
-include { foo } from './some/module'
-include { bar as baz } from './some/module'
+include { hallo } from './some/module'
+include { bye as goodbye } from './some/module'
 ```
 
 The following definitions can be included:
@@ -106,10 +110,25 @@ The following definitions can be included:
 - Functions
 - Processes
 - Named workflows
+- *New in 26.04:* Enum types
+- *New in 26.04:* Record types
 
-### Parameter
+### Params block
 
-A parameter declaration is an assignment. The target should be a pipeline parameter and the source should be an expression:
+The params block consists of one or more *parameter declarations*. A parameter declaration consists of a name, type, and an optional default value:
+
+```nextflow
+params {
+    input: Path
+    save_intermeds: Boolean = false
+}
+```
+
+Only one params block may be defined in a script.
+
+### Parameter (legacy)
+
+A legacy parameter declaration is an assignment. The target should be a pipeline parameter and the source should be an expression:
 
 ```nextflow
 params.message = 'Hello world!'
@@ -123,7 +142,7 @@ Parameters supplied via command line options, params files, and config files tak
 
 A workflow can be a *named workflow* or an *entry workflow*.
 
-A *named workflow* consists of a name and a body, and may consist of a *take*, *main*, *emit*, and *publish* section:
+A *named workflow* consists of a name and a body, and may consist of a *take*, *main*, and *emit* section:
 
 ```nextflow
 workflow greet {
@@ -146,32 +165,67 @@ workflow greet {
 
 - The emit section consists of one or more *emit statements*. An emit statement can be a [variable name](#variable), an [assignment](#assignment), or an [expression statement](#expression-statement). If an emit statement is an expression statement, it must be the only emit.
 
-- The publish section can be specified but is intended to be used in the entry workflow (see below).
 
-
-An *entry workflow* has no name and may consist of a *main* and *publish* section:
+An *entry workflow* has no name and may consist of a *main*, *publish*, *onComplete*, and *onError* section:
 
 ```nextflow
 workflow {
     main:
     greetings = channel.of('Bonjour', 'Ciao', 'Hello', 'Hola')
     messages = greetings.map { v -> "$v world!" }
-    greetings.view { it -> '$it world!' }
+    greetings.view { v -> "$v world!" }
 
     publish:
-    messages >> 'messages'
+    messages = messages
+
+    onComplete:
+    log.info 'Workflow completed successfully!'
+
+    onError:
+    log.error 'Workflow failed.'
 }
 ```
 
 - Only one entry workflow may be defined in a script.
 
-- The `main:` section label can be omitted if the publish section is not specified.
+- The `main:` section label can be omitted if the other sections are not specified.
 
-- The publish section consists of one or more *publish statements*. A publish statement is a [right-shift expression](#binary-expressions), where the left-hand side is an expression that refers to a value in the workflow body, and the right-hand side is an expression that returns a string.
+- The publish section consists of one or more *publish statements*. A publish statement is an [assignment](#assignment), where the assignment target is the name of a workflow output.
+
+- The `onComplete` and `onError` sections consist of one or more [statements](#statements).
 
 In order for a script to be executable, it must either define an entry workflow or be a code snippet as described [above](#script-declarations).
 
 Entry workflow definitions are ignored when a script is included as a module. This way, the same script can be included as a module or executed as a pipeline.
+
+(syntax-workflow-typed)=
+
+### Workflow (typed)
+
+A typed workflow is a workflow that uses static typing for inputs and outputs:
+
+```nextflow
+nextflow.enable.types = true
+
+workflow greet {
+    take:
+    greetings: Channel<String>
+
+    main:
+    messages = greetings.map { v -> "$v world!" }
+
+    emit:
+    messages: Channel<String>
+}
+```
+
+Typed workflows have the following new features:
+
+- Each workflow input in the `take:` section has a name and a type.
+
+- Each named workflow output in the `emit:` section may specify a type.
+
+See {ref}`workflow-typed-page` for more information on the semantics of typed workflows.
 
 (syntax-process)=
 
@@ -180,7 +234,7 @@ Entry workflow definitions are ignored when a script is included as a module. Th
 A process consists of a name and a body. The process body consists of one or more [statements](#statements). A minimal process definition must return a string:
 
 ```nextflow
-process sayHello {
+process hello {
     """
     echo 'Hello world!'
     """
@@ -225,7 +279,7 @@ Each section may contain one or more statements. For directives, inputs, and out
 The script section can be substituted with an exec section:
 
 ```nextflow
-process greetExec {
+process greet {
     input: 
     val greeting
     val name
@@ -241,6 +295,56 @@ process greetExec {
 The script and stub sections must return a string in the same manner as a [function](#function).
 
 See {ref}`process-page` for more information on the semantics of each process section.
+
+(syntax-process-typed)=
+
+### Process (typed)
+
+A typed process is a process that uses static typing for inputs and outputs:
+
+```nextflow
+nextflow.enable.types = true
+
+process greet {
+    input: 
+    greeting: String
+    name: String
+
+    stage:
+    env 'NAME', name
+
+    output:
+    stdout()
+
+    topic:
+    eval('bash --version') >> 'versions'
+
+    script:
+    """
+    echo "${greeting}, \${NAME}!"
+    """
+}
+```
+
+Typed processes may specify the following sections:
+
+`input:`
+: Consists of one or more process inputs. Each input has a name and type.
+
+`stage:`
+: Consists of one or more stage directives. See {ref}`process-reference-typed` for the set of available stage directives.
+
+`output:`
+: Consists of one or more *output statements*. An output statement can be a [variable name](#variable), an [assignment](#assignment), or an [expression statement](#expression-statement). An output statement must be the only output if it is an expression statement.  See {ref}`process-reference-typed` for the set of available output functions.
+
+`topic:`
+: Consists of one or more *topic statements*. A topic statement is a right-shift expression with an output value on the left side and a string on the right side.
+
+:::{note}
+Typed processes use the same behavior as legacy processes for all other sections.
+:::
+
+See {ref}`process-typed-page` for more information on the semantics of typed processes.
 
 (syntax-function)=
 
@@ -292,9 +396,19 @@ enum Day {
 
 Enum values in the above example can be accessed as `Day.MONDAY`, `Day.TUESDAY`, and so on.
 
-:::{note}
-Enum types cannot be included across modules at this time.
-:::
+(syntax-record-type)=
+
+### Record type
+
+A record type declaration consists of a name and a body. The body consists of one or more fields, where each field has a name and a type:
+
+```nextflow
+record FastqPair {
+    id: String
+    fastq_1: Path
+    fastq_2: Path
+}
+```
 
 ### Output block
 
@@ -352,13 +466,13 @@ Variables declared in an if or else branch exist only within that branch:
 
 ```nextflow
 if( true )
-    def x = 'foo'
+    def x = 'hello'
 println x           // error: `x` is undefined
 
 // solution: declare `x` outside of if branch
 def x
 if( true )
-    x = 'foo'
+    x = 'hello'
 println x
 ```
 
@@ -525,14 +639,16 @@ A try/catch statement consists of a *try block* followed by any number of *catch
 ```nextflow
 def text = null
 try {
-    text = file('foo.txt').text
+    text = file('hello.txt').text
 }
 catch( IOException e ) {
-    log.warn "Could not load foo.txt"
+    log.warn "Could not load hello.txt"
 }
 ```
 
 The try block will be executed, and if an error is raised and matches the expected error type of a catch clause, the code in that catch clause will be executed. If no catch clause is matched, the error will be raised to the next enclosing try/catch statement, or to the Nextflow runtime.
+
+(syntax-expressions)=
 
 ## Expressions
 
@@ -676,7 +792,7 @@ A list literal consists of a comma-separated list of zero or more expressions, e
 A map literal consists of a comma-separated list of one or more *map entries*, enclosed in square brackets. Each map entry consists of a *key expression* and *value expression* separated by a colon:
 
 ```nextflow
-[foo: 1, bar: 2, baz: 3]
+[alpha: 1, beta: 2, gamma: 3]
 ```
 
 An empty map is specified with a single colon to distinguish it from an empty list:
@@ -688,9 +804,9 @@ An empty map is specified with a single colon to distinguish it from an empty li
 Both the key and value can be any expression. Identifier keys are treated as string literals (i.e. the quotes can be omitted). A variable can be used as a key by enclosing it in parentheses:
 
 ```nextflow
-def x = 'foo'
+def x = 'alpha'
 [(x): 1]
-// -> ['foo': 1]
+// -> ['alpha': 1]
 ```
 
 ### Closure
@@ -939,7 +1055,8 @@ Compound expressions are evaluated in the following order:
 
 The following legacy features were excluded from this page because they are deprecated:
 
-- The `addParams` and `params` clauses of include declarations. See {ref}`module-params` for more information.
-- The `when:` section of a process definition. See {ref}`process-when` for more information.
-- The `shell:` section of a process definition. See {ref}`process-shell` for more information.
-- The implicit `it` closure parameter. See {ref}`script-closure` for more information.
+- The `addParams` and `params` clauses of include declarations.
+- The `when:` section of a process definition.
+- The `shell:` section of a process definition.
+
+See {ref}`strict-syntax-page` for more information.

@@ -16,11 +16,6 @@
 
 package nextflow.processor
 
-import nextflow.file.CopyOptions
-
-import java.nio.file.StandardCopyOption
-import java.nio.file.StandardOpenOption
-
 import static nextflow.util.CacheHelper.*
 
 import java.nio.file.CopyOption
@@ -57,6 +52,7 @@ import nextflow.file.TagAwareFile
 import nextflow.trace.event.FilePublishEvent
 import nextflow.util.HashBuilder
 import nextflow.util.PathTrie
+import nextflow.util.RetryConfig
 /**
  * Implements the {@code publishDir} directory. It create links or copies the output
  * files of a given task to a user specified directory.
@@ -132,7 +128,7 @@ class PublishDir {
      */
     private String storageClass
 
-    private PublishRetryConfig retryConfig
+    private RetryConfig retryConfig
 
     private PathMatcher matcher
 
@@ -248,7 +244,7 @@ class PublishDir {
     protected void apply0(Set<Path> files) {
         assert path
         // setup the retry policy config to be used
-        this.retryConfig = new PublishRetryConfig(getRetryOpts())
+        this.retryConfig = new RetryConfig(getRetryOpts())
 
         createPublishDir()
         validatePublishMode()
@@ -407,7 +403,7 @@ class PublishDir {
         final listener = new EventListener<ExecutionAttemptedEvent>() {
             @Override
             void accept(ExecutionAttemptedEvent event) throws Throwable {
-                log.debug "Failed to publish file: ${source.toUriString()}; to: ${target.toUriString()} [${mode.toString().toLowerCase()}] -- attempt: ${event.attemptCount}; reason: ${event.lastFailure.message}"
+                log.debug "Failed to publish file: ${source.toUriString()}; to: ${target.toUriString()} [${mode.toString().toLowerCase()}] -- attempt: ${event.attemptCount}; reason: ${event.lastException?.message}"
             }
         }
         final retryPolicy = RetryPolicy.builder()
@@ -430,26 +426,24 @@ class PublishDir {
         try {
             processFileImpl(source, destination)
         }
-        catch ( FileAlreadyExistsException e ) {
-            if ( checkIsSameRealPath(source, destination) )
-                return
+        catch( FileAlreadyExistsException e ) {
+            // don't copy source path if target is identical, but still emit the publish event
+            // see also https://github.com/nextflow-io/nf-prov/issues/22
+            final sameRealPath = checkIsSameRealPath(source, destination)
+
             // make sure destination and source does not overlap
             // see https://github.com/nextflow-io/nextflow/issues/2177
-            if ( checkSourcePathConflicts(destination))
+            if( !sameRealPath && checkSourcePathConflicts(destination))
                 return
 
-            if ( overwrite ) {
-                log.warn "Overwriting file at ${destination.toUriString()}"
-
-                if (destination.getFileSystem().provider().getScheme().equals("latch")) {
+            if( !sameRealPath && shouldOverwrite(source, destination) ) {
+                if( destination.getFileSystem().provider().getScheme() == 'latch' ) {
                     processFileImpl(source, destination, true)
-                } else {
+                }
+                else {
                     FileHelper.deletePath(destination)
                     processFileImpl(source, destination)
                 }
-
-            } else {
-                log.debug "Skipping upload. File already exists at ${destination.toUriString()}"
             }
         }
 
@@ -533,18 +527,10 @@ class PublishDir {
             FilesEx.mklink(source, [hard:true], destination)
         }
         else if( mode == Mode.MOVE ) {
-            if (overwrite) {
-                FileHelper.movePath(source, destination, StandardCopyOption.REPLACE_EXISTING)
-            } else {
-                FileHelper.movePath(source, destination)
-            }
+            FileHelper.movePath(source, destination, overwrite ? copyOpts(StandardCopyOption.REPLACE_EXISTING) : copyOpts())
         }
         else if( mode == Mode.COPY ) {
-            if (overwrite) {
-                FileHelper.copyPath(source, destination, StandardCopyOption.REPLACE_EXISTING)
-            } else {
-                FileHelper.copyPath(source, destination)
-            }
+            FileHelper.copyPath(source, destination, overwrite ? copyOpts(StandardCopyOption.REPLACE_EXISTING) : copyOpts())
         }
         else if( mode == Mode.COPY_NO_FOLLOW ) {
             FileHelper.copyPath(source, destination, copyOpts(LinkOption.NOFOLLOW_LINKS))

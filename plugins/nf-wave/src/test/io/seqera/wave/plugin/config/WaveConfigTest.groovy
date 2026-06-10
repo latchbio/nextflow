@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,17 +12,16 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package io.seqera.wave.plugin.config
 
+import io.seqera.wave.api.BuildCompression
 import io.seqera.wave.api.ScanLevel
 import io.seqera.wave.api.ScanMode
 import nextflow.util.Duration
 import spock.lang.Specification
 import spock.lang.Unroll
-
 /**
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
@@ -89,6 +88,7 @@ class WaveConfigTest extends Specification {
         def opts = new WaveConfig([:])
         then:
         opts.condaOpts().mambaImage == 'mambaorg/micromamba:1.5.10-noble'
+        opts.condaOpts().baseImage == 'ubuntu:24.04'
         opts.condaOpts().commands == null
 
         when:
@@ -96,7 +96,13 @@ class WaveConfigTest extends Specification {
         then:
         opts.condaOpts().mambaImage == 'mambaorg/foo:1'
         opts.condaOpts().commands == ['USER hola']
-        
+
+        when:
+        opts = new WaveConfig([build:[conda:[baseImage:'debian:12', mambaImage:'mambaorg/micromamba:2-amazon2023']]])
+        then:
+        opts.condaOpts().baseImage == 'debian:12'
+        opts.condaOpts().mambaImage == 'mambaorg/micromamba:2-amazon2023'
+
     }
 
     def 'should get build and cache repos' () {
@@ -111,6 +117,18 @@ class WaveConfigTest extends Specification {
         then:
         opts.buildRepository() == 'some/repo'
         opts.cacheRepository() == 'some/cache'
+    }
+
+    def 'should get build template' () {
+        when:
+        def opts = new WaveConfig([:])
+        then:
+        opts.buildTemplate() == null
+
+        when:
+        opts = new WaveConfig([build:[template:'conda/pixi:v1']])
+        then:
+        opts.buildTemplate() == 'conda/pixi:v1'
     }
 
     @Unroll
@@ -148,7 +166,7 @@ class WaveConfigTest extends Specification {
         def opts = new WaveConfig([:])
         then:
         opts.retryOpts().delay == Duration.of('450ms')
-        opts.retryOpts().maxAttempts == 10
+        opts.retryOpts().maxAttempts == 5
         opts.retryOpts().maxDelay == Duration.of('90s')
 
         when:
@@ -185,7 +203,7 @@ class WaveConfigTest extends Specification {
         given:
         def config = new WaveConfig([enabled: true])
         expect:
-        config.toString() == 'WaveConfig(enabled:true, endpoint:https://wave.seqera.io, containerConfigUrl:[], tokensCacheMaxDuration:30m, condaOpts:CondaOpts(mambaImage=mambaorg/micromamba:1.5.10-noble; basePackages=conda-forge::procps-ng, commands=null), strategy:[container, dockerfile, conda], bundleProjectResources:null, buildRepository:null, cacheRepository:null, retryOpts:RetryOpts(delay:450ms, maxDelay:1m 30s, maxAttempts:10, jitter:0.25), httpClientOpts:HttpOpts(), freezeMode:null, preserveFileTimestamp:null, buildMaxDuration:40m, mirrorMode:null, scanMode:null, scanAllowedLevels:null)'
+        config.toString() == 'WaveConfig(build:BuildOpts(repository:null, cacheRepository:null, template:null, conda:CondaOpts(mambaImage=mambaorg/micromamba:1.5.10-noble; basePackages=conda-forge::procps-ng, commands=null, baseImage=ubuntu:24.04), compression:null, maxDuration:40m), enabled:true, endpoint:https://wave.seqera.io, freeze:false, httpClient:HttpOpts(), mirror:false, retryPolicy:RetryOpts(delay:450ms, maxDelay:1m 30s, maxAttempts:5, jitter:0.25, multiplier:2.0, delayAsDuration:PT0.45S, maxDelayAsDuration:PT1M30S), scan:ScanOpts(allowedLevels:null, mode:null), strategy:[container, dockerfile, conda], bundleProjectResources:null, containerConfigUrl:[], preserveFileTimestamp:null, tokensCacheMaxDuration:30m)'
     }
 
     def 'should not allow invalid setting' () {
@@ -257,7 +275,24 @@ class WaveConfigTest extends Specification {
         'low,high'          | List.of(ScanLevel.LOW,ScanLevel.HIGH)
         'LOW, HIGH'         | List.of(ScanLevel.LOW,ScanLevel.HIGH)
         ['medium','high']   | List.of(ScanLevel.MEDIUM,ScanLevel.HIGH)
+    }
 
+    def 'should validate build compression' () {
+        expect:
+        new WaveConfig(build: [compression: COMPRESSION]).buildCompression() == EXPECTED
+        where:
+        COMPRESSION         | EXPECTED
+        null                | null
+        [mode:'gzip']       | BuildCompression.gzip
+        [mode:'estargz']    | BuildCompression.estargz
+        and:
+        [mode:'gzip', level: 1]   | new BuildCompression().withMode(BuildCompression.Mode.gzip).withLevel(1)
+        [mode:'estargz', level: 2]| new BuildCompression().withMode(BuildCompression.Mode.estargz).withLevel(2)
+        [mode:'zstd', level: 3]   | new BuildCompression().withMode(BuildCompression.Mode.zstd).withLevel(3)
+        and:
+        [mode:'gzip', level: 1, force:true]     | new BuildCompression().withMode(BuildCompression.Mode.gzip).withLevel(1).withForce(true)
+        [mode:'estargz', level: 2, force:true ] | new BuildCompression().withMode(BuildCompression.Mode.estargz).withLevel(2).withForce(true)
+        [mode:'zstd', level: 3,force:true]      | new BuildCompression().withMode(BuildCompression.Mode.zstd).withLevel(3).withForce(true)
     }
 
 }

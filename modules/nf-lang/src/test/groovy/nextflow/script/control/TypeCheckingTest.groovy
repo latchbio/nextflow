@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -83,55 +83,6 @@ class TypeCheckingTest extends Specification {
         errors[0].getStartLine() == 11
         errors[0].getStartColumn() == 5
         errors[0].getOriginalMessage() == 'Incorrect number of call arguments, expected 2 but received 1'
-    }
-
-    def 'should report an error for an invalid method output' () {
-        when:
-        def errors = check(
-            '''\
-            process hello {
-                output:
-                val('hello'), emit: x
-                val('world'), emit: y
-
-                script:
-                """
-                echo hello
-                """
-            }
-
-            workflow {
-                hello()
-                println hello.out.foo
-            }
-            '''
-        )
-        then:
-        errors.size() == 1
-        errors[0].getStartLine() == 14
-        errors[0].getStartColumn() == 13
-        errors[0].getOriginalMessage() == 'Unrecognized output `foo` for process `hello`'
-
-        when:
-        errors = check(
-            '''\
-            workflow hello {
-                emit:
-                x = 'hello'
-                y = 'world'
-            }
-
-            workflow {
-                hello()
-                println hello.out.bar
-            }
-            '''
-        )
-        then:
-        errors.size() == 1
-        errors[0].getStartLine() == 9
-        errors[0].getStartColumn() == 13
-        errors[0].getOriginalMessage() == 'Unrecognized output `bar` for workflow `hello`'
     }
 
 }

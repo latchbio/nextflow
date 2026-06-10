@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package io.seqera.tower.plugin
@@ -21,9 +20,8 @@ import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import nextflow.Session
 import nextflow.SysEnv
-import nextflow.processor.TaskHandler
-import nextflow.trace.TraceObserver
-import nextflow.trace.TraceRecord
+import nextflow.trace.TraceObserverV2
+import nextflow.trace.event.TaskEvent
 import nextflow.util.Duration
 import nextflow.util.Threads
 /**
@@ -34,14 +32,14 @@ import nextflow.util.Threads
  */
 @Slf4j
 @CompileStatic
-class LogsCheckpoint implements TraceObserver {
+class LogsCheckpoint implements TraceObserverV2 {
 
     private Session session
     private Map config
     private Thread thread
     private Duration interval
     private LogsHandler handler
-    private volatile boolean terminated
+    private final Object lock = new Object()
 
     @Override
     void onFlowCreate(Session session) {
@@ -58,23 +56,32 @@ class LogsCheckpoint implements TraceObserver {
 
     @Override
     void onFlowComplete() {
-        this.terminated = true
+        synchronized(lock) {
+            thread.interrupt()
+        }
         thread.join()
     }
+
     @Override
-    void onFlowError(TaskHandler handler, TraceRecord trace){
-        this.terminated = true
+    void onFlowError(TaskEvent event) {
+        synchronized(lock) {
+            thread.interrupt()
+        }
         thread.join()
     }
 
     protected void run() {
         log.debug "Starting logs checkpoint thread - interval: ${interval}"
         try {
-            while( !terminated && !Thread.currentThread().isInterrupted() ) {
-                // just wait the declared delay
+            while( true ) {
                 await(interval)
-                // checkpoint the logs
-                handler.saveFiles()
+                if( Thread.currentThread().isInterrupted() )
+                    break
+                synchronized(lock) {
+                    if( Thread.currentThread().isInterrupted() )
+                        break
+                    handler.saveFiles()
+                }
             }
         }
         finally {
@@ -87,7 +94,7 @@ class LogsCheckpoint implements TraceObserver {
             Thread.sleep(interval.toMillis())
         }
         catch (InterruptedException e) {
-            log.trace "Interrupted logs checkpoint thread"
+            log.debug "Interrupted logs checkpoint thread"
             Thread.currentThread().interrupt()
         }
     }

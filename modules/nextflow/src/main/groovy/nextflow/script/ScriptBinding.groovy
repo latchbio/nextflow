@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import groovy.util.logging.Slf4j
 import nextflow.NF
 import nextflow.Session
 import nextflow.exception.AbortOperationException
+import nextflow.script.types.Record
 /**
  * Defines the script execution context. By default provided the following variables
  * <li>{@code __$session}: the current execution session
@@ -74,8 +75,8 @@ class ScriptBinding extends WorkflowBinding {
             args.addAll((List<String>)vars.args)
         }
         vars.put('args', args)
-        
-        // create and populate args
+
+        // create and populate params
         params = new ParamsMap()
         if( vars.params ) {
             if( !(vars.params instanceof Map) ) throw new IllegalArgumentException("ScriptBinding 'params' must be a Map value")
@@ -132,10 +133,17 @@ class ScriptBinding extends WorkflowBinding {
      * The map of the CLI named parameters
      *
      * @param values
+     * @param override
      */
-    ScriptBinding setParams(Map<String,Object> values ) {
-        if( values )
+    ScriptBinding setParams(Map<String,Object> values, boolean override=false) {
+        if( values ) {
+            if( override ) {
+                for( final key : values.keySet() )
+                    params.remove(key)
+            }
             params.putAll(values)
+            super.setVariable0('params', params)
+        }
         return this
     }
 
@@ -204,7 +212,7 @@ class ScriptBinding extends WorkflowBinding {
      * Implements immutable params map
      */
     @CompileStatic
-    static class ParamsMap implements Map<String,Object> {
+    static class ParamsMap implements Record, Map<String,Object> {
 
         private List<String> scriptAssignment = []
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 package nextflow.util
 
 import groovy.transform.EqualsAndHashCode
-import nextflow.container.ContainerConfig
+import nextflow.container.DockerConfig
 import nextflow.file.FileHelper
 import nextflow.io.SerializableMarker
 import spock.lang.Specification
@@ -118,15 +118,15 @@ class KryoHelperTest extends  Specification {
     def testSerializeContainerConfig() {
 
         given:
-        def cfg = new ContainerConfig([enabled: true, engine: 'docker', xxx: 'hello'])
+        def cfg = new DockerConfig([enabled: true, runOptions: 'hello'])
         when:
         def copy = KryoHelper.deserialize(KryoHelper.serialize(cfg))
         then:
         copy == cfg
-        copy instanceof ContainerConfig
+        copy instanceof DockerConfig
         copy.engine == 'docker'
         copy.enabled == true
-        copy.xxx == 'hello'
+        copy.runOptions == 'hello'
 
     }
 
@@ -154,6 +154,18 @@ class KryoHelperTest extends  Specification {
         KryoHelper.deserialize(buffer) instanceof Map.Entry
         KryoHelper.deserialize(buffer) == entry
 
+    }
+
+    def 'should serialise a record' () {
+
+        given:
+        def record = new RecordMap([foo: 1])
+
+        when:
+        def buffer = KryoHelper.serialize(record)
+        then:
+        KryoHelper.deserialize(buffer) instanceof RecordMap
+        KryoHelper.deserialize(buffer) == record
     }
 
     def 'should serialise xpath' () {

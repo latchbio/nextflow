@@ -18,7 +18,7 @@ The pipeline processes must specify the Docker image to use by defining the `con
 
 To enable this executor, set `process.executor = 'awsbatch'` in the `nextflow.config` file.
 
-The pipeline can be launched either in a local computer, or an EC2 instance. EC2 is suggested for heavy or long-running workloads. Additionally, an S3 bucket must be used as the pipeline work directory.
+The pipeline can be launched either on a local computer, or an EC2 instance. EC2 is suggested for heavy or long-running workloads. Additionally, an S3 bucket must be used as the pipeline work directory.
 
 Resource requests and other job characteristics can be controlled via the following process directives:
 
@@ -33,14 +33,19 @@ Resource requests and other job characteristics can be controlled via the follow
 - {ref}`process-resourcelabels`
 - {ref}`process-time`
 
-See the {ref}`AWS Batch<aws-batch>` page for further configuration details.
+The following {ref}`hints <process-hints>` are supported:
+
+- `consumableResources`: Specify [AWS Batch consumable resources](https://docs.aws.amazon.com/batch/latest/userguide/resource-aware-scheduling.html) as a list of name-value pairs. For example:
+
+  ```nextflow
+  hints consumableResources: ['my-license-a': 1, 'my-license-b': 2]
+  ```
+
+See {ref}`aws-batch` for more information.
 
 (azurebatch-executor)=
 
 ## Azure Batch
-
-:::{versionadded} 21.04.0
-:::
 
 Nextflow supports the [Azure Batch](https://azure.microsoft.com/en-us/services/batch/) service that allows job submission in the cloud without having to spin out and manage a cluster of virtual machines. Azure Batch uses Docker containers to run tasks, which greatly simplifies pipeline deployment.
 
@@ -48,7 +53,7 @@ The pipeline processes must specify the Docker image to use by defining the `con
 
 To enable this executor, set `process.executor = 'azurebatch'` in the `nextflow.config` file.
 
-The pipeline can be launched either in a local computer, or a cloud virtual machine. The cloud VM is suggested for heavy or long-running workloads. Additionally, an Azure Blob storage container must be used as the pipeline work directory.
+The pipeline can be launched either on a local computer, or a cloud virtual machine. The cloud VM is suggested for heavy or long-running workloads. Additionally, an Azure Blob storage container must be used as the pipeline work directory.
 
 Resource requests and other job characteristics can be controlled via the following process directives:
 
@@ -62,7 +67,7 @@ Resource requests and other job characteristics can be controlled via the follow
 - {ref}`process-resourcelabels`
 - {ref}`process-time`
 
-See the {ref}`Azure Batch <azure-batch>` page for further configuration details.
+See {ref}`azure-batch` for more information.
 
 (bridge-executor)=
 
@@ -124,7 +129,7 @@ By default, Flux will send all output to the `.command.log` file. To send this o
 
 [Google Cloud Batch](https://cloud.google.com/batch) is a managed computing service that allows the execution of containerized workloads in the Google Cloud Platform infrastructure.
 
-Nextflow provides built-in support for the Cloud Batch API, which allows the seamless deployment of a Nextflow pipeline in the cloud, offloading the process executions as pipelines.
+Nextflow provides built-in support for the Cloud Batch API, which allows the seamless deployment of Nextflow pipelines in the cloud, offloading the pipeline process executions.
 
 The pipeline processes must specify the Docker image to use by defining the `container` directive, either in the pipeline script or the `nextflow.config` file. Additionally, the pipeline work directory must be located in a Google Storage bucket.
 
@@ -143,33 +148,6 @@ Resource requests and other job characteristics can be controlled via the follow
 - {ref}`process-time`
 
 See the {ref}`Google Cloud Batch <google-batch>` page for further configuration details.
-
-(google-lifesciences-executor)=
-
-## Google Life Sciences
-
-:::{versionadded} 20.01.0
-:::
-
-[Google Cloud Life Sciences](https://cloud.google.com/life-sciences) is a managed computing service that allows the execution of containerized workloads in the Google Cloud Platform infrastructure.
-
-Nextflow provides built-in support for the Life Sciences API, which allows the seamless deployment of a Nextflow pipeline in the cloud, offloading the process executions as pipelines.
-
-The pipeline processes must specify the Docker image to use by defining the `container` directive, either in the pipeline script or the `nextflow.config` file. Additionally, the pipeline work directory must be located in a Google Storage bucket.
-
-To enable this executor, set `process.executor = 'google-lifesciences'` in the `nextflow.config` file.
-
-Resource requests and other job characteristics can be controlled via the following process directives:
-
-- {ref}`process-accelerator`
-- {ref}`process-cpus`
-- {ref}`process-disk`
-- {ref}`process-machineType`
-- {ref}`process-memory`
-- {ref}`process-resourcelabels`
-- {ref}`process-time`
-
-See the {ref}`Google Life Sciences <google-lifesciences>` page for further configuration details.
 
 (htcondor-executor)=
 
@@ -251,7 +229,7 @@ See the {ref}`Kubernetes <k8s-page>` page to learn how to set up a Kubernetes cl
 
 ## Local
 
-The `local` executor is used by default. It runs the pipeline processes on the computer where Nextflow is launched. The processes are parallelised by spawning multiple threads, taking advantage of the multi-core architecture of the CPU.
+The `local` executor is used by default. It runs the pipeline processes on the computer where Nextflow is launched. The processes are parallelized by spawning multiple threads, taking advantage of the multi-core architecture of the CPU.
 
 The `local` executor is useful for developing and testing a pipeline script on your computer, before switching to a cluster or cloud environment with production data.
 
@@ -329,7 +307,7 @@ Resource requests and other job characteristics can be controlled via the follow
 
 ## NQSII
 
-The `nsqii` executor allows you to run your pipeline script using the [NQSII](https://www.rz.uni-kiel.de/en/our-portfolio/hiperf/nec-linux-cluster) resource manager.
+The `nqsii` executor allows you to run your pipeline script using the [NQSII](https://www.rz.uni-kiel.de/en/our-portfolio/hiperf/nec-linux-cluster) resource manager.
 
 Nextflow manages each process as a separate job that is submitted to the cluster using the `qsub` command provided by the scheduler.
 
@@ -444,6 +422,113 @@ Resource requests and other job characteristics can be controlled via the follow
 - {ref}`process-queue`
 - {ref}`process-time`
 
+(seqera-executor)=
+
+## Seqera
+
+:::{versionadded} 26.04.0
+:::
+
+:::{warning}
+*Preview feature: may change in a future release.*
+:::
+
+The `seqera` executor allows you to run your pipeline using the [Seqera](https://seqera.io) cloud infrastructure. It enables the seamless execution of Nextflow pipelines by offloading process executions to the Seqera scheduler service.
+
+The pipeline processes must specify the Docker image to use by defining the `container` directive, either in the pipeline script or the `nextflow.config` file. Additionally, an S3 bucket must be used as the pipeline work directory.
+
+To enable this executor, set `process.executor = 'seqera'` in the `nextflow.config` file.
+
+Resource requests and other job characteristics can be controlled via the following process directives:
+
+- {ref}`process-arch`
+- {ref}`process-container`
+- {ref}`process-containerOptions`
+- {ref}`process-cpus`
+- {ref}`process-disk`
+- {ref}`process-memory`
+- {ref}`process-time`
+
+The following {ref}`hints <process-hints>` are supported:
+
+- `machineRequirement.capacityMode`
+- `machineRequirement.diskAllocation`
+- `machineRequirement.diskEncrypted`
+- `machineRequirement.diskIops`
+- `machineRequirement.diskMountPath`
+- `machineRequirement.diskSize`
+- `machineRequirement.diskThroughputMiBps`
+- `machineRequirement.diskType`
+- `machineRequirement.machineTypes`
+- `machineRequirement.maxSpotAttempts`
+- `machineRequirement.provisioning`
+
+Each hint overrides the corresponding field of the `seqera.executor.machineRequirement` config scope on a per-process basis. Keys may be used as-is or with the `seqera/` prefix to restrict them to this executor.
+
+For example, to override the provisioning mode for a single process:
+
+```nextflow
+process hello {
+    hints 'seqera/machineRequirement.provisioning': 'spotFirst'
+
+    script:
+    """
+    your_command --here
+    """
+}
+```
+
+See {ref}`config-seqera` for the full config reference.
+
+### Disk support
+
+When the {ref}`process-disk` directive is specified, the Seqera executor provisions storage for the task container. There are two disk allocation strategies:
+
+- **task** (default): A dedicated EBS volume is created for each task at launch time. This provides isolated, high-performance storage with configurable volume type, IOPS, throughput, and encryption.
+
+- **node**: Uses the instance storage attached at the cluster level. This is shared across tasks running on the same node and does not support EBS-specific options.
+
+#### Task allocation (EBS volumes)
+
+By default, a gp3 volume with 325 MiB/s throughput is used (Fusion recommended settings). You can customize the EBS volume configuration:
+
+```groovy
+seqera {
+    executor {
+        machineRequirement {
+            diskAllocation = 'task'    // Per-task EBS volume (default)
+            diskType = 'ebs/io1'       // Use provisioned IOPS SSD
+            diskIops = 10000           // Required for io1/io2
+            diskThroughputMiBps = 500  // Throughput for gp3 volumes
+            diskEncrypted = true       // Enable KMS encryption
+            diskMountPath = '/data'    // Container mount path (default: /tmp)
+        }
+    }
+}
+```
+
+Supported volume types: `ebs/gp3` (default), `ebs/gp2`, `ebs/io1`, `ebs/io2`, `ebs/st1`, `ebs/sc1`.
+
+#### Node allocation (instance storage)
+
+To use instance storage instead of per-task EBS volumes:
+
+```groovy
+seqera {
+    executor {
+        machineRequirement {
+            diskAllocation = 'node'    // Use instance storage
+        }
+    }
+}
+```
+
+:::{note}
+When using `node` allocation, the EBS-specific options (`diskType`, `diskIops`, `diskThroughputMiBps`, `diskEncrypted`) are not applicable and will cause an error if specified.
+:::
+
+See the {ref}`seqera scope <config-seqera>` for the available configuration options.
+
 (slurm-executor)=
 
 ## SLURM
@@ -475,3 +560,39 @@ Nextflow does not provide direct support for SLURM multi-clusters. If you need t
 :::{versionadded} 23.07.0-edge
 Some SLURM clusters require memory allocations to be specified with `--mem-per-cpu` instead of `--mem`. You can specify `executor.perCpuMemAllocation = true` in the Nextflow configuration to enable this behavior. Nextflow will automatically compute the memory per CPU for each task (by default 1 CPU is used).
 :::
+
+:::{versionadded} 25.12.0-edge
+Since SLURM 24, `squeue` supports an `--only-job-state` option that ignores the partition (`-p`) or user (`-u`) filters. To enable this behavior, specify `executor.$slurm.onlyJobState = true` in your Nextflow configuration. If `SchedulerParameters=enable_job_state_cache` is enabled, you can expect improved Nextflow performance and reduced load on the SLURM controller. See [`enable_job_state_cache`](https://slurm.schedmd.com/slurm.conf.html#OPT_enable_job_state_cache) and [`--only-job-state`](https://slurm.schedmd.com/squeue.html#OPT_only-job-state) for more information.
+:::
+
+(tcs-executor)=
+
+## TCS
+
+The `tcs` executor allows you to run your pipeline script using a [Fujitsu Technical Computing Suite (TCS)](https://software.fujitsu.com/jp/manual/manualindex/p21000155e.html).
+
+Nextflow manages each process as a separate job that is submitted to the cluster using the `pjsub` command.
+
+The pipeline must be launched from a node where the `pjsub` command is available, which is typically the login node.
+
+To enable the TCS executor, set `process.executor = 'tcs'` in the `nextflow.config` file.
+
+Resource requests and other job characteristics can be controlled via the following process directives:
+
+- {ref}`process-clusterOptions`
+- {ref}`process-time`
+
+:::{note}
+Use `clusterOptions` to specify system-dependent options such as queue (resource group), CPU, and node. These options vary across target systems and are not standardized. They correspond to `-L` options in the arguments of the `pjsub` command and should be configured according to the requirements of the specific cluster environment.
+
+For example:
+
+```groovy
+process {
+  executor = 'tcs'
+  time = '00:30:00'
+  clusterOptions = '-L rscgrp=a-batch -L vnode-core=4'
+}
+```
+:::
+

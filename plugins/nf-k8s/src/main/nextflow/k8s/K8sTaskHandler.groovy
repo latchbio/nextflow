@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2025, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,6 @@
 
 package nextflow.k8s
 
-import nextflow.k8s.client.PodUnschedulableException
-import nextflow.k8s.model.PodMountEmptyDir
-import nextflow.util.DispatcherClient
-import nextflow.util.MemoryUnit
-
 import java.nio.file.Path
 
 import groovy.transform.CompileDynamic
@@ -28,19 +23,24 @@ import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 
 import nextflow.SysEnv
+import nextflow.container.ContainerHelper
 import nextflow.container.DockerBuilder
 import nextflow.exception.ProcessSubmitException
 import nextflow.executor.BashWrapperBuilder
 import nextflow.fusion.FusionAwareTask
 import nextflow.k8s.client.K8sClient
+import nextflow.k8s.client.PodUnschedulableException
 import nextflow.k8s.model.PodEnv
+import nextflow.k8s.model.PodMountEmptyDir
 import nextflow.k8s.model.PodOptions
 import nextflow.k8s.model.PodSpecBuilder
 import nextflow.k8s.model.ResourceType
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskRun
 import nextflow.processor.TaskStatus
+import nextflow.util.DispatcherClient
 import nextflow.util.Escape
+import nextflow.util.MemoryUnit
 import nextflow.util.PathTrie
 import nextflow.util.TestOnly
 /**
@@ -67,8 +67,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
 
     private ResourceType resourceType = ResourceType.Pod
 
-    private K8sClient client
-
     private DispatcherClient dispatcherClient
 
     private BashWrapperBuilder builder
@@ -85,7 +83,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         super(task)
 
         this.executor = executor
-        this.client = executor.client
         this.dispatcherClient = executor.dispatcherClient
         this.outputFile = task.workDir.resolve(TaskRun.CMD_OUTFILE)
         this.errorFile = task.workDir.resolve(TaskRun.CMD_ERRFILE)
@@ -104,6 +101,8 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
     }
 
     protected K8sConfig getK8sConfig() { executor.getK8sConfig() }
+
+    protected K8sClient getClient() { executor.getClient() }
 
     protected boolean useJobResource() { resourceType==ResourceType.Job }
 
@@ -137,11 +136,13 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
     }
 
     protected List<String> classicSubmitCli(TaskRun task) {
+        final workDir = Escape.path(task.workDir)
+
         final result = new ArrayList(BashWrapperBuilder.BASH)
         final command = """
             for i in {1..50}; do
-                if [ -f ${Escape.path(task.workDir)}/${TaskRun.CMD_RUN} ]; then
-                    exec /bin/bash -ue ${Escape.path(task.workDir)}/${TaskRun.CMD_RUN}
+                if [ -f ${workDir}/${TaskRun.CMD_RUN} ]; then
+                    exec /bin/bash -ue ${workDir}/${TaskRun.CMD_RUN}
                     exit 0
                 else
                     echo "Waiting for file to become available..."
@@ -172,7 +173,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
     protected static String getOwner() { OWNER }
 
     protected Boolean fixOwnership() {
-        task.containerConfig.fixOwnership
+        ContainerHelper.fixOwnership(task.containerConfig)
     }
 
     /**
@@ -208,7 +209,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
         final launcher = getSubmitCommand(task)
         final taskCfg = task.getConfig()
 
-        final clientConfig = client.config
+        final clientConfig = getClient().config
         final builder = new PodSpecBuilder()
             .withImageName(imageName)
             .withPodName(getSyntheticPodName(task))
@@ -352,10 +353,10 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
     @Override
     boolean checkIfRunning() {
         if(isSubmitted()) {
-            def s = dispatcherClient.getTaskStatus(taskExecutionId)
+            Map s = dispatcherClient.getTaskStatus(taskExecutionId)
 
             // include terminated states to allow the handler status to progress
-            if (['RUNNING', 'SUCCEEDED', 'FAILED'].contains(s)) {
+            if (['RUNNING', 'SUCCEEDED', 'FAILED'].contains(s?.status)) {
                 status = TaskStatus.RUNNING
                 return true
             }
@@ -368,7 +369,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
     boolean checkIfCompleted() {
         Map s = dispatcherClient.getTaskStatus(taskExecutionId)
 
-        if( ['SUCCEEDED', 'FAILED'].contains(s.status) ) {
+        if( ['SUCCEEDED', 'FAILED'].contains(s?.status) ) {
 
             if (s.status == 'FAILED' && s.systemError != null) {
                 task.error = new PodUnschedulableException((String) s.systemError, new Exception("failed to launch pod"))
@@ -392,7 +393,6 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
             }
 
             status = TaskStatus.COMPLETED
-
             return true
         }
 
@@ -426,7 +426,7 @@ class K8sTaskHandler extends TaskHandler implements FusionAwareTask {
      * Terminates the current task execution
      */
     @Override
-    void killTask() {
+    protected void killTask() {
         dispatcherClient.updateTaskStatus(taskExecutionId, 'ABORTING')
     }
 }

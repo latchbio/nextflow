@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package nextflow.executor.local
@@ -20,11 +19,14 @@ package nextflow.executor.local
 import java.nio.file.Path
 
 import nextflow.Global
-import nextflow.container.ContainerConfig
+import nextflow.container.DockerConfig
+import nextflow.exception.ProcessException
 import nextflow.file.http.XPath
 import nextflow.processor.TaskBean
 import nextflow.processor.TaskConfig
 import nextflow.processor.TaskRun
+import nextflow.processor.TaskStatus
+import nextflow.util.Duration
 import spock.lang.Specification
 /**
  *
@@ -63,10 +65,10 @@ class LocalTaskHandlerTest extends Specification {
             getContainer() >> 'ubuntu:latest'
             getWorkDir() >> WORK_DIR
             getConfig() >> Mock(TaskConfig)
-            getContainerConfig() >> new ContainerConfig([engine:'docker',enabled:true])
+            getContainerConfig() >> new DockerConfig(enabled:true)
             toTaskBean() >> bean
         }
-        def executor = Mock(LocalExecutor) 
+        def executor = Mock(LocalExecutor)
         and:
         def handler = Spy(new LocalTaskHandler(task, executor))
 
@@ -82,5 +84,34 @@ class LocalTaskHandlerTest extends Specification {
 
         cleanup:
         builder?.redirectOutput()?.file()?.delete()
+    }
+
+    def 'should kill task when task exceeds time limit' () {
+        given:
+        def workDir = Path.of('/tmp/test-work-dir')
+        def task = Mock(TaskRun) {
+            getWorkDir() >> workDir
+            getConfig() >> Mock(TaskConfig) {
+                getTime() >> Duration.of(100)
+            }
+        }
+        and:
+        def handler = Spy(new LocalTaskHandler(task, Mock(LocalExecutor))) {
+            buildTaskWrapper() >> {}
+            elapsedTimeMillis() >> 200
+        }
+        handler.@process = Mock(Process) {
+            exitValue() >> 143  // Typical exit code for SIGTERM
+        }
+        handler.status = TaskStatus.RUNNING
+
+        when:
+        def completed = handler.checkIfCompleted()
+
+        then:
+        completed == true
+        1 * task.setExitStatus(143)
+        1 * task.setError(_ as ProcessException)
+        handler.status == TaskStatus.COMPLETED
     }
 }

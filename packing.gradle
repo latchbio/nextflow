@@ -8,20 +8,21 @@ configurations {
     legacy.extendsFrom defaultCfg
     tower.extendsFrom defaultCfg
     wave.extendsFrom defaultCfg
+    seqera.extendsFrom defaultCfg
 }
 
 dependencies {
     api project(':nextflow')
     // include Ivy at runtime in order to have Grape @Grab work correctly
     defaultCfg "org.apache.ivy:ivy:2.5.2"
-    // default cfg = runtime + httpfs + lineage + amazon + tower client + wave client
+    // default cfg = runtime + httpfs + lineage
     defaultCfg project(':nf-httpfs')
     defaultCfg project(':nf-lineage')
     defaultCfg project(':plugins:nf-k8s')
 }
 
 
-ext.mainClassName = 'nextflow.cli.Launcher'
+// ext.mainClassName removed - now using application.mainClass in Shadow plugin
 ext.homeDir = System.properties['user.home']
 ext.nextflowDir = "$homeDir/.nextflow/framework/$version"
 ext.releaseDir = "$buildDir/releases"
@@ -121,7 +122,7 @@ task pack( dependsOn: [packOne, packDist]) {
 
 }
 
-task deploy( type: Exec, dependsOn: [clean, compile, pack]) {
+task deploy( type: Exec, dependsOn: [clean, compile, pack, validatePluginVersions]) {
 
     def temp = File.createTempFile('upload',null)
     temp.deleteOnExit()
@@ -228,12 +229,13 @@ task dockerPack(type: Exec, dependsOn: ['packOne']) {
 
 /*
  * Tag and upload the release
- * 
+ *
  * https://github.com/aktau/github-release/
  */
-task release(type: Exec, dependsOn: [pack, dockerImage]) {
+task release(type: Exec, dependsOn: [pack, dockerImage, validatePluginVersions]) {
 
     def launcherFile = file('nextflow').absoluteFile
+    def launcherMd5 = file('nextflow.md5').absoluteFile
     def launcherSha1 = file('nextflow.sha1').absoluteFile
     def launcherSha256 = file('nextflow.sha256').absoluteFile
     def nextflowAllFile = file("$releaseDir/nextflow-${version}-dist")
@@ -242,6 +244,7 @@ task release(type: Exec, dependsOn: [pack, dockerImage]) {
     def snapshot = version ==~ /^.+(-RC\d+|-SNAPSHOT)$/
     def edge = version ==~ /^.+(-edge|-EDGE)$/
     def isLatest = !snapshot && !edge
+    def branch = gitBranch()
     def cmd =  """\
     # tag the release
     git push || exit \$?
@@ -252,7 +255,7 @@ task release(type: Exec, dependsOn: [pack, dockerImage]) {
     gh release upload --repo nextflow-io/nextflow v$version ${launcherFile} ${nextflowAllFile}        
     """.stripIndent()
 
-    if( edge )
+    if( edge && branch == 'master' )
         cmd += """
         # publish the script as the latest
         export AWS_ACCESS_KEY_ID=${System.env.NXF_AWS_ACCESS}
@@ -260,11 +263,11 @@ task release(type: Exec, dependsOn: [pack, dockerImage]) {
         aws s3 cp $launcherFile s3://www2.nextflow.io/releases/edge/nextflow $s3CmdOpts
         aws s3 cp $launcherSha1 s3://www2.nextflow.io/releases/edge/nextflow.sha1 $s3CmdOpts
         aws s3 cp $launcherSha256 s3://www2.nextflow.io/releases/edge/nextflow.sha256 $s3CmdOpts
-        aws s3 cp $launcherSha256 s3://www2.nextflow.io/releases/edge/nextflow.md5 $s3CmdOpts
+        aws s3 cp $launcherMd5 s3://www2.nextflow.io/releases/edge/nextflow.md5 $s3CmdOpts
         aws s3 cp $versionFile s3://www2.nextflow.io/releases/edge/version $s3CmdOpts
         """.stripIndent()
-        
-    else if( isLatest )
+
+    else if( isLatest && branch == 'master' )
         cmd += """
         # publish the script as the latest
         export AWS_ACCESS_KEY_ID=${System.env.NXF_AWS_ACCESS}
@@ -272,7 +275,7 @@ task release(type: Exec, dependsOn: [pack, dockerImage]) {
         aws s3 cp $launcherFile s3://www2.nextflow.io/releases/latest/nextflow $s3CmdOpts
         aws s3 cp $launcherSha1 s3://www2.nextflow.io/releases/latest/nextflow.sha1 $s3CmdOpts
         aws s3 cp $launcherSha256 s3://www2.nextflow.io/releases/latest/nextflow.sha256 $s3CmdOpts
-        aws s3 cp $launcherSha256 s3://www2.nextflow.io/releases/latest/nextflow.md5 $s3CmdOpts
+        aws s3 cp $launcherMd5 s3://www2.nextflow.io/releases/latest/nextflow.md5 $s3CmdOpts
         aws s3 cp $versionFile s3://www2.nextflow.io/releases/latest/version $s3CmdOpts
         """.stripIndent()
 
@@ -281,5 +284,4 @@ task release(type: Exec, dependsOn: [pack, dockerImage]) {
     temp.text = cmd
     commandLine 'bash', '-e', temp.absolutePath
 }
-
 

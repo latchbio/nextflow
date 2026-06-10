@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,9 +30,7 @@ import nextflow.config.ConfigClosurePlaceholder
 import nextflow.exception.ConfigParseException
 import nextflow.util.Duration
 import nextflow.util.MemoryUnit
-import spock.lang.Ignore
 import spock.lang.Specification
-
 /**
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
@@ -399,7 +397,7 @@ class ConfigParserV1Test extends Specification {
 
     }
 
-    def 'should return the set of visited block names' () {
+    def 'should return the set of declared profiles' () {
 
         given:
         def text = '''
@@ -417,13 +415,13 @@ class ConfigParserV1Test extends Specification {
         def slurper = new ConfigParserV1().setProfiles(['alpha'])
         slurper.parse(text)
         then:
-        slurper.getProfiles() == ['alpha','beta'] as Set
+        slurper.getDeclaredProfiles() == ['alpha','beta'] as Set
 
         when:
         slurper = new ConfigParserV1().setProfiles(['omega'])
         slurper.parse(text)
         then:
-        slurper.getProfiles() == ['alpha','beta'] as Set
+        slurper.getDeclaredProfiles() == ['alpha','beta'] as Set
     }
 
     def 'should disable includeConfig parsing' () {
@@ -483,7 +481,7 @@ class ConfigParserV1Test extends Specification {
         result.str1 instanceof String
         result.str2 instanceof GString
         result.closure1 instanceof Closure
-        result.map1.bar instanceof Closure
+        result.map1.bar instanceof Closure;
 
         when:
         result = new ConfigParserV1()
@@ -493,7 +491,7 @@ class ConfigParserV1Test extends Specification {
         result.str1 instanceof String
         result.str2 instanceof GString
         result.closure1 instanceof Closure
-        result.map1.bar instanceof Closure
+        result.map1.bar instanceof Closure;
 
         when:
         result = new ConfigParserV1()

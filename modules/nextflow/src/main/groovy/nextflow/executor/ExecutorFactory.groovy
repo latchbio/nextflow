@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2018, Centre for Genomic Regulation (CRG)
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,7 +59,8 @@ class ExecutorFactory {
             'nqsii': NqsiiExecutor,
             'moab': MoabExecutor,
             'oar': OarExecutor,
-            'hq': HyperQueueExecutor
+            'hq': HyperQueueExecutor,
+            'tcs': TcsExecutor
     ]
 
     @PackageScope Map<String, Class<? extends Executor>> executorsMap
@@ -204,6 +205,7 @@ class ExecutorFactory {
     protected Executor createExecutor( Class<? extends Executor> clazz, String name, Session session) {
         def result = clazz.newInstance()
         result.session = session
+        result.config = new ExecutorConfig(session.config.executor as Map ?: Collections.emptyMap())
         result.name = name
         result.init()
         return result
@@ -219,13 +221,8 @@ class ExecutorFactory {
         // create the processor object
         def result = taskConfig.executor?.toString()
 
-        if( !result ) {
-            if( session.config.executor instanceof String ) {
-                result = session.config.executor
-            }
-            else if( session.config.executor?.name instanceof String ) {
-                result = session.config.executor.name
-            }
+        if( !result && session.config.executor?.name instanceof String ) {
+            result = session.config.executor.name
         }
 
         log.debug "<< taskConfig executor: $result"
@@ -245,5 +242,5 @@ class ExecutorFactory {
             log.warn "Unable to gracefully shutdown executor: $exec.name", e
         }
     }
-    
+
 }

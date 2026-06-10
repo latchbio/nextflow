@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2025, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,12 @@
 
 package nextflow.k8s.client
 
+import dev.failsafe.Failsafe
+import dev.failsafe.FailsafeException
+import dev.failsafe.RetryPolicy
+import dev.failsafe.event.EventListener
+import dev.failsafe.event.ExecutionAttemptedEvent
+import dev.failsafe.function.CheckedSupplier
 import nextflow.exception.K8sOutOfCpuException
 import nextflow.exception.K8sOutOfMemoryException
 import nextflow.exception.K8sTimeoutException
@@ -39,6 +45,11 @@ import groovy.util.logging.Slf4j
 import nextflow.exception.NodeTerminationException
 import nextflow.exception.ProcessFailedException
 import org.yaml.snakeyaml.Yaml
+
+import java.time.temporal.ChronoUnit
+import java.util.concurrent.TimeoutException
+import dev.failsafe.function.CheckedPredicate
+
 /**
  * Kubernetes API client
  *
@@ -231,7 +242,7 @@ class K8sClient {
         final podList = new K8sResponseJson(resp.text)
 
         // delete all pods in a job
-        if (podList.kind == "PodList") { 
+        if (podList.kind == "PodList") {
             for (item in podList.items) {
                 try {
                    podDelete(((item as Map).metadata as Map).name as String)
@@ -384,13 +395,13 @@ class K8sClient {
         if( podName ) {
             try {
                 return podState(podName)
-            } 
+            }
             /* pod might be deleted by control plane just after findPodNameForJob() call
              * so try fallback to jobState
-             */   
+             */
             catch (NodeTerminationException err) {
                 log.warn1("Job $jobName's Pod not found, probably cleaned by controlplane")
-                return jobStateFallback0(jobName)           
+                return jobStateFallback0(jobName)
             }
         }
         else {
@@ -409,7 +420,6 @@ class K8sClient {
                 log.warn1("Job $jobName already completed and Pod is gone")
                 final dummyPodStatus = [
                         terminated: [
-                                exitcode: 0,
                                 reason: "Completed",
                                 startedAt: jobStatus.startTime,
                                 finishedAt: jobStatus.completionTime,
@@ -431,7 +441,7 @@ class K8sClient {
             throw new ProcessFailedException("K8s Job $jobName execution failed: $message")
         }
 
-        log.warn1("K8s Job $jobName does not have pod - Not yet scheduled?")
+        log.debug1("K8s Job $jobName does not have pod - Not yet scheduled?")
         return Collections.emptyMap()
     }
 
@@ -630,23 +640,7 @@ class K8sClient {
      *      the second element is the text (json) response
      */
     protected K8sResponseApi makeRequest(String method, String path, String body=null) throws K8sResponseException {
-
-        final int maxRetries = config.maxErrorRetry
-        int attempt = 0
-
-        while ( true ) {
-            try {
-                return makeRequestCall( method, path, body )
-            } catch ( K8sResponseException | SocketException | SocketTimeoutException e ) {
-                if ( e instanceof K8sResponseException && e.response.code != 500 )
-                    throw e
-                if ( ++attempt > maxRetries )
-                    throw e
-                log.debug "[K8s] API request threw socket exception: $e.message for $method $path - Retrying request (attempt=$attempt)"
-                final long delay = (Math.pow(3, attempt - 1) as long) * 250
-                sleep( delay )
-            }
-        }
+        return apply(() -> makeRequestCall( method, path, body ) )
     }
 
 
@@ -742,6 +736,86 @@ class K8sClient {
         def resp = get(action)
         trace('GET', action, resp.text)
         return new K8sResponseJson(resp.text)
+    }
+
+    /**
+     * Creates a retry policy using the configuration specified by {@link nextflow.k8s.client.K8sRetryConfig}
+     *
+     * @param cond A predicate that determines when a retry should be triggered
+     * @return The {@link dev.failsafe.RetryPolicy} instance
+     */
+    protected <T> RetryPolicy<T> retryPolicy(CheckedPredicate<? extends Throwable> cond) {
+        final cfg = config.retryConfig
+        final listener = new EventListener<ExecutionAttemptedEvent<T>>() {
+            @Override
+            void accept(ExecutionAttemptedEvent<T> event) throws Throwable {
+                log.debug("K8s response error - attempt: ${event.attemptCount}; reason: ${event.lastException.message}")
+                final t = event.lastException
+                if( t instanceof K8sResponseException && t.response.code == 401 )
+                    refreshToken()
+            }
+        }
+        return RetryPolicy.<T>builder()
+            .handleIf(cond)
+            .withBackoff(cfg.delay.toMillis(), cfg.maxDelay.toMillis(), ChronoUnit.MILLIS)
+            .withMaxAttempts(cfg.maxAttempts)
+            .withJitter(cfg.jitter)
+            .onRetry(listener)
+            .build()
+    }
+
+    /**
+     * Reload the service-account token from {@link ClientConfig#tokenPath} so that
+     * a request retried after a 401 picks up a token rotated in place by kubelet.
+     */
+    protected void refreshToken() {
+        if( !config.tokenPath )
+            return
+        try {
+            final newToken = config.tokenPath.getText('UTF-8')
+            if( newToken && newToken != config.token ) {
+                log.debug "[K8s] Refreshing service-account token from ${config.tokenPath}"
+                config.token = newToken
+            }
+        }
+        catch( Exception e ) {
+            log.warn "[K8s] Unable to refresh service-account token from ${config.tokenPath} - cause: ${e.message}"
+        }
+    }
+
+    final private static List<Integer> RETRY_CODES = List.of(408, 429, 500, 502, 503, 504)
+
+    /**
+     * Carry out the invocation of the specified action using a retry policy.
+     *
+     * @param action A {@link dev.failsafe.function.CheckedSupplier} instance modeling the action to be performed in a safe manner
+     * @return The result of the supplied action
+     */
+    protected <T> T apply(CheckedSupplier<T> action) {
+        // define the retry condition
+        final cond = new CheckedPredicate<? extends Throwable>() {
+            @Override
+            boolean test(Throwable t) {
+                if ( t instanceof K8sResponseException && t.response.code in RETRY_CODES )
+                    return true
+                // 401 is retried only when the token was loaded from a file and can be re-read from disk
+                if ( t instanceof K8sResponseException && t.response.code == 401 && config.tokenPath )
+                    return true
+                if( t instanceof SocketException || t.cause instanceof SocketException )
+                    return true
+                if( t instanceof SocketTimeoutException || t.cause instanceof SocketTimeoutException )
+                    return true
+                return false
+            }
+        }
+        // create the retry policy object
+        final policy = retryPolicy(cond)
+        // apply the action with and throw the original cause
+        try {
+            return Failsafe.with(policy).get(action)
+        }catch(FailsafeException e){
+            throw e.getCause()
+        }
     }
 
 

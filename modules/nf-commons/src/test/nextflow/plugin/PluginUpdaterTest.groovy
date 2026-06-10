@@ -1,3 +1,19 @@
+/*
+ * Copyright 2013-2026, Seqera Labs
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package nextflow.plugin
 
 import nextflow.util.CacheHelper
@@ -72,32 +88,28 @@ class PluginUpdaterTest extends Specification {
         folder?.deleteDir()
     }
 
-    def 'should install a plugin from a digest-based repository' () {
+    def 'should detect already-installed pinned plugin from the on-disk store' () {
         given:
-        def PLUGIN = "$PLUGIN_ID-1.0.0"
         def folder = Files.createTempDirectory('test')
         and:
-        def remote = remoteDigestRepository(folder.resolve('repo'), ['1.0.0', '2.0.0'])
+        def remote = remoteRepository(folder.resolve('repo'), ['1.0.0'])
         and:
-        def local = localCache(folder.resolve('plugins'), [])
+        def local = localCache(folder.resolve('plugins'), ['1.0.0'])
         def manager = new LocalPluginManager(local)
         def updater = new PluginUpdater(manager, local, remote, false)
 
-        when:
-        updater.installPlugin( PLUGIN_ID, '1.0.0' )
-
-        then:
-        manager.getPlugin(PLUGIN_ID).plugin.class == FooPlugin.class
-        manager.getPlugin(PLUGIN_ID).descriptor.getPluginId() == PLUGIN_ID
-        manager.getPlugin(PLUGIN_ID).descriptor.getVersion() == '1.0.0'
+        expect:
+        // at prefetch time the local plugins have NOT been loaded into the manager yet
+        manager.getPlugin(PLUGIN_ID) == null
         and:
-        local.resolve(PLUGIN).exists()
-        local.resolve(PLUGIN).isDirectory()
-        local.resolve(PLUGIN).resolve('MANIFEST.MF').isFile()
+        // pinned + present in the store -> already installed, no remote metadata needed
+        updater.isAlreadyInstalled(PluginRef.parse('my-plugin@1.0.0'))
         and:
-        manager.localRoot.resolve(PLUGIN).exists()
-        manager.localRoot.resolve(PLUGIN).isLink()
-        manager.localRoot.resolve(PLUGIN).resolve('MANIFEST.MF').text == local.resolve(PLUGIN).resolve('MANIFEST.MF').text
+        // pinned but a different version is not installed
+        !updater.isAlreadyInstalled(PluginRef.parse('my-plugin@9.9.9'))
+        and:
+        // unpinned spec always needs remote metadata to resolve the latest release
+        !updater.isAlreadyInstalled(PluginRef.parse('my-plugin'))
 
         cleanup:
         folder?.deleteDir()
@@ -448,7 +460,7 @@ class PluginUpdaterTest extends Specification {
         then:
         matcher.matches() == EXPECTED
         !EXPECTED || matcher.group(1) == PLUGIN
-        
+
         where:
         FILE_NAME                               | EXPECTED  | PLUGIN
         'foo'                                   | false     | null
@@ -470,12 +482,6 @@ class PluginUpdaterTest extends Specification {
                 plugin
             }
 
-        return createRepositoryIndex(dir, plugins).toUri().toURL()
-    }
-
-    static private URL remoteDigestRepository(Path dir, List<String> versions) {
-        Files.createDirectory(dir)
-        List<MockPlugin> plugins = versions.collect { v -> createDigestPlugin(dir, v) }
         return createRepositoryIndex(dir, plugins).toUri().toURL()
     }
 
@@ -564,5 +570,39 @@ class PluginUpdaterTest extends Specification {
         }
 
         return zipFilePath
+    }
+
+    def 'should prefetch plugin metadata when pulling plugins' () {
+        given:
+        def folder = Files.createTempDirectory('test')
+        def mockRepo = Mock(PrefetchUpdateRepository)
+        def remote = remoteRepository(folder.resolve('repo'), ['1.0.0', '2.0.0'])
+        def local = localCache(folder.resolve('plugins'), [])
+        def manager = new LocalPluginManager(local)
+        def updater = Spy(PluginUpdater, constructorArgs: [manager, local, remote, false])
+
+        // Replace repositories with our mock repo
+        updater.@repositories = [mockRepo]
+
+        and:
+        def pluginList = ['my-plugin@1.0.0', 'another-plugin@2.0.0']
+
+        when:
+        updater.pullPlugins(pluginList)
+
+        then:
+        // Verify prefetch is called with the correct plugin specs
+        1 * mockRepo.prefetch({ List<PluginRef> specs ->
+            specs.size() == 2 &&
+            specs[0].id == 'my-plugin' && specs[0].version == '1.0.0' &&
+            specs[1].id == 'another-plugin' && specs[1].version == '2.0.0'
+        })
+
+        and:
+        // Mock pullPlugin0 to prevent real implementation calls
+        2 * updater.pullPlugin0(_, _) >> null
+
+        cleanup:
+        folder?.deleteDir()
     }
 }

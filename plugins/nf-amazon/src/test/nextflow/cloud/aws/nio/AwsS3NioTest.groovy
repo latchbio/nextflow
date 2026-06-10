@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,10 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package nextflow.cloud.aws.nio
+
+import software.amazon.awssdk.services.s3.model.StorageClass
 
 import java.nio.charset.Charset
 import java.nio.file.DirectoryNotEmptyException
@@ -30,9 +31,8 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributes
 
-import com.amazonaws.services.s3.AmazonS3
-import com.amazonaws.services.s3.model.AmazonS3Exception
-import com.amazonaws.services.s3.model.Tag
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.Tag
 import groovy.util.logging.Slf4j
 import nextflow.Global
 import nextflow.Session
@@ -58,22 +58,20 @@ import spock.lang.Unroll
 class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
 
     @Shared
-    static AmazonS3 s3Client0
+    private S3Client s3Client0
 
-    AmazonS3 getS3Client() { s3Client0 }
-
-    static {
-        def fs = (S3FileSystem)FileHelper.getOrCreateFileSystemFor(URI.create("s3:///"), config0())
-        s3Client0 = fs.client.getClient()
-    }
+    S3Client getS3Client() { s3Client0 }
 
     static private Map config0() {
         def accessKey = System.getenv('AWS_S3FS_ACCESS_KEY')
         def secretKey = System.getenv('AWS_S3FS_SECRET_KEY')
-        return [aws: [access_key: accessKey, secret_key: secretKey]]
+        return [aws:[accessKey: accessKey, secretKey: secretKey]]
     }
 
     def setup() {
+        def fs = (S3FileSystem)FileHelper.getOrCreateFileSystemFor(URI.create("s3:///"), config0().aws)
+        s3Client0 = fs.client.getClient()
+        and:
         def cfg = config0()
         Global.config = cfg
         Global.session = Mock(Session) { getConfig()>>cfg }
@@ -207,7 +205,6 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         if( bucketName ) deleteBucket(bucketName)
     }
 
-
     def 'should copy a stream to bucket' () {
         given:
         def TEXT = "Hello world!"
@@ -215,7 +212,7 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         when:
         def bucketName = createBucket()
         def target = s3path("s3://$bucketName/data/file.txt")
-        
+
         and:
         def stream = new ByteArrayInputStream(new String(TEXT).bytes)
         Files.copy(stream, target)
@@ -239,7 +236,6 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         cleanup:
         if( bucketName ) deleteBucket(bucketName)
     }
-
 
     def 'copy local file to a bucket' () {
         given:
@@ -285,7 +281,6 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         if( bucketName ) deleteBucket(bucketName)
     }
 
-    @Ignore // FIXME
     def 'move a remote file to a bucket' () {
         given:
         def TEXT = "Hello world!"
@@ -357,8 +352,7 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         if( target ) Files.deleteIfExists(target)
     }
 
-    @Ignore //FIXME
-    def 'should create a directory' () {
+    def 'should throw unsupported when create directory is a bucket' () {
 
         given:
         def bucketName = getRndBucketName()
@@ -367,10 +361,12 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         when:
         Files.createDirectory(dir)
         then:
-        existsPath(dir)
+        thrown(UnsupportedOperationException)
 
         cleanup:
-        deleteBucket(bucketName)
+        if (existsPath(dir)) {
+            deleteBucket(bucketName)
+        }
     }
 
     def 'should create a directory tree' () {
@@ -443,16 +439,17 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         deleteBucket(bucketName)
     }
 
-    @Ignore // FIXME
-    def 'should delete a bucket' () {
+    def 'should throw unsupported when trying delete a bucket' () {
         given:
-        final bucketName = createBucket()
+        def bucketName = createBucket()
 
         when:
         Files.delete(s3path("s3://$bucketName"))
         then:
-        !existsPath(bucketName)
+        thrown(UnsupportedOperationException)
 
+        cleanup:
+        deleteBucket(bucketName)
     }
 
     @Ignore // FIXME
@@ -484,7 +481,6 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         deleteBucket(bucketName)
     }
 
-    @Ignore // FIXME
     def 'should throw a NoSuchFileException when deleting an object not existing' () {
 
         given:
@@ -498,7 +494,24 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
 
     }
 
-    @Ignore //FIXME
+    def 'should delete a non-empty directory on S3 without throwing' () {
+        given:
+        def bucketName = createBucket()
+        and:
+        createObject("$bucketName/dir1/file1.txt", 'HELLO')
+        createObject("$bucketName/dir1/file2.txt", 'WORLD')
+
+        when:
+        def path = s3path("s3://$bucketName/dir1")
+        Files.delete(path)
+
+        then:
+        noExceptionThrown()
+
+        cleanup:
+        deleteBucket(bucketName)
+    }
+
     def 'should validate exists method' () {
         given:
         def bucketName = createBucket()
@@ -638,6 +651,27 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
 
         then:
         target.text == TEXT
+
+        cleanup:
+        folder?.deleteDir()
+        deleteBucket(bucketName)
+    }
+
+    def 'should download empty file from bucket' () {
+        given:
+        def folder = Files.createTempDirectory('test')
+        def target = folder.resolve('empty.txt')
+        and:
+        def bucketName = createBucket()
+        final path = s3path("s3://$bucketName/empty.txt")
+        createObject(path, '')
+
+        when:
+        FileHelper.copyPath(path, target)
+
+        then:
+        Files.exists(target)
+        Files.size(target) == 0
 
         cleanup:
         folder?.deleteDir()
@@ -905,7 +939,7 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         deleteBucket(bucketName)
     }
 
-    @Ignore // FIXME 
+    @Ignore // FIXME
     def 'should handle dir and files having the same name' () {
 
         given:
@@ -1014,8 +1048,8 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         Files.exists(path)
         and:
         def tags = client .getObjectTags(path.getBucket(), path.getKey())
-        tags.find { it.key=='FOO' }.value == 'Hello world'
-        tags.find { it.key=='BAR' }.value == 'xyz'
+        tags.find { it.key() =='FOO' }.value() == 'Hello world'
+        tags.find { it.key() =='BAR' }.value() == 'xyz'
 
         when:
         copy.setTags(FOO: 'Hola mundo', BAZ: '123')
@@ -1024,9 +1058,9 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         Files.exists(copy)
         and:
         def copyTags = client .getObjectTags(copy.getBucket(), copy.getKey())
-        copyTags.find { it.key=='FOO' }.value == 'Hola mundo'
-        copyTags.find { it.key=='BAZ' }.value == '123'
-        copyTags.find { it.key=='BAR' } == null
+        copyTags.find { it.key() =='FOO' }.value() == 'Hola mundo'
+        copyTags.find { it.key() =='BAZ' }.value() == '123'
+        copyTags.find { it.key() =='BAR' } == null
 
         cleanup:
         deleteBucket(bucketName)
@@ -1043,7 +1077,7 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         FileHelper.copyPath(source, target)
         then:
         target.exists()
-        
+
         cleanup:
         folder?.deleteDir()
     }
@@ -1063,7 +1097,7 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         FileHelper.copyPath(source, target)
         then:
         target.exists()
-        
+
         expect:
         target.getFileSystem().getClient().getObjectKmsKeyId(target.bucket, target.key) == KEY
         and:
@@ -1109,8 +1143,8 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         client.getObjectKmsKeyId(target.bucket,  "$target.key/file-1.txt") == KEY
         client.getObjectKmsKeyId(target.bucket,  "$target.key/alpha/beta/file-5.txt") == KEY
         and:
-        client.getObjectTags(target.bucket,  "$target.key/file-1.txt") == [ new Tag('ONE','HELLO') ]
-        client.getObjectTags(target.bucket,  "$target.key/alpha/beta/file-5.txt") == [ new Tag('ONE','HELLO') ]
+        client.getObjectTags(target.bucket,  "$target.key/file-1.txt") == [ Tag.builder().key('ONE').value('HELLO').build() ]
+        client.getObjectTags(target.bucket,  "$target.key/alpha/beta/file-5.txt") == [ Tag.builder().key('ONE').value('HELLO').build() ]
 
         cleanup:
         target?.deleteDir()
@@ -1300,7 +1334,7 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         and:
         client
                 .getObjectMetadata(target1.getBucket(), target1.getKey())
-                .getContentType() == 'text/foo'
+                .contentType() == 'text/foo'
 
         // copy a file across buckets
         when:
@@ -1314,7 +1348,7 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         Files.exists(target2)
         client
                 .getObjectMetadata(target2.getBucket(), target2.getKey())
-                .getContentType() == 'text/bar'
+                .contentType() == 'text/bar'
 
         cleanup:
         deleteBucket(bucket1)
@@ -1353,7 +1387,7 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         and:
         client
                 .getObjectMetadata(target1.getBucket(), target1.getKey())
-                .getStorageClass() == 'REDUCED_REDUNDANCY'
+                .storageClass() == StorageClass.REDUCED_REDUNDANCY
 
         // copy a file across buckets
         when:
@@ -1367,7 +1401,7 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
         Files.exists(target2)
         client
                 .getObjectMetadata(target2.getBucket(), target2.getKey())
-                .getStorageClass() == 'STANDARD_IA'
+                .storageClass() == StorageClass.STANDARD_IA
 
         cleanup:
         deleteBucket(bucket1)
@@ -1415,6 +1449,28 @@ class AwsS3NioTest extends Specification implements AwsS3BaseSpec {
 
         cleanup:
         deleteBucket(bucket1)
+    }
+
+    // In S3, keys are listed in lexicographic order and characters such as '-' and '.'
+    // sort before '/'. For example, given keys 'a/', 'a-a/' and 'a.txt', the listing order
+    // is: 'a-a/', 'a.txt', 'a/' — the directory 'a/' appears last.
+    // This means a lookup for the directory 'a' may not find the 'a/' marker in the first
+    // page of results, so the implementation needs a fallback second call to reliably
+    // detect directories when sibling keys with smaller-than-'/' characters exist.
+    def 'should exists file with similar files' () {
+        given:
+        def bucketName = createBucket()
+        createObject("$bucketName/similar-lexic-order/a/file-1",'File one')
+        createObject("$bucketName/similar-lexic-order/a.txt",'File two')
+        createObject("$bucketName/similar-lexic-order/a-a/file-3",'File three')
+
+        def path = s3path("s3://$bucketName/similar-lexic-order/a")
+        expect:
+        path.exists()
+        path.isDirectory()
+
+        cleanup:
+        deleteBucket(bucketName)
     }
 
 }

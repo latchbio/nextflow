@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2023, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package nextflow.script.params
@@ -45,7 +44,7 @@ class CmdEvalParam extends BaseOutParam implements OptionalParam {
     }
 
     BaseOutParam bind( def obj ) {
-        if( obj !instanceof CharSequence )
+        if( obj !instanceof CharSequence && obj !instanceof Closure )
             throw new IllegalArgumentException("Invalid argument for command output: $this")
         // the target value object
         target = obj
@@ -54,7 +53,9 @@ class CmdEvalParam extends BaseOutParam implements OptionalParam {
 
     @Memoized
     String getTarget(Map<String,Object> context) {
-        return target instanceof GString
+        return target instanceof Closure
+            ? context.with(target)
+            : target instanceof GString
             ? target.cloneAsLazy(context).toString()
             : target.toString()
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,8 +65,8 @@ class PublishDirS3Test extends Specification {
         then:
         1 * spy.safeProcessFile(source, _) >> { sourceFile, s3File ->
             assert s3File instanceof S3Path
-            assert (s3File as S3Path).getTagsList().find{ it.getKey()=='FOO'}.value == 'this'
-            assert (s3File as S3Path).getTagsList().find{ it.getKey()=='BAR'}.value == 'that'
+            assert (s3File as S3Path).getTagsList().find{ it.key()=='FOO'}.value() == 'this'
+            assert (s3File as S3Path).getTagsList().find{ it.key()=='BAR'}.value() == 'that'
         }
 
         cleanup:

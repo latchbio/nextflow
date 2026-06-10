@@ -7,6 +7,8 @@ This section covers important information for migrating between Nextflow version
 ```{toctree}
 :maxdepth: 1
 
+26-04
+25-10
 25-04
 24-10
 24-04

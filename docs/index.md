@@ -67,7 +67,6 @@ config
 executor
 cache-and-resume
 reports
-plugins
 ```
 
 ```{toctree}
@@ -78,13 +77,24 @@ plugins
 script
 working-with-files
 process
-channel
+process-typed
 workflow
-module
+workflow-typed
 notifications
 secrets
 sharing
 vscode
+```
+
+```{toctree}
+:hidden:
+:caption: Modules
+:maxdepth: 1
+
+modules/modules
+modules/using-modules
+modules/developing-modules
+modules/module-registry
 ```
 
 ```{toctree}
@@ -114,6 +124,17 @@ fusion
 
 ```{toctree}
 :hidden:
+:caption: Plugins
+:maxdepth: 1
+
+plugins/plugins
+plugins/using-plugins
+plugins/developing-plugins
+plugins/plugin-registry
+```
+
+```{toctree}
+:hidden:
 :caption: Language Reference
 :maxdepth: 1
 
@@ -122,6 +143,7 @@ reference/syntax
 reference/stdlib
 reference/process
 reference/channel
+reference/operator-typed
 reference/operator
 ```
 
@@ -152,8 +174,22 @@ migrations/index
 
 developer/index
 developer/diagram
+developer/config-scopes
 developer/packages
-developer/plugins
+```
+
+```{toctree}
+:hidden:
+:caption: Tutorials
+:maxdepth: 1
+
+tutorials/rnaseq-nf
+tutorials/data-lineage
+tutorials/workflow-outputs
+tutorials/static-types
+tutorials/static-types-operators
+tutorials/metrics
+tutorials/flux
 ```
 
 ```{toctree}
@@ -161,8 +197,8 @@ developer/plugins
 :caption: Guides
 :maxdepth: 1
 
-data-lineage
-updating-spot-retries
-metrics
-flux
+guides/aws-java-sdk-v2
+guides/gradle-plugin
+guides/migrate-plugin
+guides/updating-spot-retries
 ```

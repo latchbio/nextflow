@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,13 +34,14 @@ class ParallelPollingMonitor extends TaskPollingMonitor {
 
     private ThrottlingExecutor submitter
     private Semaphore semaphore
-    
+
     /**
      * Create the task polling monitor with the provided named parameters object.
      * <p>
      * Valid parameters are:
      * <li>name: The name of the executor for which the polling monitor is created
      * <li>session: The current {@code Session}
+     * <li>config: The `executor` configuration settings
      * <li>capacity: The maximum number of this monitoring queue
      * <li>pollInterval: Determines how often a poll occurs to check for a process termination
      * <li>dumpInterval: Determines how often the executor status is written in the application log file
@@ -84,7 +85,7 @@ class ParallelPollingMonitor extends TaskPollingMonitor {
             @Override
             protected void onFailure(Throwable e) {
                 if( !session.success )
-                    return // ignore error when the session has been interrupted 
+                    return // ignore error when the session has been interrupted
                 handleException(handler, e)
                 notifyTaskComplete(handler)
             }

@@ -7,7 +7,7 @@ In Nextflow, a **process** is a specialized function for executing scripts in a 
 Here is an example process definition:
 
 ```nextflow
-process sayHello {
+process hello {
     output:
     path 'hello.txt'
 
@@ -33,7 +33,7 @@ The script string is executed as a [Bash](<http://en.wikipedia.org/wiki/Bash_(Un
 The script section can be a simple string or a multi-line string. The latter approach makes it easier to write scripts with multiple commands spanning multiple lines. For example:
 
 ```nextflow
-process doMoreThings {
+process blast {
   """
   blastp -db $db -query query.fa -outfmt 6 > blast_result
   cat blast_result | head -n 10 | cut -f 2 > top_hits
@@ -57,9 +57,9 @@ When you need to access a system environment variable in your script, you have t
 If you don't need to access any Nextflow variables, you can define your script section with single-quotes:
 
 ```nextflow
-process printPath {
+process echo_path {
   '''
-  echo The path is: $PATH
+  echo "The path is: $PATH"
   '''
 }
 ```
@@ -67,7 +67,7 @@ process printPath {
 Otherwise, you can define your script with double-quotes and escape the system environment variables by prefixing them with a back-slash `\` character, as shown in the following example:
 
 ```nextflow
-process doOtherThings {
+process blast {
   """
   blastp -db \$DB -query query.fa -outfmt 6 > blast_result
   cat blast_result | head -n $MAX | cut -f 2 > top_hits
@@ -89,7 +89,7 @@ A pipeline may be composed of processes that execute very different tasks. With 
 To use a language other than Bash, simply start your process script with the corresponding [shebang](<http://en.wikipedia.org/wiki/Shebang_(Unix)>). For example:
 
 ```nextflow
-process perlTask {
+process perl_task {
     """
     #!/usr/bin/perl
 
@@ -97,7 +97,7 @@ process perlTask {
     """
 }
 
-process pythonTask {
+process python_task {
     """
     #!/usr/bin/python
 
@@ -108,8 +108,8 @@ process pythonTask {
 }
 
 workflow {
-    perlTask()
-    pythonTask()
+    perl_task()
+    python_task()
 }
 ```
 
@@ -162,16 +162,19 @@ Process scripts can be externalized to **template** files, which allows them to 
 A template can be used in place of an embedded script using the `template` function in the script section:
 
 ```nextflow
-process templateExample {
+process hello {
     input:
     val STR
 
+    output:
+    stdout
+
     script:
-    template 'my_script.sh'
+    template 'hello.sh'
 }
 
 workflow {
-    channel.of('this', 'that') | templateExample
+    hello('Hello!').view()
 }
 ```
 
@@ -189,7 +192,7 @@ echo "process completed"
 Variables prefixed with the dollar character (`$`) are interpreted as Nextflow variables when the template script is executed by Nextflow and Bash variables when executed directly. For example, the above script can be executed from the command line by providing each input as an environment variable:
 
 ```bash
-STR='foo' bash templates/my_script.sh
+STR='Hello!' bash templates/hello.sh
 ```
 
 The following caveats should be considered:
@@ -208,8 +211,8 @@ Template scripts are generally discouraged due to the caveats described above. T
 
 ### Shell
 
-:::{deprecated} 24.11.0-edge
-Use the `script` section instead. Consider using the {ref}`strict syntax <strict-syntax-page>`, which provides error checking to help distinguish between Nextflow variables and Bash variables in the process script.
+:::{deprecated} 25.04.0
+Use the `script` section instead.
 :::
 
 The `shell` section is a string expression that defines the script that is executed by the process. It is an alternative to the {ref}`process-script` definition with one important difference: it uses the exclamation mark `!` character, instead of the usual dollar `$` character, to denote Nextflow variables.
@@ -217,7 +220,7 @@ The `shell` section is a string expression that defines the script that is execu
 This way, it is possible to use both Nextflow and Bash variables in the same script without having to escape the latter, which makes process scripts easier to read and maintain. For example:
 
 ```nextflow
-process myTask {
+process hello {
     input:
     val str
 
@@ -228,7 +231,7 @@ process myTask {
 }
 
 workflow {
-    channel.of('Hello', 'Hola', 'Bonjour') | myTask
+    channel.of('Hello', 'Hola', 'Bonjour') | hello
 }
 ```
 
@@ -249,16 +252,16 @@ The `exec` section executes the given code without launching a job.
 For example:
 
 ```nextflow
-process simpleSum {
+process hello {
     input:
-    val x
+    val name
 
     exec:
-    println "Hello Mr. $x"
+    println "Hello Mr. $name"
 }
 
 workflow {
-    channel.of('a', 'b', 'c') | simpleSum
+    channel.of('a', 'b', 'c') | hello
 }
 ```
 
@@ -282,19 +285,19 @@ A native process is very similar to a {ref}`function <syntax-function>`. However
 You can define a command *stub*, which replaces the actual process command when the `-stub-run` or `-stub` command-line option is enabled:
 
 ```nextflow
-process INDEX {
-  input:
+process salmon_index {
+    input:
     path transcriptome
 
-  output:
+    output:
     path 'index'
 
-  script:
+    script:
     """
     salmon index --threads $task.cpus -t $transcriptome -i index
     """
 
-  stub:
+    stub:
     """
     mkdir index
     touch index/seq.bin
@@ -312,7 +315,7 @@ This feature makes it easier to quickly prototype the workflow logic without usi
 
 ## Inputs
 
-The `input` section allows you to define the input channels of a process, similar to function arguments. A process may have at most one input section, which must contain at least one input declaration.
+The `input` section defines the input of a process, similar to function arguments. A process may have at most one input section, which must contain at least one input declaration.
 
 The input section follows the syntax shown below:
 
@@ -321,9 +324,9 @@ input:
   <input qualifier> <input name>
 ```
 
-An input definition consists of a *qualifier* and a *name*. The input qualifier defines the type of data to be received. This information is used by Nextflow to apply the semantic rules associated with each qualifier, and handle it properly depending on the target execution platform (grid, cloud, etc).
+An input declaration consists of a *qualifier* and a *name*. The input qualifier defines the type of data to be received. This information is used by Nextflow to apply the semantic rules associated with each qualifier, and handle it properly depending on the target execution platform (grid, cloud, etc).
 
-When a process is invoked in a workflow, it must be provided a channel for each channel in the process input section, similar to calling a function with specific arguments. The examples provided in the following sections demonstrate how a process is invoked with input channels.
+When a process is invoked in a workflow, it must be provided a channel or dataflow value for each input in the process input section, similar to calling a function with specific arguments. The examples provided in the following sections demonstrate how a process is invoked.
 
 The following input qualifiers are available:
 
@@ -341,19 +344,19 @@ See {ref}`process reference <process-reference-inputs>` for the full list of inp
 The `val` qualifier accepts any data type. It can be accessed in the process script by using the specified input name, as shown in the following example:
 
 ```nextflow
-process basicExample {
+process echo {
   input:
   val x
 
   script:
   """
-  echo process job $x
+  echo "process job $x"
   """
 }
 
 workflow {
   def num = channel.of(1,2,3)
-  basicExample(num)
+  echo(num)
 }
 ```
 
@@ -366,25 +369,25 @@ process job 2
 ```
 
 :::{note}
-While channels do emit items in the order that they are received, *processes* do not necessarily *process* items in the order that they are received. In the above example, the value `3` was processed before the others.
+Processes do not necessarily process items in the order that they are received. In the above example, the value `3` was processed before the others.
 :::
 
 :::{note}
 When the process declares exactly one input, the pipe `|` operator can be used to provide inputs to the process, instead of passing it as a parameter. Both methods have identical semantics:
 
 ```nextflow
-process basicExample {
+process echo {
   input:
   val x
 
   script:
   """
-  echo process job $x
+  echo "process job $x"
   """
 }
 
 workflow {
-  channel.of(1,2,3) | basicExample
+  channel.of(1,2,3) | echo
 }
 ```
 :::
@@ -396,7 +399,7 @@ workflow {
 The `path` qualifier allows you to provide input files to the process execution context. Nextflow will stage the files into the process execution directory, and they can be accessed in the script by using the specified input name. For example:
 
 ```nextflow
-process blastThemAll {
+process blast {
   input:
   path query_file
 
@@ -408,7 +411,7 @@ process blastThemAll {
 
 workflow {
   def proteins = channel.fromPath( '/some/path/*.fa' )
-  blastThemAll(proteins)
+  blast(proteins)
 }
 ```
 
@@ -433,7 +436,7 @@ path 'query.fa'
 The previous example can be re-written as shown below:
 
 ```nextflow
-process blastThemAll {
+process blast {
   input:
   path 'query.fa'
 
@@ -445,7 +448,7 @@ process blastThemAll {
 
 workflow {
   def proteins = channel.fromPath( '/some/path/*.fa' )
-  blastThemAll(proteins)
+  blast(proteins)
 }
 ```
 
@@ -458,18 +461,18 @@ This feature allows you to execute the process command multiple times without wo
 Channel factories like `channel.fromPath` produce file objects, but a `path` input can also accept a string literal path. The string value should be an absolute path, i.e. it must be prefixed with a `/` character or a supported URI protocol (`file://`, `http://`, `s3://`, etc), and it cannot contain special characters (`\n`, etc).
 
 ```nextflow
-process foo {
+process cat {
   input:
   path x
 
   script:
   """
-  your_command --in $x
+  cat $x
   """
 }
 
 workflow {
-  foo('/some/data/file.txt')
+  cat('/some/data/file.txt')
 }
 ```
 
@@ -483,6 +486,8 @@ path x, name: 'my-dir/file.txt'
 In this case, `x.name` returns the file name with the parent directory (e.g. `my-dir/file.txt`), whereas normally it would return the file name (e.g. `file.txt`). You can use `x.fileName.name` to get the file name.
 :::
 
+(process-multiple-input-files)=
+
 ### Multiple input files
 
 A `path` input can also accept a collection of files instead of a single value. In this case, the input variable will be a list.
@@ -490,7 +495,7 @@ A `path` input can also accept a collection of files instead of a single value. 
 When the input has a fixed file name and a collection of files is received by the process, the file name will be appended with a numerical suffix representing its ordinal position in the list. For example:
 
 ```nextflow
-process blastThemAll {
+process blast {
     input:
     path 'seq'
 
@@ -502,7 +507,7 @@ process blastThemAll {
 
 workflow {
     def fasta = channel.fromPath( "/some/path/*.fa" ).buffer(size: 3)
-    blastThemAll(fasta)
+    blast(fasta)
 }
 ```
 
@@ -514,7 +519,7 @@ seq1 seq2 seq3
 ...
 ```
 
-The target input file name may contain the `*` and `?` wildcards, which can be used to control the name of staged files. The following table shows how the wildcards are replaced depending on the cardinality of the received input collection.
+The target input file name may contain the {index}`*` and {index}`?` wildcards, which can be used to control the name of staged files. The following table shows how the {index}`wildcards` are replaced depending on the cardinality of the received input collection.
 
 | Arity       | Name pattern | Staged file names                                                                                       |
 | ----------- | ------------ | ------------------------------------------------------------------------------------------------------- |
@@ -532,7 +537,7 @@ The target input file name may contain the `*` and `?` wildcards, which can be u
 The following example shows how a wildcard can be used in the input file definition:
 
 ```nextflow
-process blastThemAll {
+process blast {
     input:
     path 'seq?.fa'
 
@@ -544,7 +549,7 @@ process blastThemAll {
 
 workflow {
     def fasta = channel.fromPath( "/some/path/*.fa" ).buffer(size: 3)
-    blastThemAll(fasta)
+    blast(fasta)
 }
 ```
 
@@ -573,7 +578,7 @@ When a task is executed, Nextflow will check whether the received files for each
 When the input file name is specified by using the `name` option or a string literal, you can also use other input values as variables in the file name string. For example:
 
 ```nextflow
-process simpleCount {
+process grep {
   input:
   val x
   path "${x}.fa"
@@ -598,18 +603,18 @@ In most cases, you won't need to use dynamic file names, because each task is ex
 The `env` qualifier allows you to define an environment variable in the process execution context based on the input value. For example:
 
 ```nextflow
-process printEnv {
+process echo_env {
     input:
     env 'HELLO'
 
     script:
     '''
-    echo $HELLO world!
+    echo "$HELLO world!"
     '''
 }
 
 workflow {
-    channel.of('hello', 'hola', 'bonjour', 'ciao') | printEnv
+    channel.of('hello', 'hola', 'bonjour', 'ciao') | echo_env
 }
 ```
 
@@ -625,7 +630,7 @@ hola world!
 The `stdin` qualifier allows you to forward the input value to the [standard input](http://en.wikipedia.org/wiki/Standard_streams#Standard_input_.28stdin.29) of the process script. For example:
 
 ```nextflow
-process printAll {
+process cat {
   input:
   stdin
 
@@ -638,7 +643,7 @@ process printAll {
 workflow {
   channel.of('hello', 'hola', 'bonjour', 'ciao')
     | map { v -> v + '\n' }
-    | printAll
+    | cat
 }
 ```
 
@@ -655,22 +660,22 @@ hello
 
 ### Input tuples (`tuple`)
 
-The `tuple` qualifier allows you to group multiple values into a single input definition. It can be useful when a channel emits tuples of values that need to be handled separately. Each element in the tuple is associated with a corresponding element in the `tuple` definition. For example:
+The `tuple` qualifier groups multiple values into a single input definition. Each element in the tuple is associated with a corresponding element in the `tuple` definition. For example:
 
 ```nextflow
-process tupleExample {
+process cat {
     input:
-    tuple val(x), path('input.txt')
+    tuple val(id), path('input.txt')
 
     script:
     """
-    echo "Processing $x"
+    echo "Processing $id"
     cat input.txt > copy
     """
 }
 
 workflow {
-  channel.of( [1, 'alpha.txt'], [2, 'beta.txt'], [3, 'delta.txt'] ) | tupleExample
+  channel.of( [1, 'alpha.txt'], [2, 'beta.txt'], [3, 'delta.txt'] ) | cat
 }
 ```
 
@@ -678,12 +683,14 @@ In the above example, the `tuple` input consists of the value `x` and the file `
 
 A `tuple` definition may contain any of the following qualifiers, as previously described: `val`, `env`, `path` and `stdin`. Files specified with the `path` qualifier are treated exactly the same as standalone `path` inputs.
 
+(process-input-each)=
+
 ### Input repeaters (`each`)
 
 The `each` qualifier allows you to repeat the execution of a process for each item in a collection, each time a new value is received. For example:
 
 ```nextflow
-process alignSequences {
+process align {
   input:
   path seq
   each mode
@@ -698,7 +705,7 @@ workflow {
   sequences = channel.fromPath('*.fa')
   methods = ['regular', 'espresso', 'psicoffee']
 
-  alignSequences(sequences, methods)
+  align(sequences, methods)
 }
 ```
 
@@ -707,7 +714,7 @@ In the above example, each time a file of sequences is emitted from the `sequenc
 Input repeaters can be applied to files as well. For example:
 
 ```nextflow
-process alignSequences {
+process align {
   input:
   path seq
   each mode
@@ -724,7 +731,7 @@ workflow {
   methods = ['regular', 'espresso']
   libraries = [ file('PQ001.lib'), file('PQ002.lib'), file('PQ003.lib') ]
 
-  alignSequences(sequences, methods, libraries)
+  align(sequences, methods, libraries)
 }
 ```
 
@@ -735,53 +742,25 @@ When multiple repeaters are defined, the process is executed for each *combinati
 :::
 
 :::{note}
-Input repeaters currently do not support tuples. However, you can emulate an input repeater on a channel of tuples by using the {ref}`operator-combine` or {ref}`operator-cross` operator with other input channels to produce all of the desired input combinations.
+Input repeaters do not support tuples. Use the {ref}`operator-combine` operator to combine the repeated input with the other inputs to produce all of the desired input combinations.
 :::
 
-(process-multiple-input-channels)=
+(process-multiple-inputs)=
 
-### Multiple input channels
+### Multiple inputs
 
-A key feature of processes is the ability to handle inputs from multiple channels.
+A process can declare multiple inputs, which allows it to accept inputs from multiple dataflow sources.
 
-When two or more channels are declared as process inputs, the process waits until there is a complete input configuration, i.e. until it receives a value from each input channel. When this condition is satisfied, the process consumes a value from each channel and launches a new task, repeating this logic until one or more channels are empty.
+:::{warning}
+Do not supply more than one channel when calling a process with multiple inputs. Invoking a process with multiple channels can lead to {ref}`non-deterministic behavior <cache-nondeterministic-inputs>`. All additional inputs should be dataflow values. 
+:::
 
-As a result, channel values are consumed sequentially and any empty channel will cause the process to wait, even if the other channels have values.
+When a process is defined with multiple inputs, it waits for a value from each input and launches a new task with the combined values. When one of the inputs is a channel, the process repeats until all values in the channel are consumed. If the channel is empty, the process will not launch any tasks.
 
 For example:
 
 ```nextflow
-process foo {
-  input:
-  val x
-  val y
-
-  script:
-  """
-  echo $x and $y
-  """
-}
-
-workflow {
-  x = channel.of(1, 2)
-  y = channel.of('a', 'b', 'c')
-  foo(x, y)
-}
-```
-
-The process `foo` is executed two times because the `x` channel emits only two values, therefore the `c` element is discarded. It outputs:
-
-```
-1 and a
-2 and b
-```
-
-A different semantic is applied when using a {ref}`value channel <channel-type-value>`. This kind of channel is created by the {ref}`channel.value <channel-value>` factory method or implicitly when a process is invoked with an argument that is not a channel. By definition, a value channel is bound to a single value and it can be read an unlimited number of times without consuming its content. Therefore, when mixing a value channel with one or more (queue) channels, it does not affect the process termination because the underlying value is applied repeatedly.
-
-To better understand this behavior, compare the previous example with the following one:
-
-```nextflow
-process bar {
+process echo {
   input:
   val x
   val y
@@ -795,11 +774,11 @@ process bar {
 workflow {
   x = channel.value(1)
   y = channel.of('a', 'b', 'c')
-  foo(x, y)
+  echo(x, y)
 }
 ```
 
-The above example executes the `bar` process three times because `x` is a value channel, therefore its value can be read as many times as needed. The process termination is determined by the contents of `y`. It outputs:
+The above example executes the `echo` process three times. The dataflow value `x` is reused for each value in `y`. It outputs:
 
 ```
 1 and a
@@ -807,17 +786,13 @@ The above example executes the `bar` process three times because `x` is a value 
 1 and c
 ```
 
-:::{note}
-In general, multiple input channels should be used to process *combinations* of different inputs, using the `each` qualifier or value channels. Having multiple queue channels as inputs is equivalent to using the {ref}`operator-merge` operator, which is not recommended as it may lead to {ref}`non-deterministic process inputs <cache-nondeterministic-inputs>`.
-:::
-
-See also: {ref}`channel-types`.
+See also: {ref}`process-out-singleton`.
 
 (process-output)=
 
 ## Outputs
 
-The `output` section allows you to define the output channels of a process, similar to function outputs. A process may have at most one output section, which must contain at least one output declaration.
+The `output` section defines the outputs of a process, similar to a function return. A process may have at most one output section, which must contain at least one output declaration.
 
 The output section follows the syntax shown below:
 
@@ -826,9 +801,9 @@ output:
   <output qualifier> <output name> [, <option>: <option value>]
 ```
 
-An output definition consists of a *qualifier* and a *name*. Some optional attributes can also be specified.
+An output declaration consists of a *qualifier* and a *name*. Some optional attributes can also be specified.
 
-When a process is invoked, each process output is returned as a channel. The examples provided in the following sections demonstrate how to access the output channels of a process.
+When a process is invoked, each process output is returned as a channel (except under {ref}`certain conditions <process-out-singleton>`). The examples provided in the following sections demonstrate how to access the outputs of a process.
 
 The following output qualifiers are available:
 
@@ -846,7 +821,7 @@ Refer to the {ref}`process reference <process-reference-outputs>` for the full l
 The `val` qualifier allows you to output any Nextflow variable defined in the process. A common use case is to output a variable that was defined in the `input` section, as shown in the following example:
 
 ```nextflow
-process foo {
+process echo {
   input:
   each x
 
@@ -862,15 +837,15 @@ process foo {
 workflow {
   methods = ['prot', 'dna', 'rna']
 
-  receiver = foo(methods)
-  receiver.view { method -> "Received: $method" }
+  received = echo(methods)
+  received.view { method -> "Received: $method" }
 }
 ```
 
 The output value can be a value literal, an input variable, any other Nextflow variable in the process scope, or a value expression. For example:
 
 ```nextflow
-process foo {
+process cat {
   input:
   path infile
 
@@ -888,7 +863,7 @@ process foo {
 
 workflow {
   ch_dummy = channel.fromPath('*').first()
-  (ch_var, ch_str, ch_exp) = foo(ch_dummy)
+  (ch_var, ch_str, ch_exp) = cat(ch_dummy)
 
   ch_var.view { var -> "ch_var: $var" }
   ch_str.view { str -> "ch_str: $str" }
@@ -901,7 +876,7 @@ workflow {
 The `path` qualifier allows you to output one or more files produced by the process. For example:
 
 ```nextflow
-process randomNum {
+process random_number {
   output:
   path 'result.txt'
 
@@ -912,12 +887,12 @@ process randomNum {
 }
 
 workflow {
-  numbers = randomNum()
+  numbers = random_number()
   numbers.view { file -> "Received: ${file.text}" }
 }
 ```
 
-In the above example, the `randomNum` process creates a file named `result.txt` which contains a random number. Since a `path` output with the same name is declared, that file is emitted by the corresponding output channel. A downstream process with a compatible input channel will be able to receive it.
+In the above example, the `random_number` process creates a file named `result.txt` which contains a random number. Since a `path` output with the same name is declared, that file is emitted by the corresponding process output. A downstream process or operator with a compatible input will be able to receive it.
 
 Refer to the {ref}`process reference <process-reference-outputs>` for the list of available options for `path` outputs.
 
@@ -926,7 +901,7 @@ Refer to the {ref}`process reference <process-reference-outputs>` for the list o
 When an output file name contains a `*` or `?` wildcard character, it is interpreted as a [glob][glob] path matcher. This allows you to capture multiple files into a list and emit the list as a single value. For example:
 
 ```nextflow
-process splitLetters {
+process split_letters {
     output:
     path 'chunk_*'
 
@@ -937,7 +912,7 @@ process splitLetters {
 }
 
 workflow {
-    splitLetters
+    split_letters
         | flatten
         | view { chunk -> "File: ${chunk.name} => ${chunk.text}" }
 }
@@ -960,7 +935,7 @@ Some caveats on glob pattern behavior:
 - Directories are included, unless the `**` pattern is used to recurse through directories
 
 :::{warning}
-Although the input files matching a glob output declaration are not included in the resulting output channel, these files may still be transferred from the task scratch directory to the original task work directory. Therefore, to avoid unnecessary file copies, avoid using loose wildcards when defining output files, e.g. `path '*'`. Instead, use a prefix or a suffix to restrict the set of matching files to only the expected ones, e.g. `path 'prefix_*.sorted.bam'`.
+Although the input files matching an output glob pattern are not included in the resulting output, these files may still be transferred from the task scratch directory to the original task work directory. Therefore, to avoid unnecessary file copies, avoid using loose wildcards when defining output files, e.g. `path '*'`. Instead, use a prefix or a suffix to restrict the set of matching files to only the expected ones, e.g. `path 'prefix_*.sorted.bam'`.
 :::
 
 Read more about glob syntax at the following link [What is a glob?][glob]
@@ -1056,13 +1031,12 @@ If the command fails, the task will also fail. In Bash, you can append `|| true`
 
 ### Output tuples (`tuple`)
 
-The `tuple` qualifier allows you to output multiple values in a single channel. It is useful when you need to associate outputs with metadata, for example:
+The `tuple` qualifier outputs multiple values in a single output as a {ref}`tuple <script-tuples>`. For example:
 
 ```nextflow
 process blast {
   input:
-    val species
-    path query
+    tuple val(species), path(query)
 
   output:
     tuple val(species), path('result')
@@ -1077,7 +1051,7 @@ workflow {
   ch_species = channel.of('human', 'cow', 'horse')
   ch_query = channel.fromPath('*.fa')
 
-  blast(ch_species, ch_query)
+  blast(ch_species.combine(ch_query))
 }
 ```
 
@@ -1091,7 +1065,7 @@ While parentheses for input and output qualifiers are generally optional, they a
 Here's an example with a single path output (parentheses optional):
 
 ```nextflow
-process foo {
+process hello {
     output:
     path 'result.txt', hidden: true
 
@@ -1105,7 +1079,7 @@ process foo {
 And here's an example with a tuple output (parentheses required):
 
 ```nextflow
-process foo {
+process hello {
     output:
     tuple path('last_result.txt'), path('result.txt', hidden: true)
 
@@ -1122,10 +1096,10 @@ process foo {
 
 ### Naming outputs
 
-The `emit` option can be used on a process output to define a name for the corresponding output channel, which can be used to access the channel by name from the process output. For example:
+The `emit` option is used to define the name of a process output, which can be used to access the output by name in the calling workflow. For example:
 
 ```nextflow
-process FOO {
+process hello_bye {
     output:
     path 'hello.txt', emit: hello
     stdout emit: bye
@@ -1138,8 +1112,8 @@ process FOO {
 }
 
 workflow {
-    FOO()
-    FOO.out.hello.view()
+    hello_bye()
+    hello_bye.out.hello.view()
 }
 ```
 
@@ -1147,7 +1121,7 @@ See {ref}`workflow-process-invocation` for more details.
 
 ### Optional outputs
 
-Normally, if a specified output is not produced by the task, the task will fail. Setting `optional: true` will cause the task to not fail, and instead emit nothing to the given output channel.
+Normally, if a specified output is not produced by the task, the task will fail. Setting `optional: true` will cause the task to not fail, and instead emit nothing to the corresponding output channel.
 
 ```nextflow
 output:
@@ -1160,11 +1134,27 @@ In this example, the process is normally expected to produce an `output.txt` fil
 While this option can be used with any process output, it cannot be applied to individual elements of a [tuple](#output-tuples-tuple) output. The entire tuple must be optional or not optional.
 :::
 
+(process-out-singleton)=
+
+### Singleton outputs
+
+When a process is only supplied with dataflow values, regular values, or no inputs, it returns outputs as dataflow values. For example:
+
+```{literalinclude} snippets/process-out-singleton.nf
+:language: nextflow
+```
+
+In the above example, the `echo` process is invoked with a regular value that is wrapped in a dataflow value. As a result, `echo` returns a dataflow value and `greet` is executed three times.
+
+If the call to `echo` was changed to `echo( channel.of('hello') )`, the process would instead return a channel, and `greet` would be executed only once.
+
+See also: {ref}`process-multiple-inputs`.
+
 (process-when)=
 
 ## When
 
-:::{node}
+:::{note}
 As a best practice, conditional logic should be implemented in the calling workflow (e.g. using an `if` statement or {ref}`operator-filter` operator) instead of the process definition.
 :::
 
@@ -1173,7 +1163,7 @@ The `when` section allows you to define a condition that must be satisfied in or
 It can be useful to enable/disable the process execution depending on the state of various inputs and parameters. For example:
 
 ```nextflow
-process find {
+process blast_search {
   input:
   path proteins
   val dbtype
@@ -1214,12 +1204,14 @@ Software dependencies:
 - {ref}`process-conda`: list of conda packages to provision for tasks
 - {ref}`process-container`: container image to use for tasks
 
+(task-directive-values)=
+
 ### Using task directive values
 
 The `task` object also contains the values of all process directives for the given task, which allows you to access these settings at runtime. For examples:
 
 ```nextflow
-process foo {
+process hello {
   script:
   """
   some_tool --cpus $task.cpus --mem $task.memory
@@ -1238,7 +1230,7 @@ A directive can be assigned *dynamically*, during the process execution, so that
 To be defined dynamically, the directive's value needs to be expressed using a {ref}`closure <script-closure>`. For example:
 
 ```nextflow
-process foo {
+process hello {
   executor 'sge'
   queue { entries > 100 ? 'long' : 'short' }
 
@@ -1259,16 +1251,18 @@ All directives can be assigned a dynamic value except the following:
 - {ref}`process-executor`
 - {ref}`process-label`
 - {ref}`process-maxforks`
+- {ref}`process-secret`
 
-:::{tip}
-Assigning a string value with one or more variables is always resolved in a dynamic manner, and therefore is equivalent to the above syntax. For example, the above directive can also be written as:
+:::{versionadded} 25.10
+:::
+
+Dynamic directives can be specified without a closure when using the {ref}`strict parser <strict-syntax-page>`:
 
 ```nextflow
-queue "${ entries > 100 ? 'long' : 'short' }"
+queue (entries > 100 ? 'long' : 'short')
 ```
 
-Note, however, that the latter syntax can be used both for a directive's main argument (as in the above example) and for a directive's optional named attributes, whereas the closure syntax is only resolved dynamically for a directive's main argument.
-:::
+Directives will be evaluated dynamically if they reference task inputs. Process configuration options must still be specified with a closure to be dynamic.
 
 (dynamic-task-resources)=
 
@@ -1279,7 +1273,7 @@ It's a very common scenario that different instances of the same process may hav
 [Dynamic directives](#dynamic-directives) can be used to adjust the requested task resources when a task fails and is re-executed. For example:
 
 ```nextflow
-process foo {
+process hello {
     memory { 2.GB * task.attempt }
     time { 1.hour * task.attempt }
 
@@ -1314,11 +1308,16 @@ disk { [request: 375.GB * task.attempt, type: 'local-ssd'] }
 Task resources can also be defined in terms of task inputs. For example:
 
 ```nextflow
-process foo {
+process hello {
     memory { 8.GB + 1.GB * Math.ceil(input_file.size() / 1024 ** 3) }
 
     input:
     path input_file
+
+    script:
+    """
+    your_command --here
+    """
 }
 ```
 
@@ -1334,7 +1333,7 @@ In this example, each task requests 8 GB of memory, plus the size of the input f
 Task resource requests can be updated relative to the {ref}`trace record <trace-report>` metrics of the previous task attempt. The metrics can be accessed through the `task.previousTrace` variable. For example:
 
 ```nextflow
-process foo {
+process hello {
     memory { task.attempt > 1 ? task.previousTrace.memory * 2 : (1.GB) }
     errorStrategy { task.exitStatus in 137..140 ? 'retry' : 'terminate' }
     maxRetries 3
@@ -1346,14 +1345,18 @@ process foo {
 }
 ```
 
-In the above example, the {ref}`process-memory` is set according to previous trace record metrics. In the first attempt, when no trace metrics are available, it is set to 1 GB. In each subsequent attempt, the requested memory is doubled. See {ref}`trace-report` for more information about trace records.
+In the above example, the {ref}`process-memory` is set according to previous trace record metrics. In the first attempt, when no trace metrics are available, it is set to 1 GB. In each subsequent attempt, the requested memory is doubled. 
+
+:::{note}
+Many fields from the previous task attempts are accessible. See {ref}`trace-report` for a list of available fields.
+:::
 
 ### Dynamic retry with backoff
 
-There are cases in which the required execution resources may be temporary unavailable e.g. network congestion. In these cases immediately re-executing the task will likely result in the identical error. A retry with an exponential backoff delay can better recover these error conditions:
+There are cases in which the required execution resources may be temporarily unavailable e.g. network congestion. In these cases immediately re-executing the task will likely result in the identical error. A retry with an exponential backoff delay can better recover these error conditions:
 
 ```nextflow
-process foo {
+process hello {
   errorStrategy { sleep(Math.pow(2, task.attempt) * 200 as long); return 'retry' }
   maxRetries 5
 

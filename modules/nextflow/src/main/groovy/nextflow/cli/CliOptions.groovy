@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024, Seqera Labs
+ * Copyright 2013-2026, Seqera Labs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,9 @@ package nextflow.cli
 
 import com.beust.jcommander.DynamicParameter
 import com.beust.jcommander.Parameter
+import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
+import nextflow.SysEnv
 import nextflow.exception.AbortOperationException
 import org.fusesource.jansi.Ansi
 
@@ -28,6 +30,7 @@ import org.fusesource.jansi.Ansi
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @Slf4j
+@CompileStatic
 class CliOptions {
 
     /**
@@ -102,18 +105,30 @@ class CliOptions {
         if( quiet )
             return ansiLog = false
 
-        final env = System.getenv('NXF_ANSI_LOG')
+        final env = SysEnv.get('NXF_ANSI_LOG')
         if( env ) try {
             return Boolean.parseBoolean(env)
         }
         catch (Exception e) {
             log.warn "Invalid boolean value for variable NXF_ANSI_LOG: $env -- it must be 'true' or 'false'"
         }
+
+        // Check NO_COLOR environment variable (https://no-color.org/)
+        final noColor = SysEnv.get('NO_COLOR')
+        if( noColor ) {
+            return ansiLog = false
+        }
+
+        // Disable ANSI log in agent mode for plain, parseable output
+        if( SysEnv.isAgentMode() ) {
+            return ansiLog = false
+        }
+
         return Ansi.isEnabled()
     }
 
     boolean hasAnsiLogFlag() {
-        ansiLog==true || System.getenv('NXF_ANSI_LOG')=='true'
+        ansiLog==true || SysEnv.get('NXF_ANSI_LOG')=='true'
     }
 
 }

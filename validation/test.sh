@@ -46,16 +46,17 @@ test_e2e() {
 }
 
 #
-# Integration tests
+# Integration tests (legacy parser)
 #
 if [[ $TEST_MODE == 'test_integration' ]]; then
+  export NXF_SYNTAX_PARSER=v1
   test_integration ../tests/
   test_integration ../tests-v1/
   test_e2e
 fi
 
 #
-# Integration tests (strict syntax)
+# Integration tests (strict parser)
 #
 if [[ $TEST_MODE == 'test_parser_v2' ]]; then
   export NXF_SYNTAX_PARSER=v2
