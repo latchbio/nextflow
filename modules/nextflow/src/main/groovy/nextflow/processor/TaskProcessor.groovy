@@ -514,6 +514,9 @@ class TaskProcessor {
     }
 
     void createRemoteProcessNode() {
+        if( this.nodeId )
+            return
+
         this.nodeId = dispatcherClient.createProcessNode(this.name)
 
         final inputs = config instanceof ProcessConfigV2
@@ -522,8 +525,10 @@ class TaskProcessor {
 
         for( InParam input : inputs ) {
             Set<TaskProcessor> processors = NodeMarker.findInputSource(input)
-            for( TaskProcessor src : processors )
+            for( TaskProcessor src : processors ) {
+                src.createRemoteProcessNode()
                 dispatcherClient.createProcessEdge(src.nodeId, this.nodeId)
+            }
         }
     }
 
@@ -606,15 +611,22 @@ class TaskProcessor {
 
         // notify the creation of a new vertex the execution DAG
         NodeMarker.addProcessNode(this, config.getInputs(), config.getOutputs())
-        // this must happen before the operator is started to ensure that nodeId is populated
-        createRemoteProcessNode()
 
         // fix issue #41
-        start(operator)
+        startProcessOperator(operator)
     }
 
     private start(DataflowProcessor op) {
         session.addIgniter {
+            log.debug "Starting process > $name"
+            op.start()
+        }
+    }
+
+    private startProcessOperator(DataflowProcessor op) {
+        session.addIgniter {
+            // This must happen before the operator starts so task creation has nodeId.
+            createRemoteProcessNode()
             log.debug "Starting process > $name"
             op.start()
         }
@@ -663,11 +675,9 @@ class TaskProcessor {
 
         // notify the creation of a new vertex the execution DAG
         NodeMarker.addProcessNode(this, configV2().getInputs(), configV2().getOutputs())
-        // this must happen before the operator is started to ensure that nodeId is populated
-        createRemoteProcessNode()
 
         // start the operator
-        start(operator)
+        startProcessOperator(operator)
 
         session.notifyProcessCreate(this)
     }
